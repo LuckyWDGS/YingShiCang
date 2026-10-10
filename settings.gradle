@@ -1,0 +1,35 @@
+pluginManagement {
+    def props = new Properties()
+    def propsFile = file('local.properties')
+    if (propsFile.exists()) propsFile.withInputStream { props.load(it) }
+    def dir = System.getenv('MEDIA3_DIR') ?: props.getProperty('media3.dir', '.dependencies/media')
+    includeBuild("${dir}/build-logic-settings")
+    repositories {
+        gradlePluginPortal()
+        mavenCentral()
+        google()
+    }
+}
+plugins {
+    id 'gradlebuild.media3-settings-logic'
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '1.0.0'
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        mavenCentral()
+        google()
+        flatDir { dirs "$rootDir/app/libs" }
+        maven { url = "https://jitpack.io" }
+    }
+}
+def props = new Properties()
+def propsFile = file('local.properties')
+if (propsFile.exists()) propsFile.withInputStream { props.load(it) }
+def media3Dir = System.getenv('MEDIA3_DIR') ?: props.getProperty('media3.dir', '.dependencies/media')
+includeMedia3.execute(file(media3Dir))
+include ':app'
+include ':catvod'
+include ':chaquo'
+include ':quickjs'
+rootProject.name = "YingShiCang"

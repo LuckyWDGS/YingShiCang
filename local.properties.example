@@ -1,0 +1,11 @@
+# Copy to local.properties (ignored by Git), or set ANDROID_HOME/MEDIA3_DIR/PYTHON_BUILD.
+sdk.dir=C:/Android/Sdk
+# Optional existing pinned source location; default .dependencies/media prepared by scripts/prepare_media.py
+# media3.dir=E:/dependencies/media
+# python.build=C:/Python310/python.exe
+
+# Release signing only. Do not use the Android debug key for distribution.
+# ysc.storeFile=E:/YingShiCangKeys/release.jks
+# ysc.keyAlias=yingshicang
+# ysc.storePassword=configure-locally
+# ysc.keyPassword=configure-locally

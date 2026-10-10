@@ -1,0 +1,9 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:padding="16dp" android:orientation="horizontal">
+<LinearLayout android:layout_width="132dp" android:layout_height="match_parent" android:orientation="vertical" android:layout_marginEnd="14dp">
+<TextView android:id="@+id/progress" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="搜索(0/0)" android:textColor="#F3F6F8" android:textSize="16sp" android:paddingBottom="16dp"/>
+<ScrollView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"><LinearLayout android:id="@+id/sources" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical"/></ScrollView>
+</LinearLayout>
+<LinearLayout android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent" android:orientation="vertical">
+<TextView android:id="@+id/empty" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#AFC7D1" android:textSize="16sp" android:text="正在等待搜索结果…"/>
+<androidx.recyclerview.widget.RecyclerView android:id="@+id/results" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:clipToPadding="false"/>
+</LinearLayout></LinearLayout>

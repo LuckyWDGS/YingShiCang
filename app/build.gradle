@@ -1,0 +1,150 @@
+import com.android.build.api.artifact.SingleArtifact
+import com.fongmi.gradle.AbiApkPackaging
+
+plugins {
+    alias libs.plugins.android.application
+}
+
+def localProps = new Properties()
+if (rootProject.file('local.properties').exists()) rootProject.file('local.properties').withInputStream {
+    localProps.load(it)
+}
+
+android {
+    namespace = 'com.fongmi.android.tv'
+
+    compileSdk libs.versions.compileSdk.get().toInteger()
+
+    defaultConfig {
+        applicationId "com.yingshicang.player"
+        minSdk libs.versions.minSdk.get().toInteger()
+        targetSdk libs.versions.targetSdk.get().toInteger()
+        // Independent short drama catalog with source-declared categories and filters.
+        versionCode providers.gradleProperty('appVersionCode').getOrElse('35').toInteger()
+        versionName providers.gradleProperty('appVersionName').getOrElse('0.1.34-alpha')
+        buildConfigField "String", "UPDATE_MANIFEST_URL", groovy.json.JsonOutput.toJson(providers.gradleProperty("updateManifestUrl").getOrElse(""))
+        buildConfigField "String", "LOG_UPLOAD_URL", groovy.json.JsonOutput.toJson(providers.gradleProperty("logUploadUrl").getOrElse(""))
+        javaCompileOptions {
+            annotationProcessorOptions {
+                arguments = ["room.schemaLocation": "$projectDir/schemas".toString(), "eventBusIndex": "com.fongmi.android.tv.event.EventIndex"]
+            }
+        }
+    }
+
+    flavorDimensions = ["device"]
+
+    productFlavors {
+        leanback {
+            dimension "device"
+        }
+        mobile {
+            dimension "device"
+        }
+    }
+
+    buildFeatures {
+        buildConfig = true
+        viewBinding = true
+    }
+
+    signingConfigs {
+        release {
+            def keyFile = System.getenv('YSC_KEYSTORE') ?: localProps.getProperty('ysc.storeFile')
+            if (keyFile) {
+                storeFile file(keyFile)
+                keyAlias System.getenv('YSC_KEY_ALIAS') ?: localProps.getProperty('ysc.keyAlias')
+                storePassword System.getenv('YSC_STORE_PASSWORD') ?: localProps.getProperty('ysc.storePassword')
+                keyPassword System.getenv('YSC_KEY_PASSWORD') ?: localProps.getProperty('ysc.keyPassword') ?: storePassword
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled = true
+            shrinkResources = true
+            signingConfig = signingConfigs.release
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro', 'proguard-rules-media.pro'
+        }
+    }
+
+    configurations.configureEach {
+        exclude group: 'stax', module: 'stax-api'
+        exclude group: 'xpp3', module: 'xpp3'
+        exclude group: 'com.android.support'
+        resolutionStrategy {
+            force libs.okhttp
+        }
+    }
+
+    lint {
+        disable 'UnsafeOptInUsageError'
+        disable 'ExpiredTargetSdkVersion'
+    }
+
+    compileOptions {
+        coreLibraryDesugaringEnabled = true
+        sourceCompatibility JavaVersion.VERSION_21
+        targetCompatibility JavaVersion.VERSION_21
+    }
+}
+
+AbiApkPackaging.configure(project, SingleArtifact.APK.INSTANCE)
+
+// Native x86 build for emulator regression without ARM instruction translation.
+if (project.hasProperty('testAbi')) {
+    android.splits.abi {
+        reset()
+        include(project.property('testAbi').toString())
+    }
+}
+
+dependencies {
+    implementation fileTree(dir: "libs", include: ["*.aar"])
+    implementation project(':catvod')
+    implementation project(':chaquo')
+    implementation project(':quickjs')
+    implementation libs.appcompat
+    implementation libs.lifecycle.service
+    implementation "androidx.media3:media3-common:1.11.0"
+    implementation "androidx.media3:media3-exoplayer:1.11.0"
+    implementation "androidx.media3:media3-exoplayer-dash:1.11.0"
+    implementation "androidx.media3:media3-exoplayer-hls:1.11.0"
+    implementation "androidx.media3:media3-datasource-okhttp:1.11.0"
+    implementation "androidx.media3:media3-session:1.11.0"
+    implementation "androidx.media3:media3-ui:1.11.0"
+    implementation "androidx.media3:media3-ui-danmaku:1.11.0"
+    implementation "androidx.media3:media3-effect:1.11.0"
+    implementation "androidx.media3:media3-mpvplayer:1.11.0"
+    implementation libs.palette
+    implementation libs.recyclerview
+    implementation libs.room.runtime
+    implementation libs.splashscreen
+    implementation libs.swiperefreshlayout
+    implementation libs.viewpager2
+    implementation libs.android.gif.drawable
+    implementation libs.bundles.glide
+    implementation libs.bundles.jupnp
+    implementation libs.customactivityoncrash
+    implementation libs.eventbus
+    implementation libs.flexbox
+    implementation libs.rtmp.client
+    implementation libs.lottie
+    implementation libs.material
+    implementation libs.materialdesigncolors
+    implementation libs.nanohttpd
+    implementation libs.newpipeextractor
+    implementation 'org.jsoup:jsoup:1.22.2'
+    implementation libs.permissionx
+    implementation libs.simple.xml
+    implementation libs.textdrawable
+    leanbackImplementation libs.leanback
+    leanbackImplementation libs.androidautosize
+    mobileImplementation libs.biometric
+    mobileImplementation libs.zxing.android.embedded
+    annotationProcessor libs.room.compiler
+    annotationProcessor libs.eventbus.annotation.processor
+    annotationProcessor libs.glide.compiler
+    coreLibraryDesugaring libs.desugar
+    testImplementation 'junit:junit:4.13.2'
+}

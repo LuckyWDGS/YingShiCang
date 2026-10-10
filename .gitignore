@@ -1,0 +1,34 @@
+# Local state and credentials
+.codex/session/
+.dependencies/
+*.download
+.gradle/
+**/build/
+local.properties
+*.jks
+*.keystore
+.env
+.env.*
+!.env.example
+.idea/
+*.iml
+Release/
+*.apk
+.externalNativeBuild/
+.cxx/
+**/.cxx/
+
+__pycache__/
+*.pyc
+
+# Browser QA local snapshots
+.playwright-cli/
+
+# Local design candidates, verification output and repository maintenance tools
+/generated-images/
+/output/
+/other/tools/
+*.log
+
+# Private hosting/signing setup notes remain local
+/docs/云效与密钥配置.md

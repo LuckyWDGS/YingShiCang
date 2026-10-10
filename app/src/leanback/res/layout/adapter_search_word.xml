@@ -1,0 +1,1 @@
+<TextView xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/text" style="@style/SearchBlackChip" android:maxWidth="380dp" android:singleLine="true"/>
