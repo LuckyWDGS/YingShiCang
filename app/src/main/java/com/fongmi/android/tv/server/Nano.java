@@ -22,7 +22,7 @@ import fi.iki.elonen.NanoHTTPD;
 
 public class Nano extends NanoHTTPD {
 
-    private static final String INDEX = "index.html";
+    private static final String INDEX = "sources.html";
 
     private List<Process> process;
 
@@ -67,7 +67,10 @@ public class Nano extends NanoHTTPD {
         if (url.startsWith("/tvbus")) return ok(LiveConfig.getResp());
         if (url.startsWith("/device")) return ok(Device.get().toString());
         for (Process process : process) if (process.isRequest(session, url)) return process.doResponse(session, url, files);
-        return getAssets(url.substring(1));
+        String path = url.substring(1);
+        // Keep existing bookmarked tool links working after making configuration the start page.
+        if (path.isEmpty() && session.getParameters().containsKey("tab")) path = "index.html";
+        return getAssets(path);
     }
 
     private void parse(IHTTPSession session, Map<String, String> files) {

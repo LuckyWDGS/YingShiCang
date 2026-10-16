@@ -55,6 +55,7 @@ public final class MediaItemFactory {
 
     private static MediaItem.Builder buildUpon(PlaySpec spec) {
         return new MediaItem.Builder().setUri(spec.getUri())
+                .setTag(spec)
                 .setSubtitleConfigurations(buildSubtitleConfigs(spec.getSubs()))
                 .setDrmConfiguration(buildDrmConfig(spec.getDrm()))
                 .setRequestMetadata(buildRequestMetadata(spec))

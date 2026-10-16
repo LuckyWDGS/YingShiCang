@@ -37,6 +37,8 @@ import okhttp3.Response;
 public final class HomeDiscovery {
     private static final int AI_DRAMA = 8;
     private static final int HISTORY = 9;
+    private static final int MAX_AUTO_RETRIES = 2;
+    private static final long AUTO_RETRY_DELAY_MS = 700L;
     private record Choice(String label, String value) {}
     private record FilterGroup(String key, String label, List<Choice> options) {}
     private final Activity activity;
@@ -51,15 +53,23 @@ public final class HomeDiscovery {
     private final Map<String, List<TextView>> options = new LinkedHashMap<>();
     private List<FilterGroup> displayedGroups = List.of();
     private final Map<Integer, DiscoveryCatalog.State> states = new HashMap<>();
+    private final Map<Integer, List<FilterGroup>> catalogGroups = new HashMap<>();
+    private List<AiDramaCatalog.Group> declaredAiGroups = List.of();
+    private List<FilterGroup> aiGroups = List.of();
     private final SourceDiscoveryRunner.MetadataCache sourceCache = new SourceDiscoveryRunner.MetadataCache();
     private SourceDiscoveryRunner sourceRunner;
     private final AiDramaRunner.MetadataCache aiDramaCache = new AiDramaRunner.MetadataCache();
     private AiDramaRunner aiDramaRunner;
     private final Map<Integer, SourcePageCursor> providerCursors = new HashMap<>();
     private final String[] names = {"主页", "热播电影", "热播剧集", "热播综艺", "电影筛选", "电视筛选", "电影榜单", "电视剧榜单", "短剧漫剧"};
-    private int active, generation, page, retryPage, emptySourceRounds, emptyAiDramaRounds;
-    private boolean continueSource, continueAiDrama;
+    // Filter controls are deliberately lazy.  Category switches happen often and the
+    // panel is closed after the first click, so constructing every row there only adds
+    // layout work before the user has asked to see it.
+    private int filterViewTab = -1;
+    private int active, generation, page, emptySourceRounds, emptyAiDramaRounds;
     private boolean busy, failed, pendingRefresh, more = true;
+    private boolean activeScreen = true;
+    private Runnable autoRetry;
 
     public HomeDiscovery(Activity activity, ActivityHomeBinding binding, Consumer<List<Vod>> render, Runnable showHistory) {
         this.activity = activity;
@@ -92,27 +102,12 @@ public final class HomeDiscovery {
             binding.categories.addView(view);
             view.setOnClickListener(v -> select(index));
         }
-        binding.discoveryRetry.setOnClickListener(v -> {
-            if (busy) return;
-            if (active == AI_DRAMA) {
-                boolean retry = !continueAiDrama || failed;
-                emptyAiDramaRounds = 0;
-                loadAiDrama(retry);
-                return;
-            }
-            if (isSourceFilter() && sourceRunner != null) {
-                emptySourceRounds = 0;
-                // Continuing an empty mixed round also gives failed sources a
-                // retry; an empty completion resumes healthy cursors below.
-                loadSource(false, !continueSource || failed);
-            }
-            else load(retryPage);
-        });
         select(0);
     }
 
     public boolean isHistory() { return active == HISTORY; }
     public boolean isHome() { return active == 0; }
+    public boolean isAiDrama() { return active == AI_DRAMA; }
     private boolean isSourceFilter() { return active == 4 || active == 5; }
     public boolean isCurrentSource(Vod item) {
         return active == AI_DRAMA ? aiDramaRunner != null && aiDramaRunner.owns(item)
@@ -123,31 +118,39 @@ public final class HomeDiscovery {
         for (DiscoveryCatalog.State state : states.values()) state.select("content", "");
         items.clear(); render.accept(new ArrayList<>());
         pendingRefresh = false; more = false; failed = false;
-        updateOptions(); status("正在切换站源配置…", false);
+        updateOptions(); status("");
     }
     public void configReady() {
-        if (isHistory()) { showHistory.run(); status("", false); return; }
+        if (isHistory()) { showHistory.run(); status(""); return; }
         updateOptions(); load(0);
     }
     public void home() { select(0); }
     public void history() { select(HISTORY); }
 
     private List<FilterGroup> filterGroups() {
-        if (active == AI_DRAMA) return aiDramaRunner == null ? List.of() : aiDramaRunner.groups().stream()
-                .map(group -> new FilterGroup(group.key, group.label, group.options.stream()
+        if (active == AI_DRAMA) {
+            List<AiDramaCatalog.Group> declared = aiDramaRunner == null ? List.of() : aiDramaRunner.groups();
+            if (!declaredAiGroups.equals(declared)) {
+                declaredAiGroups = declared;
+                aiGroups = declared.stream().map(group -> new FilterGroup(group.key, group.label, group.options.stream()
                         .map(option -> new Choice(option.label, option.value)).toList())).toList();
-        return DiscoveryCatalog.groups(active).stream().filter(group -> !group.key.equals("content"))
+            }
+            return aiGroups;
+        }
+        return catalogGroups.computeIfAbsent(active, tab -> DiscoveryCatalog.groups(tab).stream().filter(group -> !group.key.equals("content"))
                 .map(group -> new FilterGroup(group.key, group.label, group.options.stream()
-                        .map(option -> new Choice(option.label, option.value)).toList())).toList();
+                        .map(option -> new Choice(option.label, option.value)).toList())).toList());
     }
 
     private String selectedValue(String key) {
-        return active == AI_DRAMA ? aiDramaRunner == null || aiDramaRunner.state() == null ? "" : aiDramaRunner.state().value(key) : state().value(key);
+        if (active != AI_DRAMA) return state().value(key);
+        AiDramaCatalog.State selected = aiDramaRunner == null ? null : aiDramaRunner.state();
+        return selected == null ? "" : selected.value(key);
     }
 
     private void persistAiDrama() {
-        if (aiDramaRunner != null && aiDramaRunner.state() != null)
-            preferences.edit().putString("ai_drama", aiDramaRunner.state().serialize()).apply();
+        AiDramaCatalog.State selected = aiDramaRunner == null ? null : aiDramaRunner.state();
+        if (selected != null) preferences.edit().putString("ai_drama", selected.serialize()).apply();
     }
 
     private DiscoveryCatalog.State state() {
@@ -166,13 +169,12 @@ public final class HomeDiscovery {
         TextView view = new TextView(activity);
         view.setId(View.generateViewId());
         view.setText(label);
-        view.setTextColor(0xFFF3F6F8);
+        view.setTextColor(ResUtil.getColor(com.fongmi.android.tv.R.color.tv_theme_text));
         view.setTextSize(14);
         view.setGravity(android.view.Gravity.CENTER);
         view.setFocusable(true);
         view.setFocusableInTouchMode(false);
         view.setBackgroundResource(R.drawable.discovery_filter_control);
-        view.setShadowLayer(ResUtil.dp2px(2), 0, ResUtil.dp2px(1), 0xF0000000);
         view.setPadding(ResUtil.dp2px(12), 0, ResUtil.dp2px(12), 0);
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-2, ResUtil.dp2px(34));
         params.setMarginEnd(ResUtil.dp2px(6));
@@ -193,18 +195,20 @@ public final class HomeDiscovery {
         more = true;
         failed = false;
         pendingRefresh = false;
-        binding.actions.setVisibility(isHome() || isHistory() ? View.VISIBLE : View.GONE);
+        boolean actionFocused = binding.actions.hasFocus();
+        binding.actions.setVisibility(isHome() ? View.VISIBLE : View.GONE);
+        if (actionFocused && !isHome()) focusCurrentTab();
         for (int i = 0; i < binding.actions.getChildCount(); i++) {
             View action = binding.actions.getChildAt(i);
             action.setSelected(isHistory() && Integer.valueOf(R.string.home_recent).equals(action.getTag()));
         }
         binding.recycler.scrollToPosition(0);
-        filters();
         showFilters(false);
-        status("", false);
+        status("");
         if (isHistory()) { showHistory.run(); return; }
         items.clear();
-        render.accept(new ArrayList<>(items));
+        // Provider/source loads clear their own first page; AI enters its runner directly.
+        if (active == AI_DRAMA) render.accept(new ArrayList<>());
         load(0);
     }
 
@@ -238,7 +242,9 @@ public final class HomeDiscovery {
     }
 
     private void showFilters(boolean visible) {
-        binding.filterPanel.setVisibility(visible && (active == AI_DRAMA || !filterGroups().isEmpty()) ? View.VISIBLE : View.GONE);
+        boolean filterable = visible && (active == AI_DRAMA || !filterGroups().isEmpty());
+        if (filterable) { ensureFilters(); updateOptionSelections(); }
+        binding.filterPanel.setVisibility(filterable ? View.VISIBLE : View.GONE);
         updateTabs();
         if (active < tabs.size()) {
             int next = View.NO_ID;
@@ -262,6 +268,7 @@ public final class HomeDiscovery {
         binding.filters.removeAllViews();
         options.clear();
         displayedGroups = List.of();
+        filterViewTab = active;
         if (isHome() || isHistory()) return;
         List<FilterGroup> groups = filterGroups();
         displayedGroups = groups;
@@ -269,9 +276,9 @@ public final class HomeDiscovery {
         header.setGravity(android.view.Gravity.CENTER_VERTICAL);
         TextView title = new TextView(activity);
         title.setText(names[active]);
-        title.setTextColor(0xFFF3F6F8);
+        title.setTextColor(ResUtil.getColor(com.fongmi.android.tv.R.color.tv_theme_text));
         title.setTextSize(16);
-        title.setShadowLayer(ResUtil.dp2px(2), 0, ResUtil.dp2px(1), 0xF0000000);
+        title.setTypeface(null, android.graphics.Typeface.BOLD);
         header.addView(title, new LinearLayout.LayoutParams(0, ResUtil.dp2px(38), 1));
         binding.filters.addView(header);
         for (FilterGroup group : groups) {
@@ -279,9 +286,8 @@ public final class HomeDiscovery {
             row.setGravity(android.view.Gravity.CENTER_VERTICAL);
             TextView label = new TextView(activity);
             label.setText(group.label);
-            label.setTextColor(0xFFB9CDD6);
+            label.setTextColor(ResUtil.getColor(com.fongmi.android.tv.R.color.tv_theme_text_secondary));
             label.setTextSize(13);
-            label.setShadowLayer(ResUtil.dp2px(2), 0, ResUtil.dp2px(1), 0xF0000000);
             label.setGravity(android.view.Gravity.CENTER_VERTICAL);
             int labelWidth = ResUtil.dp2px(active == 5 ? 88 : 58);
             row.addView(label, new LinearLayout.LayoutParams(labelWidth, ResUtil.dp2px(40)));
@@ -294,15 +300,17 @@ public final class HomeDiscovery {
             scroll.addView(values);
             row.addView(scroll, new LinearLayout.LayoutParams(0, ResUtil.dp2px(40), 1));
             List<TextView> controls = new ArrayList<>();
+            String selected = selectedValue(group.key);
             for (Choice option : group.options) {
                 TextView view = button(option.label);
                 view.setTag(option.value);
-                view.setSelected(selectedValue(group.key).equals(option.value));
+                view.setSelected(selected.equals(option.value));
                 view.setContentDescription(group.label + "：" + option.label);
                 view.setOnClickListener(v -> {
                     if (active == AI_DRAMA) {
                         if (aiDramaRunner == null || !aiDramaRunner.select(group.key, option.value)) return;
                         generation++;
+                        cancelAutoRetry();
                         busy = false; failed = false; more = true; emptyAiDramaRounds = 0;
                         persistAiDrama();
                         if (displayedGroups.equals(filterGroups())) updateOptions();
@@ -339,13 +347,24 @@ public final class HomeDiscovery {
             binding.filters.addView(row);
         }
         int maxHeight = (int) (activity.getResources().getDisplayMetrics().heightPixels * 0.58f);
-        binding.filterPanel.getLayoutParams().height = Math.min(ResUtil.dp2px(52 + groups.size() * 40), maxHeight);
+        binding.filterPanel.getLayoutParams().height = Math.min(ResUtil.dp2px(62 + groups.size() * 40), maxHeight);
         binding.filterPanel.requestLayout();
         binding.filterPanel.scrollTo(0, 0);
     }
 
+    private void ensureFilters() {
+        if (isHome() || isHistory()) return;
+        // Native discovery groups are static.  AI groups can arrive later, so the
+        // active-tab marker is also checked to avoid reusing a stale tab's controls.
+        if (filterViewTab == active && displayedGroups.equals(filterGroups())) return;
+        filters();
+    }
+
     private void rebuildFiltersPreservingFocus() {
         boolean visible = binding.filterPanel.getVisibility() == View.VISIBLE;
+        // Metadata may arrive while the panel is closed.  Defer its rows until the
+        // next explicit expand instead of doing hidden UI work for every response.
+        if (!visible) return;
         String focusKey = null;
         Object focusValue = null;
         for (var group : options.entrySet()) for (TextView view : group.getValue()) {
@@ -363,27 +382,31 @@ public final class HomeDiscovery {
     }
 
     private void updateOptions() {
-        for (Map.Entry<String, List<TextView>> group : options.entrySet())
-            for (TextView view : group.getValue())
-                view.setSelected(selectedValue(group.getKey()).equals(view.getTag()));
         if (binding.filterPanel.getVisibility() == View.VISIBLE) showFilters(true);
     }
 
-    private void status(String text, boolean retry) {
-        continueSource = false;
-        continueAiDrama = false;
-        binding.discoveryRetry.setText("重试");
+    private void updateOptionSelections() {
+        if (filterViewTab != active) return;
+        for (Map.Entry<String, List<TextView>> group : options.entrySet()) {
+            String selected = selectedValue(group.getKey());
+            for (TextView view : group.getValue()) view.setSelected(selected.equals(view.getTag()));
+        }
+    }
+
+    private void status(String text) {
         binding.discoveryStatus.setText(text);
         binding.discoveryStatusRow.setVisibility(text.isEmpty() ? View.GONE : View.VISIBLE);
-        binding.discoveryRetry.setVisibility(retry ? View.VISIBLE : View.GONE);
     }
 
     private void load(int targetPage) {
-        if (active == AI_DRAMA) { loadAiDrama(false); return; }
-        if (isSourceFilter()) { loadSource(targetPage == 0, false); return; }
+        load(targetPage, 0);
+    }
+
+    private void load(int targetPage, int retryAttempt) {
+        if (active == AI_DRAMA) { loadAiDrama(false, retryAttempt); return; }
+        if (isSourceFilter()) { loadSource(targetPage == 0, false, retryAttempt); return; }
         cancel();
         int token = generation;
-        retryPage = targetPage;
         busy = true;
         failed = false;
         if (targetPage == 0) {
@@ -391,11 +414,21 @@ public final class HomeDiscovery {
             providerCursors.clear();
             items.clear(); render.accept(new ArrayList<>());
         }
-        status(targetPage == 0 ? "正在刷新…" : "正在加载更多…", false);
+        // Normal refresh/paging is intentionally silent; the cards themselves
+        // provide progress and empty/error states remain available when needed.
+        status("");
         List<DiscoveryCatalog.Request> specs = DiscoveryCatalog.requests(state(), targetPage);
         List<DiscoveryCatalog.Page> batches = new ArrayList<>(Collections.nCopies(specs.size(), null));
-        boolean[] errors = new boolean[specs.size()];
+        requestProvider(specs, batches, targetPage, retryAttempt, token);
+    }
+
+    private void requestProvider(List<DiscoveryCatalog.Request> specs, List<DiscoveryCatalog.Page> batches,
+                                 int targetPage, int retryAttempt, int token) {
+        busy = true;
+        int[] remaining = {(int) batches.stream().filter(Objects::isNull).count()};
         for (int i = 0; i < specs.size(); i++) {
+            // Keep successful responses and only reissue the failed provider slots.
+            if (batches.get(i) != null) continue;
             int slot = i;
             DiscoveryCatalog.Request spec = specs.get(i);
             Call call = client.newCall(new Request.Builder().url(spec.url).headers(Headers.of(spec.headers)).build());
@@ -411,11 +444,9 @@ public final class HomeDiscovery {
                 private void complete(DiscoveryCatalog.Page result) {
                     App.post(() -> {
                         if (token != generation || activity.isDestroyed() || activity.isFinishing()) return;
-                        errors[slot] = result == null;
                         batches.set(slot, result);
-                        // A failed slot is complete even though its result is null.
-                        for (int k = 0; k < batches.size(); k++) if (batches.get(k) == null && !errors[k]) return;
-                        finish(specs, batches, targetPage);
+                        if (--remaining[0] != 0) return;
+                        finish(specs, batches, targetPage, retryAttempt, token);
                     });
                 }
             });
@@ -423,18 +454,25 @@ public final class HomeDiscovery {
     }
 
     private void loadAiDrama(boolean retry) {
+        loadAiDrama(retry, 0);
+    }
+
+    private void loadAiDrama(boolean retry, int retryAttempt) {
         if (aiDramaRunner == null) {
             emptyAiDramaRounds = 0;
             aiDramaRunner = new AiDramaRunner(client, aiDramaCache, preferences.getString("ai_drama", ""));
+            // A successful metadata cache can restore real choices synchronously.
+            // If already expanded, show them before waiting for the page request.
+            if (binding.filterPanel.getVisibility() == View.VISIBLE) showFilters(true);
         }
         int token = generation;
         busy = true; failed = false; pendingRefresh = false;
-        status("", false);
+        status("");
         aiDramaRunner.load(retry, batch -> {
             if (token != generation || active != AI_DRAMA || activity.isDestroyed() || activity.isFinishing()) return;
             if (aiDramaRunner == null || !aiDramaRunner.current()) { configChanged(); configReady(); return; }
             List<FilterGroup> groups = filterGroups();
-            boolean rebuild = !displayedGroups.equals(groups);
+            boolean rebuild = filterViewTab != active || !displayedGroups.equals(groups);
             if (rebuild) rebuildFiltersPreservingFocus();
             else updateOptions();
             persistAiDrama();
@@ -443,19 +481,17 @@ public final class HomeDiscovery {
             binding.recycler.setContentDescription("片单，共" + items.size() + "部");
             more = batch.more();
             if (!batch.finished()) return;
-            busy = false; failed = batch.failed();
+            busy = false; failed = batch.failed() || batch.metadataFailed();
+            if (failed) scheduleAutoRetry(token, retryAttempt, () -> loadAiDrama(true, retryAttempt + 1));
+            else cancelAutoRetry();
             emptyAiDramaRounds = !failed && items.isEmpty() && more ? emptyAiDramaRounds + 1 : 0;
             boolean scanMore = more && !failed && emptyAiDramaRounds < 3;
-            String message = failed ? items.isEmpty() ? "短剧漫剧加载失败" : "加载更多失败，已保留当前片单"
+            String message = batch.failed() ? items.isEmpty() ? "短剧漫剧加载失败" : "加载更多失败，已保留当前片单"
+                    : batch.metadataFailed() ? items.isEmpty() ? "题材筛选加载失败" : "题材筛选加载失败，已保留当前片单"
                     : items.isEmpty() ? more ? "暂未找到符合条件的短剧漫剧" : "暂无符合条件的短剧漫剧" : "";
-            status(scanMore && items.isEmpty() ? "" : message, failed);
-            if (more && !failed && items.isEmpty() && !scanMore) {
-                status(message, true);
-                continueAiDrama = true;
-                binding.discoveryRetry.setText("继续查找");
-            }
+            status(scanMore && items.isEmpty() ? "" : message);
             if (scanMore) binding.recycler.post(() -> {
-                if (token != generation || active != AI_DRAMA || busy) return;
+                if (token != generation || active != AI_DRAMA || busy || !activeScreen) return;
                 if (items.isEmpty()) loadAiDrama(false);
                 else loadNearEnd();
             });
@@ -463,6 +499,10 @@ public final class HomeDiscovery {
     }
 
     private void loadSource(boolean reset, boolean retry) {
+        loadSource(reset, retry, 0);
+    }
+
+    private void loadSource(boolean reset, boolean retry, int retryAttempt) {
         if (reset) {
             cancel();
             items.clear(); render.accept(new ArrayList<>());
@@ -473,7 +513,7 @@ public final class HomeDiscovery {
         int token = generation;
         busy = true; failed = false; pendingRefresh = false;
         // Load silently; reserve the status row for actionable failures.
-        status("", false);
+        status("");
         sourceRunner.next(retry, batch -> {
             if (token != generation || activity.isDestroyed() || activity.isFinishing()) return;
             if (sourceRunner == null || !sourceRunner.current()) { configChanged(); configReady(); return; }
@@ -483,6 +523,8 @@ public final class HomeDiscovery {
             more = batch.more();
             if (!batch.finished()) return;
             busy = false; failed = batch.failed(); page++;
+            if (failed) scheduleAutoRetry(token, sourceRunner.retryAttempt(), () -> loadSource(false, true));
+            else cancelAutoRetry();
             boolean adult = !state().value("content").isEmpty();
             emptySourceRounds = adult && items.isEmpty() ? emptySourceRounds + 1 : 0;
             boolean scanMore = more && (!adult || emptySourceRounds < 3);
@@ -496,29 +538,22 @@ public final class HomeDiscovery {
                 // without scanning hundreds of source pages in the background.
                 if (scanMore) message = "";
             }
-            status(message, failed);
-            if (adult && items.isEmpty() && more && !scanMore) {
-                status(message, true);
-                continueSource = true;
-                binding.discoveryRetry.setText("继续查找");
-            }
+            status(message);
             if (scanMore) binding.recycler.post(() -> {
-                if (token != generation || busy) return;
+                if (token != generation || busy || !activeScreen) return;
                 if (items.isEmpty()) loadSource(false, false);
                 else loadNearEnd();
             });
         });
     }
 
-    private void finish(List<DiscoveryCatalog.Request> specs, List<DiscoveryCatalog.Page> batches, int targetPage) {
+    private void finish(List<DiscoveryCatalog.Request> specs, List<DiscoveryCatalog.Page> batches, int targetPage,
+                        int retryAttempt, int token) {
         requests.clear();
         busy = false;
         failed = batches.contains(null);
-        // Never discard a good same-tab list or advance pagination on a failed request.
-        if (failed && (targetPage > 0 || !items.isEmpty() || batches.stream().allMatch(Objects::isNull))) {
-            status(items.isEmpty() ? "片单加载失败" : targetPage == 0 ? "刷新失败，仍显示上次片单" : "加载更多失败，已保留当前片单", true);
-            return;
-        }
+        if (failed) scheduleAutoRetry(token, retryAttempt, () -> requestProvider(specs, batches, targetPage, retryAttempt + 1, token));
+        else cancelAutoRetry();
         List<Vod> next = targetPage == 0 ? new ArrayList<>() : new ArrayList<>(items);
         Set<String> ids = new HashSet<>();
         for (Vod item : next) ids.add(item.getId());
@@ -530,10 +565,10 @@ public final class HomeDiscovery {
             }
         items.clear();
         items.addAll(next);
-        page = targetPage;
+        if (!failed) page = targetPage;
         pendingRefresh = false;
         more = false;
-        for (int i = 0; i < batches.size(); i++) if (batches.get(i) != null) {
+        for (int i = 0; i < batches.size(); i++) if (!failed && batches.get(i) != null) {
             SourcePageCursor cursor = providerCursors.computeIfAbsent(i, slot -> new SourcePageCursor());
             cursor.accept(batches.get(i).rawIds, 0);
             if (!cursor.exhausted() && batches.get(i).hasMore(specs.get(i))) more = true;
@@ -544,23 +579,23 @@ public final class HomeDiscovery {
         if (targetPage == 0) binding.recycler.scrollToPosition(0);
         String message = items.isEmpty() ? "暂无符合条件的片单" : "";
         if (failed) message = items.isEmpty() ? message + "，部分片单加载失败" : "部分片单加载失败";
-        status(isHome() && !failed ? "" : message, failed);
+        status(isHome() && !failed ? "" : message);
         // Fill short viewports and keep auto-pagination usable after layout finishes.
-        int token = generation;
+        int nextToken = generation;
         if (more && !failed) binding.recycler.post(() -> {
-            if (busy || token != generation) return;
+            if (busy || nextToken != generation || !activeScreen) return;
             if (items.isEmpty()) load(page + 1);
             else loadNearEnd();
         });
     }
 
     public void focusCurrentTab() {
-        View target = isHistory() ? binding.actions.findViewWithTag(R.string.home_recent) : tabs.get(active);
+        View target = isHistory() ? tabs.get(0) : tabs.get(active);
         if (target != null) target.requestFocus();
     }
 
     public void loadNearEnd() {
-        if (busy || (failed && !isSourceFilter()) || pendingRefresh || !more || isHistory() || items.isEmpty()
+        if (!activeScreen || busy || (failed && !isSourceFilter()) || pendingRefresh || !more || isHistory() || items.isEmpty()
                 || binding.filterPanel.getVisibility() == View.VISIBLE) return;
         var layout = (androidx.recyclerview.widget.GridLayoutManager) binding.recycler.getLayoutManager();
         if (layout != null && layout.findLastVisibleItemPosition() >= layout.getItemCount() - 10) load(page + 1);
@@ -568,6 +603,7 @@ public final class HomeDiscovery {
 
     public void cancel() {
         generation++;
+        cancelAutoRetry();
         if (aiDramaRunner != null) aiDramaRunner.cancel();
         aiDramaRunner = null;
         if (sourceRunner != null) sourceRunner.cancel();
@@ -575,5 +611,37 @@ public final class HomeDiscovery {
         for (Call call : requests) call.cancel();
         requests.clear();
         busy = false;
+    }
+
+    private void scheduleAutoRetry(int token, int attempt, Runnable operation) {
+        if (autoRetry != null || attempt >= MAX_AUTO_RETRIES || token != generation || activity.isDestroyed() || activity.isFinishing()) return;
+        long delay = AUTO_RETRY_DELAY_MS * (attempt + 1L);
+        final Runnable[] holder = new Runnable[1];
+        holder[0] = () -> {
+            if (autoRetry != holder[0] || token != generation || activity.isDestroyed() || activity.isFinishing()) return;
+            if (!activeScreen) return;
+            // Healthy source paging may finish during backoff. Never invalidate an
+            // in-flight round just to retry a different source.
+            if (busy) { App.post(holder[0], 200); return; }
+            autoRetry = null;
+            operation.run();
+        };
+        autoRetry = holder[0];
+        if (activeScreen) App.post(holder[0], delay);
+    }
+
+    public void setActive(boolean value) {
+        activeScreen = value;
+        if (autoRetry != null) {
+            App.removeCallbacks(autoRetry);
+            if (value) App.post(autoRetry, AUTO_RETRY_DELAY_MS);
+        }
+    }
+
+    private void cancelAutoRetry() {
+        if (autoRetry != null) {
+            App.removeCallbacks(autoRetry);
+            autoRetry = null;
+        }
     }
 }

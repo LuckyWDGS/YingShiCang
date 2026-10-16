@@ -1,23 +1,146 @@
 "use strict";
-const $=id=>document.getElementById(id);
-let token=new URLSearchParams(location.hash.slice(1)).get("token") || sessionStorage.getItem("sourceToken") || "";
-if(location.hash) history.replaceState(null,"",location.pathname);
-function message(text,error=false){$("status").textContent=text;$("status").classList.toggle("error",error);}
-function connected(value){$("pairPanel").hidden=value;$("connectedPanel").hidden=!value;$("connection").textContent=value?"已连接电视":"未连接";}
-async function request(path,fields){
- const ctrl=new AbortController(), timer=setTimeout(()=>ctrl.abort(),12000);
- try{
-  const res=await fetch(path,{method:fields?"POST":"GET",headers:token?{"X-Source-Token":token}:{},body:fields?new URLSearchParams(fields):undefined,signal:ctrl.signal,cache:"no-store"});
-  const data=await res.json();
-  if(!res.ok){if(res.status===401){token="";sessionStorage.removeItem("sourceToken");connected(false);}throw new Error(data.message||"请求失败，请重试");}
-  return data;
- }catch(e){if(e.name==="AbortError")throw new Error("连接超时，请确认手机和电视在同一局域网");if(e instanceof TypeError)throw new Error("无法连接电视，请检查网络后重试");throw e;}
- finally{clearTimeout(timer);}
+
+const $ = id => document.getElementById(id);
+let listRequest = null;
+let saving = false;
+let hasList = false;
+
+function message(text, error = false) {
+  $("status").textContent = text;
+  $("status").classList.toggle("error", error);
+  $("status").hidden = !text;
 }
-async function refresh(){const data=await request("/api/sources");connected(true);sessionStorage.setItem("sourceToken",token);$("sources").replaceChildren();
- for(const item of data.items){const li=document.createElement("li"),name=document.createElement("div");name.textContent=item.name;li.append(name);if(item.active){const badge=document.createElement("span");badge.textContent="✓ 当前线路";li.append(badge);}$("sources").append(li);}
- if(!data.items.length){const li=document.createElement("li");li.textContent="还没有保存线路，先添加一个吧";$("sources").append(li);}}
-$("pairForm").addEventListener("submit",async e=>{e.preventDefault();$("login").disabled=true;try{const data=await request("/api/sources/login",{code:$("pairCode").value.trim()});token=data.token;await refresh();message("已连接，可以添加整合源。");}catch(err){message(err.message,true);}finally{$("login").disabled=false;}});
-$("sourceForm").addEventListener("submit",async e=>{e.preventDefault();$("save").disabled=true;message("正在识别名称并添加…");try{const data=await request("/api/sources",{url:$("sourceUrl").value.trim()});await refresh();message(data.message);$("sourceUrl").value="";}catch(err){message(err.message,true);}finally{$("save").disabled=false;}});
-$("refresh").addEventListener("click",async()=>{try{await refresh();message("线路列表已更新");}catch(err){message(err.message,true);}});
-if(token)refresh().catch(err=>message(err.message,true));
+
+function connection(online) {
+  $("connection").textContent = online ? "已连接电视" : "连接中断";
+  $("connection").classList.toggle("online", online);
+  $("connection").classList.toggle("offline", !online);
+}
+
+function buttons() {
+  $("save").disabled = saving;
+  $("save").textContent = saving ? "正在保存…" : "保存到电视";
+  $("refresh").disabled = saving || listRequest !== null;
+}
+
+async function request(path, fields, controller = new AbortController()) {
+  let timedOut = false;
+  const timer = setTimeout(() => { timedOut = true; controller.abort(); }, 12000);
+  try {
+    const response = await fetch(path, {
+      method: fields ? "POST" : "GET",
+      body: fields ? new URLSearchParams(fields) : undefined,
+      signal: controller.signal,
+      cache: "no-store"
+    });
+    let data;
+    try { data = await response.json(); }
+    catch (error) { throw new Error("电视返回内容异常，请重试"); }
+    if (!data || typeof data !== "object") throw new Error("电视返回内容异常，请重试");
+    if (!response.ok) throw new Error(data.message || "请求失败，请重试");
+    return data;
+  } catch (error) {
+    if (timedOut || error instanceof TypeError) {
+      const networkError = new Error(timedOut ? "连接超时，请确认电视已打开并连接同一局域网" : "无法连接电视，请检查网络后重试");
+      networkError.connectionLost = true;
+      throw networkError;
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function render(items) {
+  const fragment = document.createDocumentFragment();
+  for (const item of items) {
+    const li = document.createElement("li");
+    const name = document.createElement("div");
+    name.className = "sourceName";
+    name.textContent = item.name;
+    li.append(name);
+    if (item.active) {
+      const badge = document.createElement("span");
+      badge.className = "activeBadge";
+      badge.textContent = "当前使用";
+      li.append(badge);
+    }
+    fragment.append(li);
+  }
+  $("sources").replaceChildren(fragment);
+  $("empty").hidden = items.length !== 0;
+  $("sourceCount").textContent = String(items.length);
+  $("sourceCount").hidden = false;
+  hasList = true;
+}
+
+async function refresh() {
+  if (listRequest) listRequest.abort();
+  const controller = new AbortController();
+  listRequest = controller;
+  buttons();
+  $("listContent").setAttribute("aria-busy", "true");
+  $("listStatus").hidden = false;
+  $("listStatus").classList.remove("error");
+  $("listStatus").textContent = hasList ? "正在更新线路…" : "正在读取线路…";
+  try {
+    const data = await request("/api/sources", undefined, controller);
+    if (listRequest !== controller) return;
+    if (!Array.isArray(data.items) || data.items.some(item => !item || typeof item.name !== "string" || typeof item.active !== "boolean")) {
+      throw new Error("线路列表内容异常，请重试");
+    }
+    render(data.items);
+    connection(true);
+    $("listStatus").hidden = true;
+    $("refresh").textContent = "刷新";
+  } catch (error) {
+    if (listRequest !== controller) return;
+    connection(false);
+    $("listStatus").classList.add("error");
+    $("listStatus").textContent = hasList ? "更新失败，已保留上次的列表。" + error.message : error.message;
+    $("refresh").textContent = "重试";
+  } finally {
+    if (listRequest === controller) {
+      listRequest = null;
+      $("listContent").setAttribute("aria-busy", "false");
+      buttons();
+    }
+  }
+}
+
+$("sourceForm").addEventListener("submit", async event => {
+  event.preventDefault();
+  if (saving) return;
+  const input = $("sourceUrl").value;
+  const url = input.trim();
+  if (!url) {
+    message("请粘贴配置链接", true);
+    $("sourceUrl").focus();
+    return;
+  }
+  saving = true;
+  buttons();
+  message("正在识别名称并保存…");
+  try {
+    const data = await request("/api/sources", { url });
+    connection(true);
+    message(data.message || "已保存，请在电视「线路」中选择启用");
+    if ($("sourceUrl").value === input) $("sourceUrl").value = "";
+    await refresh();
+  } catch (error) {
+    if (error.connectionLost) connection(false);
+    message(error.message, true);
+  } finally {
+    saving = false;
+    buttons();
+  }
+});
+
+$("sourceUrl").addEventListener("keydown", event => {
+  if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+    event.preventDefault();
+    $("sourceForm").requestSubmit();
+  }
+});
+$("refresh").addEventListener("click", refresh);
+refresh();

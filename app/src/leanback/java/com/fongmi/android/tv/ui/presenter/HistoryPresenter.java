@@ -13,6 +13,8 @@ import com.fongmi.android.tv.bean.History;
 import com.fongmi.android.tv.databinding.AdapterVodBinding;
 import com.fongmi.android.tv.utils.ImgUtil;
 import com.fongmi.android.tv.utils.ResUtil;
+import com.fongmi.android.tv.utils.PosterLabel;
+import com.fongmi.android.tv.api.config.VodConfig;
 
 public class HistoryPresenter extends Presenter {
 
@@ -73,11 +75,15 @@ public class HistoryPresenter extends Presenter {
         ViewHolder holder = (ViewHolder) viewHolder;
         setClickListener(holder.view, item);
         holder.binding.name.setText(item.getVodName());
-        holder.binding.site.setText(item.getSiteName());
-        holder.binding.remark.setText(item.getVodRemarks());
-        holder.binding.site.setVisibility(item.getSiteVisible());
+        String source = PosterLabel.source(item.getCid() == VodConfig.getCid() ? item.getSiteName() : "", item.getSiteKey());
+        String episode = same ? "" : PosterLabel.history(item.getVodRemarks());
+        holder.binding.site.setText(source);
+        holder.binding.site.setMaxWidth(width);
+        holder.binding.remark.setText(episode);
+        holder.binding.site.setVisibility(source.isEmpty() ? View.GONE : View.VISIBLE);
         holder.binding.delete.setVisibility(!delete ? View.GONE : View.VISIBLE);
-        holder.binding.remark.setVisibility(delete || same ? View.GONE : View.VISIBLE);
+        holder.binding.remark.setVisibility(delete || episode.isEmpty() ? View.GONE : View.VISIBLE);
+        holder.view.setContentDescription(item.getVodName() + (episode.isEmpty() ? "" : "，" + episode) + (source.isEmpty() ? "" : "，" + source));
         ImgUtil.load(item.getVodName(), item.getVodPic(), holder.binding.image);
     }
 

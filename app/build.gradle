@@ -19,9 +19,9 @@ android {
         applicationId "com.yingshicang.player"
         minSdk libs.versions.minSdk.get().toInteger()
         targetSdk libs.versions.targetSdk.get().toInteger()
-        // Independent short drama catalog with source-declared categories and filters.
-        versionCode providers.gradleProperty('appVersionCode').getOrElse('35').toInteger()
-        versionName providers.gradleProperty('appVersionName').getOrElse('0.1.34-alpha')
+        // Verified source-plugin fallback with online updates.
+        versionCode providers.gradleProperty('appVersionCode').getOrElse('56').toInteger()
+        versionName providers.gradleProperty('appVersionName').getOrElse('1.0.0')
         buildConfigField "String", "UPDATE_MANIFEST_URL", groovy.json.JsonOutput.toJson(providers.gradleProperty("updateManifestUrl").getOrElse(""))
         buildConfigField "String", "LOG_UPLOAD_URL", groovy.json.JsonOutput.toJson(providers.gradleProperty("logUploadUrl").getOrElse(""))
         javaCompileOptions {

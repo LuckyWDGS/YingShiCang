@@ -18,6 +18,7 @@
     <string name="detail_actor">演員：<xliff:g name="name">%s</xliff:g></string>
     <string name="detail_content">簡介：<xliff:g name="name">%s</xliff:g></string>
     <string name="detail_desc">簡介</string>
+    <string name="detail_play_address">播放地址：%1$s</string>
 
     <!-- Keep -->
     <string name="keep">收藏</string>
@@ -250,9 +251,25 @@
     <string name="push">推送</string>
 
     <!-- Setting -->
+    <string name="setting_title">設定</string>
+    <string name="setting_subtitle">內容來源、播放與應用偏好</string>
+    <string name="setting_player_subtitle">播放核心、渲染與緩衝</string>
+    <string name="setting_decode_subtitle">硬解與軟解偏好</string>
+    <string name="setting_danmaku_subtitle">彈幕載入與來源偏好</string>
+    <string name="setting_preload_subtitle">控制下一集預載的資源佔用</string>
+    <string name="setting_section_sources">內容來源</string>
+    <string name="setting_section_playback">播放與顯示</string>
+    <string name="setting_section_data">資料與維護</string>
     <string name="setting_vod">點播</string>
     <string name="setting_live">直播</string>
+    <string name="setting_lines">線路切換</string>
+    <string name="setting_default_site">預設站源</string>
+    <string name="setting_default_live">預設直播源</string>
     <string name="setting_wall">壁紙</string>
+    <string name="setting_wall_default">預設壁紙</string>
+    <string name="setting_wall_default_hint">切換內建壁紙</string>
+    <string name="setting_wall_refresh">換一張壁紙</string>
+    <string name="setting_wall_refresh_hint">載入新的遠端壁紙</string>
     <string name="setting_player">播放設定</string>
     <string name="setting_danmaku">彈幕設定</string>
     <string name="setting_incognito">無痕模式</string>

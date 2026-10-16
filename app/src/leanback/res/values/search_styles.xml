@@ -3,9 +3,9 @@
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">36dp</item>
         <item name="android:gravity">center</item>
-        <item name="android:paddingHorizontal">8dp</item>
-        <item name="android:textColor">#F3F6F8</item>
-        <item name="android:textSize">16sp</item>
+        <item name="android:paddingHorizontal">10dp</item>
+        <item name="android:textColor">@color/tv_theme_text</item>
+        <item name="android:textSize">15sp</item>
         <item name="android:focusable">true</item>
         <item name="android:focusableInTouchMode">false</item>
         <item name="android:background">@drawable/search_control</item>
@@ -15,7 +15,7 @@
         <item name="android:layout_height">wrap_content</item>
         <item name="android:layout_marginTop">14dp</item>
         <item name="android:layout_marginBottom">8dp</item>
-        <item name="android:textColor">#E6C374</item>
+        <item name="android:textColor">@color/tv_theme_text</item>
         <item name="android:textSize">18sp</item>
         <item name="android:fontFamily">sans-serif-medium</item>
     </style>
@@ -24,10 +24,10 @@
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">37dp</item>
         <item name="android:gravity">center</item>
-        <item name="android:paddingHorizontal">8dp</item>
+        <item name="android:paddingHorizontal">10dp</item>
         <item name="android:singleLine">true</item>
         <item name="android:textColor">@color/search_black_text</item>
-        <item name="android:textSize">16sp</item>
+        <item name="android:textSize">15sp</item>
         <item name="android:focusable">true</item>
         <item name="android:focusableInTouchMode">false</item>
         <item name="android:background">@drawable/search_black_key</item>
@@ -44,19 +44,19 @@
         <item name="android:minWidth">56dp</item>
         <item name="android:layout_marginEnd">7dp</item>
         <item name="android:layout_marginBottom">8dp</item>
-        <item name="android:paddingHorizontal">8dp</item>
+        <item name="android:paddingHorizontal">10dp</item>
         <item name="android:paddingVertical">4dp</item>
         <item name="android:ellipsize">end</item>
-        <item name="android:textSize">16sp</item>
+        <item name="android:textSize">15sp</item>
     </style>
     <style name="SearchBlackHeading">
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">wrap_content</item>
-        <item name="android:layout_marginTop">6dp</item>
+        <item name="android:layout_marginTop">12dp</item>
         <item name="android:layout_marginBottom">8dp</item>
         <item name="android:paddingStart">2dp</item>
         <item name="android:textColor">#FFFFFF</item>
-        <item name="android:textSize">22sp</item>
-        <item name="android:textStyle">bold</item>
+        <item name="android:textSize">18sp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
     </style>
 </resources>

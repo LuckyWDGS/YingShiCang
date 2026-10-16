@@ -6,7 +6,9 @@ import androidx.annotation.NonNull;
 import androidx.collection.ArrayMap;
 
 import com.fongmi.android.tv.App;
+import com.fongmi.android.tv.Constant;
 import com.fongmi.android.tv.R;
+import com.fongmi.android.tv.api.compat.WoggAddressCompatibility;
 import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.bean.Class;
 import com.fongmi.android.tv.bean.Result;
@@ -60,12 +62,22 @@ public class SiteApi {
         Call call = site.getExt().length() <= 1000 ? OkHttp.newCall(site.getApi(), site.getHeader(), params) : OkHttp.newCall(site.getApi(), site.getHeader(), OkHttp.toBody(params));
         if (resolvedClient != null) call = resolvedClient.newCall(call.request());
         try (Response response = call.execute()) {
+            if (!response.isSuccessful()) throw new IOException("HTTP " + response.code());
+            if (response.body() == null) throw new IOException("Empty source response");
             return response.body().string();
         }
     }
 
     private static boolean isSpider(@NonNull Site site) {
         return site.getType() == 3;
+    }
+
+    private static <T> T spiderCall(Spider spider, long budgetMillis, Callable<T> operation) throws Exception {
+        return WoggAddressCompatibility.call(spider, budgetMillis, () -> {}, operation);
+    }
+
+    private static long discoveryBudget(Site site) {
+        return Math.min(20000, Math.max(5000, site.getTimeout()));
     }
 
     private static String ac(int type) {
@@ -89,7 +101,7 @@ public class SiteApi {
         if (isSpider(site)) {
             Spider spider = site.spider();
             String home = com.fongmi.android.tv.api.compat.AiDramaFilterCompatibility.classes(site, spider,
-                    spider.homeContent(true), client, calls);
+                    spiderCall(spider, discoveryBudget(site), () -> spider.homeContent(true)), client, calls);
             Result result = discoveryResult(home, 3, "class");
             setDiscoveryTypes(site, result);
             return result;
@@ -102,6 +114,16 @@ public class SiteApi {
         return result;
     }
 
+    /** Audited AI static types only: this does not wait for web topic metadata or consume recommendations. */
+    public static Result discoveryNativeAiClasses(Site site) throws Exception {
+        if (!isSpider(site)) throw new IOException("AI source native runtime unavailable");
+        Spider spider = site.spider();
+        Result result = discoveryResult(com.fongmi.android.tv.api.compat.AiDramaFilterCompatibility.nativeClasses(
+                spider, spiderCall(spider, discoveryBudget(site), () -> spider.homeContent(true))), 3, "class");
+        setDiscoveryTypes(site, result);
+        return result;
+    }
+
     /** Uses the captured Site, rather than looking its key up in a possibly changed configuration. */
     public static Result discoveryPage(Site site, String tid, int page, Map<String, String> extend,
                                        OkHttpClient client, Consumer<Call> calls) throws Exception {
@@ -109,7 +131,8 @@ public class SiteApi {
             Spider spider = site.spider();
             String compatible = com.fongmi.android.tv.api.compat.AiDramaFilterCompatibility.page(site, spider, tid, page, extend, client, calls);
             return discoveryResult(compatible != null ? compatible
-                    : spider.categoryContent(tid, String.valueOf(page), true, new HashMap<>(extend)), 3, "list");
+                    : spiderCall(spider, discoveryBudget(site),
+                            () -> spider.categoryContent(tid, String.valueOf(page), true, new HashMap<>(extend))), 3, "list");
         }
         ArrayMap<String, String> params = new ArrayMap<>();
         if (site.getType() == 1 && !extend.isEmpty()) params.put("f", App.gson().toJson(extend));
@@ -209,8 +232,8 @@ public class SiteApi {
         if (isSpider(site)) {
             Spider spider = site.recent().spider();
             boolean crash = Prefers.getBoolean("crash");
-            String home = crash ? "" : spider.homeContent(true);
-            String video = crash ? "" : spider.homeVideoContent();
+            String home = crash ? "" : spiderCall(spider, Constant.TIMEOUT_VOD, () -> spider.homeContent(true));
+            String video = crash ? "" : spiderCall(spider, Constant.TIMEOUT_VOD, spider::homeVideoContent);
             Prefers.put("crash", false);
             SpiderDebug.log("home", home);
             SpiderDebug.log("homeVideo", video);
@@ -244,7 +267,9 @@ public class SiteApi {
         SpiderDebug.log("category", "key=%s,tid=%s,page=%s,filter=%s,extend=%s", key, tid, page, filter, extend);
         Site site = VodConfig.get().getSite(key);
         if (isSpider(site)) {
-            String categoryContent = site.recent().spider().categoryContent(tid, page, filter, extend);
+            Spider spider = site.recent().spider();
+            String categoryContent = spiderCall(spider, Constant.TIMEOUT_VOD,
+                    () -> spider.categoryContent(tid, page, filter, extend));
             SpiderDebug.log("category", categoryContent);
             return Result.fromJson(categoryContent);
         } else {
@@ -274,10 +299,12 @@ public class SiteApi {
             Source.get().parse(vod.setFlags());
             return Result.vod(vod);
         } else if (isSpider(site)) {
-            String detailContent = site.recent().spider().detailContent(Arrays.asList(id));
+            Spider spider = site.recent().spider();
+            String detailContent = spiderCall(spider, Constant.TIMEOUT_VOD,
+                    () -> spider.detailContent(Arrays.asList(id)));
             SpiderDebug.log("detail", detailContent);
-            Result result = Result.fromJson(detailContent);
-            Source.get().parse(result.getVod().setFlags());
+            Result result = detailResult(site.getType(), detailContent);
+            prepareDetail(result);
             return result;
         } else {
             ArrayMap<String, String> params = new ArrayMap<>();
@@ -285,10 +312,25 @@ public class SiteApi {
             params.put("ids", id);
             String detailContent = call(site, params);
             SpiderDebug.log("detail", detailContent);
-            Result result = Result.fromType(site.getType(), detailContent);
-            Source.get().parse(result.getVod().setFlags());
+            Result result = detailResult(site.getType(), detailContent);
+            prepareDetail(result);
             return result;
         }
+    }
+
+    private static void prepareDetail(Result result) throws Exception {
+        Vod vod = result.getVod().setFlags();
+        boolean hadEpisodes = com.fongmi.android.tv.resource.ResourceHealth.hasPlayableEntry(vod);
+        Source.get().parse(vod);
+        if (hadEpisodes && !com.fongmi.android.tv.resource.ResourceHealth.hasPlayableEntry(vod))
+            throw new IOException("Source detail extraction unavailable");
+    }
+
+    private static Result detailResult(int type, String body) throws IOException {
+        if (type != 0) return App.gson().fromJson(ResourceResponseSchema.json(body, true), Result.class).trans();
+        ResourceResponseSchema.xml(body);
+        try { return new org.simpleframework.xml.core.Persister().read(Result.class, body, false).trans(); }
+        catch (Exception error) { throw new IOException("Invalid XML detail response"); }
     }
 
     @NonNull
@@ -304,9 +346,11 @@ public class SiteApi {
             result.setFlag(flag);
             return result;
         } else if (site.getType() == 3) {
-            String playerContent = site.recent().spider().playerContent(flag, id, VodConfig.get().getFlags());
+            Spider spider = site.recent().spider();
+            String playerContent = spiderCall(spider, Constant.TIMEOUT_VOD,
+                    () -> spider.playerContent(flag, id, VodConfig.get().getFlags()));
             SpiderDebug.log("player", playerContent);
-            Result result = Result.fromJson(playerContent);
+            Result result = App.gson().fromJson(ResourceResponseSchema.json(playerContent, false), Result.class).trans();
             if (result.getFlag().isEmpty()) result.setFlag(flag);
             result.setUrl(Source.get().fetch(result));
             result.setHeader(site.getHeader());
@@ -318,7 +362,7 @@ public class SiteApi {
             params.put("flag", flag);
             String playerContent = call(site, params);
             SpiderDebug.log("player", playerContent);
-            Result result = Result.fromJson(playerContent);
+            Result result = App.gson().fromJson(ResourceResponseSchema.json(playerContent, false), Result.class).trans();
             if (result.getFlag().isEmpty()) result.setFlag(flag);
             result.setUrl(Source.get().fetch(result));
             result.setHeader(site.getHeader());
@@ -391,7 +435,8 @@ public class SiteApi {
             Spider spider = site.spider();
             // Only the verified base implementation has no optional pagination.
             if (hasPage && SpiderSearchCapability.hasDefaultPagination(spider)) return Result.empty();
-            String searchContent = hasPage ? spider.searchContent(keyword, quick, page) : spider.searchContent(keyword, quick);
+            String searchContent = WoggAddressCompatibility.call(spider, scope::remainingMillis, scope::checkCancellation,
+                    () -> hasPage ? spider.searchContent(keyword, quick, page) : spider.searchContent(keyword, quick));
             scope.checkCancellation();
             if (!quick && com.fongmi.android.tv.api.compat.SixVSearchCompatibility.emptyFirstPage(searchContent, page)
                     && com.fongmi.android.tv.api.compat.SixVSearchCompatibility.supports(spider, site.getExt())) {
@@ -466,7 +511,10 @@ public class SiteApi {
     public static Result action(@NonNull String key, @NonNull String action) throws Exception {
         Site site = VodConfig.get().getSite(key);
         SpiderDebug.log("action", "key=%s,action=%s", key, action);
-        if (site.getType() == 3) return Result.fromJson(site.recent().spider().action(action));
+        if (site.getType() == 3) {
+            Spider spider = site.recent().spider();
+            return Result.fromJson(spiderCall(spider, Constant.TIMEOUT_VOD, () -> spider.action(action)));
+        }
         if (site.getType() == 4) return Result.fromJson(OkHttp.string(action));
         return Result.empty();
     }

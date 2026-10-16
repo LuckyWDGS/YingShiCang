@@ -21,6 +21,7 @@ import com.github.catvod.utils.Json;
 import com.google.gson.JsonObject;
 
 import java.util.ArrayList;
+import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -151,8 +152,18 @@ public class VodConfig extends BaseConfig {
 
     @Override
     protected void load(Config config) throws Throwable {
-        String json = Decoder.getJson(UrlUtil.convert(config.getUrl()), TAG);
-        checkJson(config, Json.parse(json).getAsJsonObject());
+        String url = UrlUtil.convert(config.getUrl());
+        VodConfigFetch.Loaded loaded = VodConfigFetch.load(url, config.getJson(), System.currentTimeMillis(),
+                () -> Decoder.getJson(url, TAG, VodConfigFetch.ATTEMPT_TIMEOUT_MS));
+        checkJson(config, loaded.object());
+        if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException();
+        if (loaded.cached()) {
+            config.setNotice("网络暂时不可用，已使用上次成功获取的配置");
+        } else if (!loaded.object().has("urls")) {
+            // Save complete parsed metadata only; plugin artifacts have their own successful-load cache.
+            config.setJson(VodConfigFetch.snapshot(url, loaded.object(), System.currentTimeMillis()));
+            config.save();
+        }
     }
 
     @Override
@@ -220,7 +231,18 @@ public class VodConfig extends BaseConfig {
 
     private void initSite(Config config, JsonObject object) {
         String spider = Json.safeString(object, "spider");
-        BaseLoader.get().parseJar(spider, true);
+        try {
+            BaseLoader.get().parseJar(spider, true);
+        } catch (RuntimeException e) {
+            if (Thread.currentThread().isInterrupted()) throw e;
+            boolean networkFailure = false;
+            for (Throwable cause = e; cause != null; cause = cause.getCause()) {
+                if (cause instanceof IOException) networkFailure = true;
+            }
+            if (!networkFailure) throw e;
+            // A failed warm-up must not erase valid site metadata or block independent HTTP sources.
+            // Site.spider() retries on demand; unsuccessful artifacts are never cached as loaded.
+        }
         setSites(Json.safeListElement(object, "sites").stream().map(e -> Site.objectFrom(e, spider)).distinct().collect(Collectors.toCollection(ArrayList::new)));
         Map<String, Site> items = Site.findAll().stream().collect(Collectors.toMap(Site::getKey, Function.identity()));
         getSites().forEach(site -> site.sync(items.get(site.getKey())));

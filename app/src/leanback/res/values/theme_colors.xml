@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="tv_theme_background">#080808</color>
+    <color name="tv_theme_panel">#141414</color>
+    <color name="tv_theme_control">#1E1E1E</color>
+    <color name="tv_theme_border">#303030</color>
+    <color name="tv_theme_text">#F2F2F2</color>
+    <color name="tv_card_title_text">#D9F2F2F2</color>
+    <color name="tv_card_title_panel">#B3141414</color>
+    <color name="tv_theme_text_secondary">#AAAAAA</color>
+    <color name="tv_theme_selected">#303030</color>
+    <color name="tv_theme_selected_border">#707070</color>
+    <color name="tv_theme_focus_border">#FFFFFF</color>
+    <color name="tv_theme_primary">#F2F2F2</color>
+    <color name="tv_theme_primary_pressed">#DADADA</color>
+    <color name="tv_theme_primary_text">#141414</color>
+    <color name="tv_theme_browse_control">#1E1E1E</color>
+    <color name="tv_theme_shortcut_control">#151515</color>
+    <color name="tv_theme_filter_focus">#373737</color>
+    <color name="tv_theme_filter_selected">#303030</color>
+    <color name="tv_theme_filter_pressed">#282828</color>
+    <color name="tv_theme_filter_control">#1E1E1E</color>
+    <color name="tv_theme_filter_border">#383838</color>
+    <color name="tv_theme_filter_panel">#FA141414</color>
+    <color name="tv_theme_rating_panel">#D9141414</color>
+    <color name="tv_theme_scrim_start">#FA080808</color>
+    <color name="tv_theme_scrim_end">#00080808</color>
+</resources>

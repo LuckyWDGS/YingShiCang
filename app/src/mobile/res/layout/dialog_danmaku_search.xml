@@ -28,6 +28,18 @@
             android:singleLine="true"
             android:textSize="14sp" />
 
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/searchAction"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:layout_marginStart="12dp"
+            android:paddingHorizontal="16dp"
+            android:gravity="center"
+            android:focusable="true"
+            android:background="?attr/selectableItemBackground"
+            android:text="@string/media_search"
+            android:textSize="14sp" />
+
         <androidx.appcompat.widget.AppCompatImageView
             android:id="@+id/setting"
             android:layout_width="wrap_content"
@@ -38,6 +50,15 @@
             android:src="@drawable/ic_action_setting" />
 
     </androidx.appcompat.widget.LinearLayoutCompat>
+
+    <com.google.android.material.textview.MaterialTextView
+        android:id="@+id/emptyHint"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingHorizontal="24dp"
+        android:paddingBottom="16dp"
+        android:text="@string/media_search_hint"
+        android:textSize="14sp" />
 
     <com.google.android.material.progressindicator.CircularProgressIndicator
         android:id="@+id/progress"

@@ -3,445 +3,514 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:background="@color/tv_theme_background"
     android:fillViewport="true"
-    tools:ignore="NestedWeights">
+    android:clipToPadding="false">
 
     <androidx.appcompat.widget.LinearLayoutCompat
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
+        android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="24dp">
+        android:padding="15dp">
 
+        <!-- The first two rows follow the reference layout: a wide source card and a compact choice card. -->
         <androidx.appcompat.widget.LinearLayoutCompat
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="center_vertical"
+            android:layout_height="45dp"
             android:orientation="horizontal">
 
             <androidx.appcompat.widget.LinearLayoutCompat
                 android:id="@+id/vod"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="16dp"
-                android:layout_weight="1"
-                android:background="@drawable/selector_item"
+                android:layout_height="match_parent"
+                android:layout_marginEnd="7dp"
+                android:layout_weight="2"
+                android:background="@drawable/selector_setting_item"
                 android:focusable="true"
                 android:focusableInTouchMode="false"
-                android:orientation="horizontal">
-
-                <com.google.android.material.textview.MaterialTextView
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="9dp"
+                android:paddingEnd="7dp">
+                <TextView
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:layout_marginEnd="16dp"
-                    android:layout_weight="0.3"
+                    android:layout_weight="1"
+                    android:fontFamily="sans-serif-medium"
+                    android:maxLines="1"
                     android:text="@string/setting_vod"
-                    android:textColor="@color/white"
-                    android:textSize="18sp" />
-
-                <com.google.android.material.textview.MaterialTextView
+                    android:textColor="@color/tv_theme_text"
+                    android:textSize="17sp" />
+                <TextView
                     android:id="@+id/vodUrl"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:layout_weight="0.7"
+                    android:layout_weight="1"
                     android:ellipsize="middle"
-                    android:gravity="end"
-                    android:singleLine="true"
-                    android:textColor="@color/white"
-                    android:textSize="18sp"
-                    tools:ignore="NestedWeights"
-                    tools:text="https://" />
-
+                    android:gravity="center_vertical|end"
+                    android:maxLines="1"
+                    android:textColor="@color/tv_theme_text"
+                    android:textSize="15sp"
+                    tools:text="https://example.com/config.json" />
+                <TextView
+                    android:layout_width="14dp"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:text=">"
+                    android:textColor="@color/tv_theme_text"
+                    android:textSize="16sp" />
             </androidx.appcompat.widget.LinearLayoutCompat>
 
-            <androidx.appcompat.widget.AppCompatImageView
-                android:id="@+id/vodHome"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="16dp"
-                android:background="@drawable/selector_item"
+            <androidx.appcompat.widget.LinearLayoutCompat
+                android:id="@+id/lines"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:background="@drawable/selector_setting_item"
                 android:focusable="true"
                 android:focusableInTouchMode="false"
-                android:padding="8dp"
-                android:src="@drawable/ic_setting_home" />
-
-            <androidx.appcompat.widget.AppCompatImageView
-                android:id="@+id/vodHistory"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:background="@drawable/selector_item"
-                android:focusable="true"
-                android:focusableInTouchMode="false"
-                android:padding="8dp"
-                android:src="@drawable/ic_setting_history" />
-
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="9dp"
+                android:paddingEnd="7dp">
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:fontFamily="sans-serif-medium"
+                    android:maxLines="1"
+                    android:text="@string/setting_lines"
+                    android:textColor="@color/tv_theme_text"
+                    android:textSize="17sp" />
+                <TextView
+                    android:id="@+id/linesText"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:ellipsize="end"
+                    android:gravity="center_vertical|end"
+                    android:maxLines="1"
+                    android:textColor="@color/tv_theme_text"
+                    android:textSize="15sp"
+                    tools:text="自定义配置线路 0" />
+                <TextView
+                    android:layout_width="14dp"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:text=">"
+                    android:textColor="@color/tv_theme_text"
+                    android:textSize="16sp" />
+            </androidx.appcompat.widget.LinearLayoutCompat>
         </androidx.appcompat.widget.LinearLayoutCompat>
 
         <androidx.appcompat.widget.LinearLayoutCompat
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:gravity="center_vertical"
+            android:layout_height="45dp"
+            android:layout_marginTop="7dp"
             android:orientation="horizontal">
-
             <androidx.appcompat.widget.LinearLayoutCompat
                 android:id="@+id/live"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="16dp"
-                android:layout_weight="1"
-                android:background="@drawable/selector_item"
+                android:layout_height="match_parent"
+                android:layout_marginEnd="7dp"
+                android:layout_weight="2"
+                android:background="@drawable/selector_setting_item"
                 android:focusable="true"
                 android:focusableInTouchMode="false"
-                android:orientation="horizontal">
-
-                <com.google.android.material.textview.MaterialTextView
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="9dp"
+                android:paddingEnd="7dp">
+                <TextView
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:layout_marginEnd="16dp"
-                    android:layout_weight="0.3"
+                    android:layout_weight="1"
+                    android:fontFamily="sans-serif-medium"
+                    android:maxLines="1"
                     android:text="@string/setting_live"
-                    android:textColor="@color/white"
-                    android:textSize="18sp" />
-
-                <com.google.android.material.textview.MaterialTextView
+                    android:textColor="@color/tv_theme_text"
+                    android:textSize="17sp" />
+                <TextView
                     android:id="@+id/liveUrl"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:layout_weight="0.7"
+                    android:layout_weight="1"
                     android:ellipsize="middle"
-                    android:gravity="end"
-                    android:singleLine="true"
-                    android:textColor="@color/white"
-                    android:textSize="18sp"
-                    tools:ignore="NestedWeights"
-                    tools:text="https://" />
-
+                    android:gravity="center_vertical|end"
+                    android:maxLines="1"
+                    android:textColor="@color/tv_theme_text"
+                    android:textSize="15sp"
+                    tools:text="https://example.com/live.m3u" />
+                <TextView
+                    android:layout_width="14dp"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:text=">"
+                    android:textColor="@color/tv_theme_text"
+                    android:textSize="16sp" />
             </androidx.appcompat.widget.LinearLayoutCompat>
 
-            <androidx.appcompat.widget.AppCompatImageView
-                android:id="@+id/liveHome"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="16dp"
-                android:background="@drawable/selector_item"
+            <androidx.appcompat.widget.LinearLayoutCompat
+                android:id="@+id/vodHome"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:background="@drawable/selector_setting_item"
                 android:focusable="true"
                 android:focusableInTouchMode="false"
-                android:padding="8dp"
-                android:src="@drawable/ic_setting_home" />
-
-            <androidx.appcompat.widget.AppCompatImageView
-                android:id="@+id/liveHistory"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:background="@drawable/selector_item"
-                android:focusable="true"
-                android:focusableInTouchMode="false"
-                android:padding="8dp"
-                android:src="@drawable/ic_setting_history" />
-
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="9dp"
+                android:paddingEnd="7dp">
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:fontFamily="sans-serif-medium"
+                    android:maxLines="1"
+                    android:text="@string/setting_default_site"
+                    android:textColor="@color/tv_theme_text"
+                    android:textSize="17sp" />
+                <TextView
+                    android:id="@+id/vodHomeText"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:ellipsize="end"
+                    android:gravity="center_vertical|end"
+                    android:maxLines="1"
+                    android:textColor="@color/tv_theme_text"
+                    android:textSize="15sp"
+                    tools:text="点播站源" />
+                <TextView
+                    android:layout_width="14dp"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:text=">"
+                    android:textColor="@color/tv_theme_text"
+                    android:textSize="16sp" />
+            </androidx.appcompat.widget.LinearLayoutCompat>
         </androidx.appcompat.widget.LinearLayoutCompat>
 
+        <!-- Four-column rows keep the dense, glanceable rhythm of the reference settings page. -->
         <androidx.appcompat.widget.LinearLayoutCompat
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:gravity="center_vertical"
+            android:layout_height="45dp"
+            android:layout_marginTop="7dp"
             android:orientation="horizontal">
+            <androidx.appcompat.widget.LinearLayoutCompat
+                android:id="@+id/liveHome"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_marginEnd="7dp"
+                android:layout_weight="1"
+                android:background="@drawable/selector_setting_item"
+                android:focusable="true"
+                android:focusableInTouchMode="false"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="9dp"
+                android:paddingEnd="7dp">
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:fontFamily="sans-serif-medium"
+                    android:maxLines="1"
+                    android:text="@string/setting_default_live"
+                    android:textColor="@color/tv_theme_text"
+                    android:textSize="16sp" />
+                <TextView
+                    android:id="@+id/liveHomeText"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:ellipsize="end"
+                    android:gravity="center_vertical|end"
+                    android:maxLines="1"
+                    android:textColor="@color/tv_theme_text"
+                    android:textSize="14sp"
+                    tools:text="直播源" />
+                <TextView
+                    android:layout_width="14dp"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:text=">"
+                    android:textColor="@color/tv_theme_text"
+                    android:textSize="16sp" />
+            </androidx.appcompat.widget.LinearLayoutCompat>
 
             <androidx.appcompat.widget.LinearLayoutCompat
                 android:id="@+id/wall"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="16dp"
+                android:layout_height="match_parent"
+                android:layout_marginEnd="7dp"
                 android:layout_weight="1"
-                android:background="@drawable/selector_item"
+                android:background="@drawable/selector_setting_item"
                 android:focusable="true"
                 android:focusableInTouchMode="false"
-                android:orientation="horizontal">
-
-                <com.google.android.material.textview.MaterialTextView
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="9dp"
+                android:paddingEnd="7dp">
+                <TextView
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:layout_marginEnd="16dp"
-                    android:layout_weight="0.3"
+                    android:layout_weight="1"
+                    android:fontFamily="sans-serif-medium"
+                    android:maxLines="1"
                     android:text="@string/setting_wall"
-                    android:textColor="@color/white"
-                    android:textSize="18sp" />
-
-                <com.google.android.material.textview.MaterialTextView
+                    android:textColor="@color/tv_theme_text"
+                    android:textSize="16sp" />
+                <TextView
                     android:id="@+id/wallUrl"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:layout_weight="0.7"
+                    android:layout_weight="1"
                     android:ellipsize="middle"
-                    android:gravity="end"
-                    android:singleLine="true"
-                    android:textColor="@color/white"
-                    android:textSize="18sp"
-                    tools:ignore="NestedWeights"
-                    tools:text="https://" />
-
+                    android:gravity="center_vertical|end"
+                    android:maxLines="1"
+                    android:textColor="@color/tv_theme_text"
+                    android:textSize="14sp"
+                    tools:text="https://example.com/wallpaper.json" />
+                <TextView
+                    android:layout_width="14dp"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:text=">"
+                    android:textColor="@color/tv_theme_text"
+                    android:textSize="16sp" />
             </androidx.appcompat.widget.LinearLayoutCompat>
 
-            <androidx.appcompat.widget.AppCompatImageView
+            <androidx.appcompat.widget.LinearLayoutCompat
                 android:id="@+id/wallDefault"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="16dp"
-                android:background="@drawable/selector_item"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_marginEnd="7dp"
+                android:layout_weight="1"
+                android:background="@drawable/selector_setting_item"
                 android:focusable="true"
                 android:focusableInTouchMode="false"
-                android:padding="8dp"
-                android:src="@drawable/ic_setting_home" />
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="9dp"
+                android:paddingEnd="7dp">
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:fontFamily="sans-serif-medium"
+                    android:maxLines="1"
+                    android:text="@string/setting_wall_default"
+                    android:textColor="@color/tv_theme_text"
+                    android:textSize="16sp" />
+                <TextView
+                    android:layout_width="14dp"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:text=">"
+                    android:textColor="@color/tv_theme_text"
+                    android:textSize="16sp" />
+            </androidx.appcompat.widget.LinearLayoutCompat>
 
-            <androidx.appcompat.widget.AppCompatImageView
+            <androidx.appcompat.widget.LinearLayoutCompat
                 android:id="@+id/wallRefresh"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:background="@drawable/selector_item"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:background="@drawable/selector_setting_item"
                 android:focusable="true"
                 android:focusableInTouchMode="false"
-                android:padding="8dp"
-                android:src="@drawable/ic_setting_refresh" />
-
-        </androidx.appcompat.widget.LinearLayoutCompat>
-
-        <androidx.appcompat.widget.LinearLayoutCompat
-            android:id="@+id/player"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:background="@drawable/selector_item"
-            android:focusable="true"
-            android:focusableInTouchMode="false"
-            android:orientation="horizontal">
-
-            <com.google.android.material.textview.MaterialTextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/setting_player"
-                android:textColor="@color/white"
-                android:textSize="18sp" />
-
-        </androidx.appcompat.widget.LinearLayoutCompat>
-
-        <androidx.appcompat.widget.LinearLayoutCompat
-            android:id="@+id/danmaku"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:background="@drawable/selector_item"
-            android:focusable="true"
-            android:focusableInTouchMode="false"
-            android:orientation="horizontal">
-
-            <com.google.android.material.textview.MaterialTextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/setting_danmaku"
-                android:textColor="@color/white"
-                android:textSize="18sp" />
-
-        </androidx.appcompat.widget.LinearLayoutCompat>
-
-        <androidx.appcompat.widget.LinearLayoutCompat
-            android:id="@+id/incognito"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:background="@drawable/selector_item"
-            android:focusable="true"
-            android:focusableInTouchMode="false"
-            android:orientation="horizontal">
-
-            <com.google.android.material.textview.MaterialTextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="16dp"
-                android:text="@string/setting_incognito"
-                android:textColor="@color/white"
-                android:textSize="18sp" />
-
-            <com.google.android.material.textview.MaterialTextView
-                android:id="@+id/incognitoText"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:gravity="end"
-                android:textColor="@color/white"
-                android:textSize="18sp"
-                tools:text="Off" />
-
-        </androidx.appcompat.widget.LinearLayoutCompat>
-
-        <androidx.appcompat.widget.LinearLayoutCompat
-            android:id="@+id/doh"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:background="@drawable/selector_item"
-            android:focusable="true"
-            android:focusableInTouchMode="false"
-            android:orientation="horizontal">
-
-            <com.google.android.material.textview.MaterialTextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="16dp"
-                android:text="@string/setting_doh"
-                android:textColor="@color/white"
-                android:textSize="18sp" />
-
-            <com.google.android.material.textview.MaterialTextView
-                android:id="@+id/dohText"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:gravity="end"
-                android:textColor="@color/white"
-                android:textSize="18sp"
-                tools:text="Google" />
-
-        </androidx.appcompat.widget.LinearLayoutCompat>
-
-        <androidx.appcompat.widget.LinearLayoutCompat
-            android:id="@+id/size"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:background="@drawable/selector_item"
-            android:focusable="true"
-            android:focusableInTouchMode="false"
-            android:nextFocusDown="@id/backup"
-            android:orientation="horizontal">
-
-            <com.google.android.material.textview.MaterialTextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="16dp"
-                android:text="@string/setting_size"
-                android:textColor="@color/white"
-                android:textSize="18sp" />
-
-            <com.google.android.material.textview.MaterialTextView
-                android:id="@+id/sizeText"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:gravity="end"
-                android:textColor="@color/white"
-                android:textSize="18sp"
-                tools:text="Medium" />
-
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="9dp"
+                android:paddingEnd="7dp">
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:fontFamily="sans-serif-medium"
+                    android:maxLines="1"
+                    android:text="@string/setting_wall_refresh"
+                    android:textColor="@color/tv_theme_text"
+                    android:textSize="16sp" />
+                <TextView
+                    android:layout_width="14dp"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:text=">"
+                    android:textColor="@color/tv_theme_text"
+                    android:textSize="16sp" />
+            </androidx.appcompat.widget.LinearLayoutCompat>
         </androidx.appcompat.widget.LinearLayoutCompat>
 
         <androidx.appcompat.widget.LinearLayoutCompat
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
+            android:layout_height="45dp"
+            android:layout_marginTop="7dp"
             android:orientation="horizontal">
+            <androidx.appcompat.widget.LinearLayoutCompat
+                android:id="@+id/player"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_marginEnd="7dp"
+                android:layout_weight="1"
+                android:background="@drawable/selector_setting_item"
+                android:focusable="true"
+                android:focusableInTouchMode="false"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="9dp"
+                android:paddingEnd="7dp">
+                <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:fontFamily="sans-serif-medium" android:maxLines="1" android:text="@string/setting_player" android:textColor="@color/tv_theme_text" android:textSize="16sp" />
+                <TextView android:layout_width="14dp" android:layout_height="wrap_content" android:gravity="center" android:includeFontPadding="false" android:text=">" android:textColor="@color/tv_theme_text" android:textSize="16sp" />
+            </androidx.appcompat.widget.LinearLayoutCompat>
+            <androidx.appcompat.widget.LinearLayoutCompat
+                android:id="@+id/danmaku"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_marginEnd="7dp"
+                android:layout_weight="1"
+                android:background="@drawable/selector_setting_item"
+                android:focusable="true"
+                android:focusableInTouchMode="false"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="9dp"
+                android:paddingEnd="7dp">
+                <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:fontFamily="sans-serif-medium" android:maxLines="1" android:text="@string/setting_danmaku" android:textColor="@color/tv_theme_text" android:textSize="16sp" />
+                <TextView android:layout_width="14dp" android:layout_height="wrap_content" android:gravity="center" android:includeFontPadding="false" android:text=">" android:textColor="@color/tv_theme_text" android:textSize="16sp" />
+            </androidx.appcompat.widget.LinearLayoutCompat>
+            <androidx.appcompat.widget.LinearLayoutCompat
+                android:id="@+id/incognito"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_marginEnd="7dp"
+                android:layout_weight="1"
+                android:background="@drawable/selector_setting_item"
+                android:focusable="true"
+                android:focusableInTouchMode="false"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="9dp"
+                android:paddingEnd="7dp">
+                <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:fontFamily="sans-serif-medium" android:maxLines="1" android:text="@string/setting_incognito" android:textColor="@color/tv_theme_text" android:textSize="16sp" />
+                <TextView android:id="@+id/incognitoText" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="center_vertical|end" android:maxLines="1" android:textColor="@color/tv_theme_text" android:textSize="14sp" tools:text="关" />
+                <TextView android:layout_width="14dp" android:layout_height="wrap_content" android:gravity="center" android:includeFontPadding="false" android:text=">" android:textColor="@color/tv_theme_text" android:textSize="16sp" />
+            </androidx.appcompat.widget.LinearLayoutCompat>
+            <androidx.appcompat.widget.LinearLayoutCompat
+                android:id="@+id/doh"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:background="@drawable/selector_setting_item"
+                android:focusable="true"
+                android:focusableInTouchMode="false"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="9dp"
+                android:paddingEnd="7dp">
+                <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:fontFamily="sans-serif-medium" android:maxLines="1" android:text="@string/setting_doh" android:textColor="@color/tv_theme_text" android:textSize="16sp" />
+                <TextView android:id="@+id/dohText" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:ellipsize="end" android:gravity="center_vertical|end" android:maxLines="1" android:textColor="@color/tv_theme_text" android:textSize="14sp" tools:text="关闭" />
+                <TextView android:layout_width="14dp" android:layout_height="wrap_content" android:gravity="center" android:includeFontPadding="false" android:text=">" android:textColor="@color/tv_theme_text" android:textSize="16sp" />
+            </androidx.appcompat.widget.LinearLayoutCompat>
+        </androidx.appcompat.widget.LinearLayoutCompat>
 
+        <androidx.appcompat.widget.LinearLayoutCompat
+            android:layout_width="match_parent"
+            android:layout_height="45dp"
+            android:layout_marginTop="7dp"
+            android:orientation="horizontal">
+            <androidx.appcompat.widget.LinearLayoutCompat
+                android:id="@+id/size"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_marginEnd="7dp"
+                android:layout_weight="1"
+                android:background="@drawable/selector_setting_item"
+                android:focusable="true"
+                android:focusableInTouchMode="false"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="9dp"
+                android:paddingEnd="7dp">
+                <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:fontFamily="sans-serif-medium" android:maxLines="1" android:text="@string/setting_size" android:textColor="@color/tv_theme_text" android:textSize="16sp" />
+                <TextView android:id="@+id/sizeText" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="center_vertical|end" android:maxLines="1" android:textColor="@color/tv_theme_text" android:textSize="14sp" tools:text="默认" />
+                <TextView android:layout_width="14dp" android:layout_height="wrap_content" android:gravity="center" android:includeFontPadding="false" android:text=">" android:textColor="@color/tv_theme_text" android:textSize="16sp" />
+            </androidx.appcompat.widget.LinearLayoutCompat>
             <androidx.appcompat.widget.LinearLayoutCompat
                 android:id="@+id/backup"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="16dp"
+                android:layout_height="match_parent"
+                android:layout_marginEnd="7dp"
                 android:layout_weight="1"
-                android:background="@drawable/selector_item"
+                android:background="@drawable/selector_setting_item"
                 android:focusable="true"
                 android:focusableInTouchMode="false"
-                android:orientation="horizontal">
-
-                <com.google.android.material.textview.MaterialTextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/setting_backup"
-                    android:textColor="@color/white"
-                    android:textSize="18sp" />
-
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="9dp"
+                android:paddingEnd="7dp">
+                <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:fontFamily="sans-serif-medium" android:maxLines="1" android:text="@string/setting_backup" android:textColor="@color/tv_theme_text" android:textSize="16sp" />
+                <TextView android:layout_width="14dp" android:layout_height="wrap_content" android:gravity="center" android:includeFontPadding="false" android:text=">" android:textColor="@color/tv_theme_text" android:textSize="16sp" />
             </androidx.appcompat.widget.LinearLayoutCompat>
-
             <androidx.appcompat.widget.LinearLayoutCompat
                 android:id="@+id/restore"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_height="match_parent"
+                android:layout_marginEnd="7dp"
                 android:layout_weight="1"
-                android:background="@drawable/selector_item"
+                android:background="@drawable/selector_setting_item"
                 android:focusable="true"
                 android:focusableInTouchMode="false"
-                android:orientation="horizontal">
-
-                <com.google.android.material.textview.MaterialTextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/setting_restore"
-                    android:textColor="@color/white"
-                    android:textSize="18sp" />
-
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="9dp"
+                android:paddingEnd="7dp">
+                <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:fontFamily="sans-serif-medium" android:maxLines="1" android:text="@string/setting_restore" android:textColor="@color/tv_theme_text" android:textSize="16sp" />
+                <TextView android:layout_width="14dp" android:layout_height="wrap_content" android:gravity="center" android:includeFontPadding="false" android:text=">" android:textColor="@color/tv_theme_text" android:textSize="16sp" />
+            </androidx.appcompat.widget.LinearLayoutCompat>
+            <androidx.appcompat.widget.LinearLayoutCompat
+                android:id="@+id/cache"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:background="@drawable/selector_setting_item"
+                android:focusable="true"
+                android:focusableInTouchMode="false"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="9dp"
+                android:paddingEnd="7dp">
+                <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:fontFamily="sans-serif-medium" android:maxLines="1" android:text="@string/setting_cache" android:textColor="@color/tv_theme_text" android:textSize="16sp" />
+                <TextView android:id="@+id/cacheText" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:ellipsize="end" android:gravity="center_vertical|end" android:maxLines="1" android:textColor="@color/tv_theme_text" android:textSize="14sp" tools:text="0 MB" />
+                <TextView android:layout_width="14dp" android:layout_height="wrap_content" android:gravity="center" android:includeFontPadding="false" android:text=">" android:textColor="@color/tv_theme_text" android:textSize="16sp" />
             </androidx.appcompat.widget.LinearLayoutCompat>
         </androidx.appcompat.widget.LinearLayoutCompat>
 
         <androidx.appcompat.widget.LinearLayoutCompat
+            android:id="@+id/version"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:orientation="horizontal">
-
-            <androidx.appcompat.widget.LinearLayoutCompat
-                android:id="@+id/cache"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="16dp"
-                android:layout_weight="1"
-                android:background="@drawable/selector_item"
-                android:focusable="true"
-                android:focusableInTouchMode="false"
-                android:orientation="horizontal">
-
-                <com.google.android.material.textview.MaterialTextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginEnd="16dp"
-                    android:text="@string/setting_cache"
-                    android:textColor="@color/white"
-                    android:textSize="18sp" />
-
-                <com.google.android.material.textview.MaterialTextView
-                    android:id="@+id/cacheText"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:gravity="end"
-                    android:textColor="@color/white"
-                    android:textSize="18sp"
-                    tools:text="1.0 MB" />
-
-            </androidx.appcompat.widget.LinearLayoutCompat>
-
-            <androidx.appcompat.widget.LinearLayoutCompat
-                android:id="@+id/version"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:background="@drawable/selector_item"
-                android:focusable="true"
-                android:focusableInTouchMode="false"
-                android:orientation="horizontal">
-
-                <com.google.android.material.textview.MaterialTextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginEnd="16dp"
-                    android:text="@string/setting_version"
-                    android:textColor="@color/white"
-                    android:textSize="18sp" />
-
-                <com.google.android.material.textview.MaterialTextView
-                    android:id="@+id/versionText"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:gravity="end"
-                    android:textColor="@color/white"
-                    android:textSize="18sp"
-                    tools:text="1.2.1" />
-
-            </androidx.appcompat.widget.LinearLayoutCompat>
+            android:layout_height="45dp"
+            android:layout_marginTop="7dp"
+            android:background="@drawable/selector_setting_item"
+            android:focusable="true"
+            android:focusableInTouchMode="false"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="9dp"
+            android:paddingEnd="7dp">
+            <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:fontFamily="sans-serif-medium" android:maxLines="1" android:text="@string/setting_version" android:textColor="@color/tv_theme_text" android:textSize="17sp" />
+            <TextView android:id="@+id/versionText" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="center_vertical|end" android:maxLines="1" android:textColor="@color/tv_theme_text" android:textSize="15sp" tools:text="0.1.45-alpha" />
+            <TextView android:layout_width="14dp" android:layout_height="wrap_content" android:gravity="center" android:includeFontPadding="false" android:text=">" android:textColor="@color/tv_theme_text" android:textSize="16sp" />
         </androidx.appcompat.widget.LinearLayoutCompat>
     </androidx.appcompat.widget.LinearLayoutCompat>
 </androidx.core.widget.NestedScrollView>

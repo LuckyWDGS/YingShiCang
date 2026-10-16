@@ -55,8 +55,8 @@ public class ViewModelSearchRunnerTest {
                 BlockingSearch task = new BlockingSearch(); tasks.add(task); return task;
             }, result -> {}, status -> { if (status.startsWith("搜索完成 4/4")) done.countDown(); });
             assertTrue(httpStarted.await(1, TimeUnit.SECONDS));
-            assertTrue("Rejected tasks left aggregate progress stuck", done.await(1, TimeUnit.SECONDS));
-            assertEquals(3, tasks.size());
+            assertTrue("Rejected tasks left aggregate progress stuck", done.await(5, TimeUnit.SECONDS));
+            assertEquals(9, tasks.size());
             for (BlockingSearch task : tasks) assertEquals("Rejected/timed-out resource was not closed once", 1, task.closed.get());
             assertTrue(crawlerPool.getQueue().size() <= 1);
         } finally { release.countDown(); runner.stop(); http.shutdownNow(); crawlers.shutdownNow(); timer.shutdownNow(); }
@@ -139,7 +139,7 @@ public class ViewModelSearchRunnerTest {
                 finally { active.decrementAndGet(); }
             }, result -> {}, status -> { if (status.startsWith("搜索完成 67/67")) done.countDown(); });
             assertTrue(done.await(5, TimeUnit.SECONDS));
-            assertEquals(67, calls.get());
+            assertEquals(68, calls.get());
             assertTrue(peak.get() <= 16);
         } finally { runner.stop(); workers.shutdownNow(); timer.shutdownNow(); }
     }
@@ -157,5 +157,104 @@ public class ViewModelSearchRunnerTest {
             workers.shutdown(); assertTrue(workers.awaitTermination(2, TimeUnit.SECONDS));
             assertEquals(count, reports.get());
         } finally { runner.stop(); workers.shutdownNow(); timer.shutdownNow(); }
+    }
+
+    @Test public void transientFailureUsesFreshResourcesAndKeepsHealthyResults() throws Exception {
+        var workers = MoreExecutors.listeningDecorator(Executors.newSingleThreadExecutor());
+        var timer = Executors.newSingleThreadScheduledExecutor();
+        var runner = new ViewModelSearchRunner(workers, timer, 2000, 1);
+        Site flaky = new Site(), healthy = new Site();
+        AtomicInteger attempts = new AtomicInteger(), closed = new AtomicInteger(), healthyCalls = new AtomicInteger();
+        var received = new java.util.concurrent.CopyOnWriteArrayList<String>();
+        var statuses = new java.util.concurrent.CopyOnWriteArrayList<String>();
+        CountDownLatch done = new CountDownLatch(1);
+        class RetryTask implements Callable<com.fongmi.android.tv.bean.Result>, AutoCloseable {
+            final int attempt = attempts.incrementAndGet();
+            boolean ended;
+            @Override public com.fongmi.android.tv.bean.Result call() {
+                if (attempt == 1) throw new IllegalStateException("temporary");
+                return result("recovered");
+            }
+            @Override public void close() { assertFalse(ended); ended = true; closed.incrementAndGet(); }
+        }
+        try {
+            runner.start(java.util.List.of(flaky, healthy), site -> site == flaky ? new RetryTask() : () -> {
+                healthyCalls.incrementAndGet(); return result("healthy");
+            }, value -> received.add(value.getList().get(0).getId()), status -> {
+                statuses.add(status); if (status.startsWith("搜索完成 2/2")) done.countDown();
+            });
+            assertTrue(done.await(4, TimeUnit.SECONDS));
+            assertEquals(java.util.List.of("healthy", "recovered"), received);
+            assertEquals(2, attempts.get()); assertEquals(2, closed.get()); assertEquals(1, healthyCalls.get());
+            assertTrue(statuses.get(statuses.size() - 1).contains("0 个失败"));
+        } finally { runner.stop(); workers.shutdownNow(); timer.shutdownNow(); }
+    }
+
+    @Test public void permanentFailureStopsAfterTwoRetriesAndCountsSourceOnce() throws Exception {
+        var workers = MoreExecutors.listeningDecorator(Executors.newSingleThreadExecutor());
+        var timer = Executors.newSingleThreadScheduledExecutor();
+        var runner = new ViewModelSearchRunner(workers, timer, 2000, 1);
+        AtomicInteger attempts = new AtomicInteger();
+        CountDownLatch done = new CountDownLatch(1);
+        try {
+            runner.start(java.util.List.of(new Site()), site -> () -> {
+                attempts.incrementAndGet(); throw new IllegalStateException("unavailable");
+            }, value -> fail("Failed source published a result"), status -> {
+                if (status.startsWith("搜索完成 1/1") && status.contains("1 个失败")) done.countDown();
+            });
+            assertTrue(done.await(4, TimeUnit.SECONDS));
+            assertEquals(3, attempts.get());
+        } finally { runner.stop(); workers.shutdownNow(); timer.shutdownNow(); }
+    }
+
+    @Test public void replacementDuringBackoffCancelsOldRetryAndStatus() throws Exception {
+        var workers = MoreExecutors.listeningDecorator(Executors.newSingleThreadExecutor());
+        var timer = Executors.newSingleThreadScheduledExecutor();
+        var runner = new ViewModelSearchRunner(workers, timer, 2000, 1);
+        AtomicInteger attempts = new AtomicInteger(), oldReports = new AtomicInteger();
+        CountDownLatch waiting = new CountDownLatch(1), fresh = new CountDownLatch(1), barrier = new CountDownLatch(1);
+        try {
+            runner.start(java.util.List.of(new Site()), site -> () -> {
+                attempts.incrementAndGet(); throw new IllegalStateException("temporary");
+            }, value -> fail(), status -> { if (oldReports.incrementAndGet() == 2) waiting.countDown(); });
+            assertTrue(waiting.await(1, TimeUnit.SECONDS));
+            runner.start(java.util.List.of(new Site()), site -> () -> result("fresh"), value -> fresh.countDown(), status -> {});
+            int previousReports = oldReports.get();
+            assertTrue(fresh.await(1, TimeUnit.SECONDS));
+            timer.schedule(barrier::countDown, 900, TimeUnit.MILLISECONDS);
+            assertTrue(barrier.await(2, TimeUnit.SECONDS));
+            assertEquals(1, attempts.get()); assertEquals(previousReports, oldReports.get());
+        } finally { runner.stop(); workers.shutdownNow(); timer.shutdownNow(); }
+    }
+
+    @Test public void filteredSearchPreservesRawRowsForPaginationAndRecovery() throws Exception {
+        var workers = MoreExecutors.listeningDecorator(Executors.newSingleThreadExecutor());
+        var timer = Executors.newSingleThreadScheduledExecutor();
+        var runner = new ViewModelSearchRunner(workers, timer, 2000, 1);
+        long revision = com.fongmi.android.tv.api.config.VodConfig.getDiscoveryRevision();
+        com.fongmi.android.tv.resource.ResourceHealth.recordDetailFailure("test-source", "invalid",
+                new java.io.IOException("资源已下架"), revision);
+        CountDownLatch done = new CountDownLatch(1);
+        java.util.concurrent.atomic.AtomicReference<com.fongmi.android.tv.bean.Result> received = new java.util.concurrent.atomic.AtomicReference<>();
+        try {
+            runner.start(java.util.List.of(new Site()), site -> () -> result("invalid"), value -> { received.set(value); done.countDown(); }, status -> {});
+            assertTrue(done.await(2, TimeUnit.SECONDS));
+            assertTrue(received.get().getList().isEmpty());
+            assertEquals("invalid", received.get().getSearchRawList().get(0).getId());
+        } finally {
+            runner.stop(); workers.shutdownNow(); timer.shutdownNow();
+            com.fongmi.android.tv.resource.ResourceHealth.clear();
+        }
+    }
+
+    private static com.fongmi.android.tv.bean.Result result(String id) {
+        var vod = new com.fongmi.android.tv.bean.Vod() {
+            @Override public String getId() { return id; }
+            @Override public String getName() { return id; }
+            @Override public boolean isFolder() { return false; }
+            @Override public boolean isAction() { return false; }
+            @Override public String getSiteKey() { return "test-source"; }
+        };
+        var result = new com.fongmi.android.tv.bean.Result(); result.setList(java.util.List.of(vod)); return result;
     }
 }

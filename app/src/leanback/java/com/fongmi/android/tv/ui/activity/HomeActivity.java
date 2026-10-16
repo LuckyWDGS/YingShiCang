@@ -180,7 +180,9 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         CustomSelector selector = new CustomSelector();
         selector.addPresenter(Integer.class, new HeaderPresenter());
         selector.addPresenter(String.class, new ProgressPresenter());
-        selector.addPresenter(Vod.class, new DiscoveryPresenter(this));
+        selector.addPresenter(Vod.class, new DiscoveryPresenter(this, false,
+                () -> discovery != null && discovery.isHome(),
+                () -> discovery != null && discovery.isAiDrama()));
         selector.addPresenter(ListRow.class, new CustomRowPresenter(16), VodPresenter.class);
         selector.addPresenter(ListRow.class, new CustomRowPresenter(16, FocusHighlight.ZOOM_FACTOR_SMALL, HorizontalGridView.FOCUS_SCROLL_ALIGNED), HistoryPresenter.class);
         mBinding.recycler.setAdapter(new ItemBridgeAdapter(mAdapter = new ArrayObjectAdapter(selector)));
@@ -312,11 +314,15 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         for (int i = 0; i < items.size(); i++) {
             Func item = items.get(i);
             var button = com.fongmi.android.tv.databinding.AdapterFuncBinding.inflate(getLayoutInflater(), mBinding.actions, false);
-            var params = new android.widget.LinearLayout.LayoutParams(0, ResUtil.dp2px(40), 1);
+            var params = new android.widget.LinearLayout.LayoutParams(0, ResUtil.dp2px(36), 1);
             button.getRoot().setBackgroundResource(R.drawable.home_shortcut);
-            button.text.setTextSize(14);
-            button.icon.getLayoutParams().width = ResUtil.dp2px(22);
-            button.icon.getLayoutParams().height = ResUtil.dp2px(22);
+            button.text.setTextSize(13);
+            button.text.setTextColor(androidx.core.content.ContextCompat.getColorStateList(this, R.color.tv_shortcut_text));
+            button.text.setDuplicateParentStateEnabled(true);
+            button.icon.setDuplicateParentStateEnabled(true);
+            button.icon.setImageTintList(androidx.core.content.ContextCompat.getColorStateList(this, R.color.tv_shortcut_text));
+            button.icon.getLayoutParams().width = ResUtil.dp2px(18);
+            button.icon.getLayoutParams().height = ResUtil.dp2px(18);
             params.setMarginEnd(i == items.size() - 1 ? 0 : ResUtil.dp2px(12));
             button.getRoot().setLayoutParams(params); button.getRoot().setTag(item.getResId());
             button.text.setText(item.getText());
@@ -473,18 +479,18 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
                 return;
             }
             if (item.isAction()) mViewModel.action(origin.getKey(), item.getAction());
-            else if (origin.isIndex()) CollectActivity.start(this, item.getName());
+            else if (origin.isIndex()) CollectActivity.startForCard(this, item.getName(), item.getYear(), true);
             else VideoActivity.start(this, origin.getKey(), item.getId(), item.getName(), item.getPic());
-        } else if (item.getAction().startsWith("search:")) CollectActivity.start(this, item.getAction().substring("search:".length()));
+        } else if (item.getAction().startsWith("search:")) CollectActivity.startForCard(this, item.getAction().substring("search:".length()), item.getYear(), true);
         else if (item.isAction()) mViewModel.action(getHome().getKey(), item.getAction());
-        else if (getHome().isIndex()) CollectActivity.start(this, item.getName());
+        else if (getHome().isIndex()) CollectActivity.startForCard(this, item.getName(), item.getYear(), true);
         else VideoActivity.start(this, getHome().getKey(), item.getId(), item.getName(), item.getPic());
     }
 
     @Override
     public boolean onLongClick(Vod item) {
         if (item.isAction()) return false;
-        CollectActivity.start(this, item.getName());
+        CollectActivity.startForCard(this, item.getName(), item.getYear(), true);
         return true;
     }
 
@@ -535,6 +541,7 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         super.onResume();
         mClock.start();
         mWeather.refresh();
+        if (discovery != null) discovery.setActive(true);
     }
 
     @Override
@@ -542,6 +549,7 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         super.onPause();
         mClock.stop();
         mWeather.stop();
+        if (discovery != null) discovery.setActive(false);
     }
 
     @Override

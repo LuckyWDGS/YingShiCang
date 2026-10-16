@@ -96,6 +96,15 @@ public class SiteViewModel extends ViewModel {
         searches.stop();
     }
 
+    /** Reset the aggregate result page without sending nulls to playback's quick-search observers. */
+    public void resetSearch() {
+        stopSearch();
+        // A recreated CollectActivity starts observing this retained ViewModel
+        // after initView. Its previous batch/status must not be replayed.
+        search.setValue(null);
+        searchStatus.setValue("");
+    }
+
     @Override
     protected void onCleared() {
         stopSearch();

@@ -9,10 +9,13 @@ import com.github.catvod.utils.Json;
 import com.github.catvod.utils.Util;
 
 import java.nio.charset.StandardCharsets;
+import java.io.IOException;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import okhttp3.HttpUrl;
+import okhttp3.Call;
 import okhttp3.Response;
 
 public class Decoder {
@@ -20,7 +23,19 @@ public class Decoder {
     private static final Pattern JS_URI = Pattern.compile("\"(\\.|\\.\\.)/(.?|.+?)\\.js\\?(.?|.+?)\"");
 
     public static String getJson(String url, String tag) throws Exception {
-        try (Response res = OkHttp.newCall(url, tag).execute()) {
+        return getJson(url, tag, 0);
+    }
+
+    public static String getJson(String url, String tag, long timeoutMillis) throws Exception {
+        Call call = OkHttp.newCall(url, tag);
+        if (timeoutMillis > 0) call.timeout().timeout(timeoutMillis, TimeUnit.MILLISECONDS);
+        try (Response res = call.execute()) {
+            if (!res.isSuccessful()) {
+                if (res.code() == 408 || res.code() == 429 || res.code() >= 500)
+                    throw new IOException("配置请求失败 HTTP " + res.code());
+                throw new IllegalArgumentException("配置请求失败 HTTP " + res.code());
+            }
+            if (res.body() == null) throw new IOException("配置响应为空");
             HttpUrl httpUrl = res.request().url();
             int size = HttpUrl.parse(url).querySize();
             if (httpUrl.querySize() == size) url = httpUrl.toString();
@@ -31,7 +46,7 @@ public class Decoder {
     public static String decodeConfig(String url, String data) throws Exception { return verify(url, data); }
 
     private static String verify(String url, String data) throws Exception {
-        if (data.isEmpty()) throw new Exception();
+        if (data.isEmpty()) throw new IOException("配置响应为空");
         if (Json.isObj(data)) return fix(url, data);
         if (data.contains("**")) data = base64(data);
         if (data.startsWith("2423")) data = cbc(data.replaceAll("\\s+", ""));

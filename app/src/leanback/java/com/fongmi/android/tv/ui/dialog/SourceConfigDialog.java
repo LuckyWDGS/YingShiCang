@@ -9,7 +9,6 @@ import androidx.fragment.app.FragmentActivity;
 import com.fongmi.android.tv.databinding.DialogSourceConfigBinding;
 import com.fongmi.android.tv.server.Server;
 import com.fongmi.android.tv.source.SourceManager;
-import com.fongmi.android.tv.source.SourcePairing;
 import com.fongmi.android.tv.utils.QRCode;
 import com.fongmi.android.tv.utils.ResUtil;
 import org.greenrobot.eventbus.EventBus;
@@ -29,11 +28,9 @@ public class SourceConfigDialog extends DialogFragment {
         binding = DialogSourceConfigBinding.inflate(getLayoutInflater());
         dialog.setContentView(binding.getRoot());
         Server.get().start();
-        SourcePairing.INSTANCE.open();
-        String address = Server.get().getAddress() + "/sources.html";
+        String address = Server.get().getAddress();
         binding.address.setText(address);
-        binding.pairCode.setText("配对码\n" + SourcePairing.INSTANCE.code());
-        binding.code.setImageBitmap(QRCode.getStandardBitmap(address + "#token=" + SourcePairing.INSTANCE.token(), 348));
+        binding.code.setImageBitmap(QRCode.getStandardBitmap(address, 348));
         binding.close.setOnClickListener(v -> dismiss());
         binding.save.setOnClickListener(v -> save());
         binding.url.setOnEditorActionListener((v,id,event) -> { save(); return true; });
@@ -57,7 +54,7 @@ public class SourceConfigDialog extends DialogFragment {
         });
     }
     private void status(String text, boolean error) {
-        binding.status.setTextColor(error ? 0xFFF2B4AE : 0xFFA2DFCD);
+        binding.status.setTextColor(error ? 0xFFF2B4AE : ResUtil.getColor(com.fongmi.android.tv.R.color.tv_theme_text_secondary));
         binding.status.setText(text);
     }
     @Subscribe(threadMode=ThreadMode.MAIN) public void onSourceSaved(SourceManager.Saved event) {
@@ -66,6 +63,7 @@ public class SourceConfigDialog extends DialogFragment {
     @Override public void onStart() {
         super.onStart();
         getDialog().getWindow().setBackgroundDrawableResource(android.R.color.transparent);
+        getDialog().getWindow().setDimAmount(0.72f);
         getDialog().getWindow().setLayout((int)(ResUtil.getScreenWidth()*.64f),-2);
         EventBus.getDefault().register(this);
     }

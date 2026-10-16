@@ -36,6 +36,12 @@ import java.util.Map;
 @Root(name = "rss", strict = false)
 public class Result implements Parcelable {
 
+    // UI filtering must not erase the source cursor/identity evidence for paging.
+    private transient List<Vod> searchRawList;
+
+    public List<Vod> getSearchRawList() { return searchRawList == null ? getList() : searchRawList; }
+    public void setSearchRawList(List<Vod> items) { searchRawList = new ArrayList<>(items); }
+
     @Path("class")
     @ElementList(entry = "ty", required = false, inline = true)
     @SerializedName("class")
@@ -254,7 +260,6 @@ public class Result implements Parcelable {
     }
 
     public List<Danmaku> getDanmaku() {
-        if (!DanmakuSetting.isLoad()) return new ArrayList<>();
         return danmaku = danmaku == null ? new ArrayList<>() : danmaku;
     }
 

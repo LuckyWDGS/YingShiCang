@@ -12,6 +12,7 @@ import com.fongmi.android.tv.bean.Parse;
 import com.fongmi.android.tv.bean.Result;
 import com.fongmi.android.tv.bean.Vod;
 import com.fongmi.android.tv.playback.PlaybackResult;
+import com.fongmi.android.tv.resource.ResourceHealth;
 
 import java.util.Collections;
 import java.util.List;
@@ -65,8 +66,9 @@ public class VodPlaybackController {
 
     public void onDetailResult(VodDetailResult detail) {
         if (detail == null || !detail.matches(host.getVodKey(), host.getVodId())) return;
+        if (state.getResourceRevision() != VodConfig.getDiscoveryRevision()) return;
         Result result = detail.result();
-        if (result.getList().isEmpty()) detailEmpty(result.hasMsg());
+        if (result.getList().isEmpty() || !ResourceHealth.hasPlayableEntry(result.getVod())) detailEmpty(result.hasMsg());
         else detailLoaded(result.getVod());
         host.showDetailMessage(result.getMsg());
     }
@@ -107,6 +109,16 @@ public class VodPlaybackController {
 
     public void onPlaybackResult(PlaybackResult<VodPlayRequest> playback) {
         if (playback == null || cannotApply(playback)) return;
+        if (ResourceHealth.isCancellation(playback.error())) return;
+        if (state.getResourceRevision() != VodConfig.getDiscoveryRevision()) return;
+        ResourceHealth.Status health = ResourceHealth.playbackStatus(playback.result(), playback.error());
+        if (health != ResourceHealth.Status.AVAILABLE) {
+            recordPlaybackHealth(playback.request(), health);
+            preloader.clear();
+            host.resetPlaybackForError(health == ResourceHealth.Status.INVALID ? "此线路暂时没有可播放内容" : "此线路暂时无法连接");
+            fallbackPolicy.playbackError();
+            return;
+        }
         applyPlaybackResult(playback.result(), playback.request());
     }
 
@@ -116,8 +128,8 @@ public class VodPlaybackController {
         applyPlaybackState(result, request);
         renderPlaybackResult(result);
         updatePlaybackPosition(result);
-        host.loadDanmaku(result, state.getHistory(), episode);
         startPlayback(result, startPositionMs(), episode);
+        host.loadDanmaku(result, state.getHistory(), episode);
         preloader.update(result);
     }
 
@@ -125,7 +137,7 @@ public class VodPlaybackController {
         state.setQuality(result);
         state.setPlayingRequest(request);
         state.setUseParse(result.isUseParse());
-        result.getUrl().set(state.getQualityPosition());
+        result.getUrl().set(host.preferredQualityPosition(result, state.getQualityPosition()));
     }
 
     private void renderPlaybackResult(Result result) {
@@ -149,6 +161,7 @@ public class VodPlaybackController {
     }
 
     public void selectFlag(Flag item) {
+        state.setSelectFirstSource(false);
         selectFlag(item, false);
     }
 
@@ -166,6 +179,9 @@ public class VodPlaybackController {
 
     public void selectEpisode(Episode item) {
         if (!state.hasFlags()) return;
+        // A fresh selection owns playback; late fallback search batches may only
+        // update the candidate list until this selection itself fails.
+        state.setSelectFirstSource(false);
         saveCurrentHistory();
         Flag selected = state.getFlag();
         for (Flag flag : state.getFlags()) flag.toggle(flag == selected, item);
@@ -184,6 +200,7 @@ public class VodPlaybackController {
 
     public void selectQuality(Result result) {
         if (!state.hasEpisode()) return;
+        state.setSelectFirstSource(false);
         state.setQuality(result);
         state.setQualityPosition(result.getUrl().getPosition());
         preloader.clear();
@@ -217,6 +234,7 @@ public class VodPlaybackController {
     }
 
     private void switchSource(Vod item, boolean autoFallback) {
+        state.setSelectFirstSource(false);
         state.setAutoFallback(autoFallback);
         saveCurrentHistory();
         preloader.clear();
@@ -236,7 +254,32 @@ public class VodPlaybackController {
     public void playbackError(String msg) {
         preloader.clear();
         host.resetPlaybackForError(msg);
+        // Player/decoder events do not carry a resource request token. Never use
+        // an old stream's error to blacklist a newly selected resource.
         fallbackPolicy.playbackError();
+    }
+
+    private void recordPlaybackHealth(VodPlayRequest request, ResourceHealth.Status status) {
+        if (state.getResourceRevision() != VodConfig.getDiscoveryRevision() || findEpisode(request) == null) return;
+        ResourceHealth.recordPlayback(host.getVodKey(), host.getVodId(), request, state.getFlags(), status, state.getResourceRevision());
+    }
+
+    public void playbackReady() {
+        if (state.getPlayingRequest() == null) return;
+        state.setSelectFirstSource(false);
+    }
+
+    /** Captured when the actual media starts, never inferred from a later UI selection. */
+    public java.util.function.Consumer<Boolean> playbackObservation() {
+        VodPlayRequest request = state.getPlayingRequest();
+        long revision = state.getResourceRevision();
+        String site = host.getVodKey(), id = host.getVodId();
+        return ready -> {
+            if (request == null || state.getPlayingRequest() != request || !request.matches(state.getActiveRequest())
+                    || revision != state.getResourceRevision() || revision != VodConfig.getDiscoveryRevision()
+                    || !site.equals(host.getVodKey()) || !id.equals(host.getVodId())) return;
+            recordPlaybackHealth(request, ready ? ResourceHealth.Status.AVAILABLE : ResourceHealth.Status.TRANSIENT);
+        };
     }
 
     public void playbackEnded() {
@@ -250,6 +293,7 @@ public class VodPlaybackController {
     }
 
     public void refresh() {
+        state.setSelectFirstSource(false);
         saveCurrentHistory();
         preloader.clear();
         host.stopPlaybackForRefresh();
@@ -334,6 +378,7 @@ public class VodPlaybackController {
     }
 
     public void onPreloadResult(PlaybackResult<VodPlayRequest> preload) {
+        if (state.getResourceRevision() != VodConfig.getDiscoveryRevision()) return;
         preloader.onResult(preload);
     }
 
@@ -469,6 +514,7 @@ public class VodPlaybackController {
         VodPlayRequest pending = state.getPendingRequest();
         VodPlayRequest request = playback.request();
         if (host.isHostFinishing() || pending == null || request == null) return true;
-        return !pending.matches(request) || findEpisode(request) == null || !request.accepts(playback.result());
+        return pending != request || findEpisode(request) == null
+                || (playback.error() == null && !request.accepts(playback.result()));
     }
 }

@@ -6,7 +6,7 @@
     android:background="@drawable/selector_item"
     android:focusable="true"
     android:focusableInTouchMode="false"
-    android:nextFocusUp="@id/part"
+    android:nextFocusUp="@id/episode"
     android:orientation="vertical">
 
     <com.google.android.material.textview.MaterialTextView
@@ -24,7 +24,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="2dp"
         android:singleLine="true"
-        android:textColor="@color/green_a_400"
+        android:textColor="@color/tv_theme_text_secondary"
         android:textSize="14sp"
         tools:text="泥巴"
         tools:visibility="visible" />
@@ -35,7 +35,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="2dp"
         android:singleLine="true"
-        android:textColor="@color/yellow_500"
+        android:textColor="@color/tv_theme_text"
         android:textSize="14sp"
         tools:text="1080p" />
 

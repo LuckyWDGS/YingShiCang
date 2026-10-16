@@ -12,7 +12,11 @@ import org.junit.Test;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import okhttp3.HttpUrl;
 import okhttp3.OkHttpClient;
@@ -23,6 +27,44 @@ import okhttp3.ResponseBody;
 import static org.junit.Assert.*;
 
 public class AiDramaFilterCompatibilityTest {
+
+    @Test public void currentRenamedBridgeRetainsExactAiDjIdentityAndDefaultRoute() throws Exception {
+        // Load the existing fixture with the current superclass name. Equal-length
+        // class names preserve the constant-pool layout and avoid a second AiDj source.
+        byte[] bytes;
+        try (var in = AiDj.class.getResourceAsStream("AiDj.class")) { bytes = in.readAllBytes(); }
+        var encoding = java.nio.charset.StandardCharsets.ISO_8859_1;
+        String oldName = "com/github/catvod/spider/merge/oE", newName = "com/github/catvod/spider/merge/YU";
+        String fixture = new String(bytes, encoding);
+        assertTrue(fixture.contains(oldName));
+        byte[] current = fixture.replace(oldName, newName).getBytes(encoding);
+        class ProviderLoader extends ClassLoader {
+            ProviderLoader() { super(AiDj.class.getClassLoader()); }
+            Class<?> provider() { return defineClass(AiDj.class.getName(), current, 0, current.length); }
+        }
+        Spider spider = (Spider) new ProviderLoader().provider().getConstructor().newInstance();
+        assertEquals("com.github.catvod.spider.merge.YU", spider.getClass()
+                .getMethod("categoryContent", String.class, String.class, boolean.class, java.util.HashMap.class)
+                .getDeclaringClass().getName());
+        assertSame(spider, AiDramaFilterCompatibility.audited(new BaseSpiderGuard(spider)));
+        assertNull(AiDramaFilterCompatibility.page(null, spider, "comic", 1, Map.of("topic", ""), null, null));
+        assertNull(AiDramaFilterCompatibility.audited(new com.github.catvod.spider.merge.YU()));
+    }
+
+    @Test public void auditedHelperShapeFindsNestedProtocolConstantsWithinBoundedDepth() throws Exception {
+        var nested = List.of(List.of("genre: short_play / comic_series / ai_series; sort: ['hot_score']"),
+                List.of("sort", List.of("online_time")), "hot_score",
+                "/reading/distribution/category/landpage/v");
+        assertEquals(List.of("genre: short_play / comic_series / ai_series; sort: ['hot_score']", "sort", "online_time",
+                "hot_score", "/reading/distribution/category/landpage/v"),
+                AiDramaFilterCompatibility.flattenConstants(nested));
+        assertTrue(AiDramaFilterCompatibility.nativeHelperShape(
+                List.of("genre", "page", "config", "gender", "sort"),
+                AiDramaFilterCompatibility.flattenConstants(nested), List.of("_api_post")));
+        var tooDeep = List.of(List.of(List.of(List.of(List.of(List.of("online_time"))))));
+        try { AiDramaFilterCompatibility.flattenConstants(tooDeep); fail("unbounded constants accepted"); }
+        catch (ReflectiveOperationException expected) { }
+    }
     private static JsonObject fixture(String slug, int rpc, String topic, int page) {
         var route = new JsonObject();
         route.addProperty("contentType", slug); route.addProperty("rpcContentType", rpc);
@@ -101,6 +143,33 @@ public class AiDramaFilterCompatibilityTest {
         assertEquals("全23集", row.get("vod_remarks").getAsString()); assertEquals("玄幻/冒险", row.get("vod_class").getAsString());
         assertEquals(2, result.get("page").getAsInt()); assertEquals(10, result.get("pagecount").getAsInt()); assertEquals(239, result.get("total").getAsInt());
     }
+
+    @Test public void nativeLatestResultRetainsNativeRowsAndOnlyUsesHasMoreForPagination() throws Exception {
+        var rows = new JsonArray();
+        var first = new JsonObject(); first.addProperty("vod_id", "native-1"); first.addProperty("vod_name", "最新一");
+        first.addProperty("vod_pic", "cover-1"); first.addProperty("vod_remarks", "全12集"); rows.add(first);
+        var second = new JsonObject(); second.addProperty("vod_id", "native-2"); second.addProperty("vod_name", "最新二");
+        second.addProperty("vod_class", "玄幻/冒险"); rows.add(second);
+        var page = AiDramaFilterCompatibility.nativeLatestResult(rows, true, 2);
+        assertEquals(2, page.get("page").getAsInt()); assertEquals(9999, page.get("pagecount").getAsInt());
+        assertEquals("native-1", page.getAsJsonArray("list").get(0).getAsJsonObject().get("vod_id").getAsString());
+        page = AiDramaFilterCompatibility.nativeLatestResult(rows, false, 2);
+        assertEquals(2, page.get("pagecount").getAsInt());
+        var malformed = rows.deepCopy(); malformed.get(0).getAsJsonObject().remove("vod_id");
+        try { AiDramaFilterCompatibility.nativeLatestResult(malformed, false, 1); fail(); }
+        catch (IOException expected) { }
+    }
+    @Test public void nativeLatestResultMapsOriginalAppRowsToVodSchema() throws Exception {
+        var rows = new JsonArray(); var raw = new JsonObject();
+        raw.addProperty("series_id", "app-1"); raw.addProperty("title", "应用最新");
+        raw.addProperty("cover", "cover-app"); raw.addProperty("intro", "简介"); raw.addProperty("episode_cnt", 18);
+        var tags = new JsonArray(); tags.add("玄幻"); raw.add("tags", tags); rows.add(raw);
+        var page = AiDramaFilterCompatibility.nativeLatestResult(rows, true, 1);
+        var item = page.getAsJsonArray("list").get(0).getAsJsonObject();
+        assertEquals("app-1", item.get("vod_id").getAsString()); assertEquals("应用最新", item.get("vod_name").getAsString());
+        assertEquals("cover-app", item.get("vod_pic").getAsString()); assertEquals("全18集", item.get("vod_remarks").getAsString());
+        assertEquals("玄幻", item.get("vod_class").getAsString());
+    }
     @Test public void genuineShortLastPagePreservesServerEndWhileMalformedPagingFails() throws Exception {
         var source = fixture("ai-drama", 4, "fantasy", 10);
         var result = AiDramaFilterCompatibility.pageResult(source, 10); assertEquals(10, result.get("pagecount").getAsInt());
@@ -111,6 +180,8 @@ public class AiDramaFilterCompatibilityTest {
     }
     @Test public void originalDefaultApiAndUnrelatedSourcesKeepOriginalBehavior() throws Exception {
         assertNull(AiDramaFilterCompatibility.page(null, new AiDj(), "ai", 1, Map.of("topic", ""), null, null));
+        assertNull(AiDramaFilterCompatibility.page(null, new Spider() {}, "other", 1,
+                Map.of("sort", "online_time"), null, null));
         String original = "{\"class\":[]}";
         assertSame(original, AiDramaFilterCompatibility.classes(null, new Spider() {}, original, null, null));
         assertNull(AiDramaFilterCompatibility.page(null, new Spider() {}, "ai", 1, Map.of("topic", "fantasy"), null, null));
@@ -152,5 +223,59 @@ public class AiDramaFilterCompatibilityTest {
                 }).build()).build();
         try { AiDramaFilterCompatibility.execute(HttpUrl.get("https://fixture.invalid/"), client, call -> {}); fail(); }
         catch (IOException expected) { assertTrue(expected.getMessage().contains("limit")); }
+    }
+
+    @Test public void coldNativeCategoryDocumentsRunTogetherAndPreserveTypeOrder() throws Exception {
+        var entered = new CountDownLatch(2); var tracked = new AtomicInteger();
+        var client = new OkHttpClient.Builder().addInterceptor(chain -> {
+            entered.countDown();
+            try {
+                if (!entered.await(2, TimeUnit.SECONDS)) throw new IOException("Category requests did not overlap");
+            } catch (InterruptedException error) { Thread.currentThread().interrupt(); throw new java.io.InterruptedIOException(); }
+            return new Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200).message("OK")
+                    .body(ResponseBody.create(chain.request().url().encodedPath(), null)).build();
+        }).build();
+        var urls = List.of(HttpUrl.get("https://fixture.invalid/comic"), HttpUrl.get("https://fixture.invalid/ai"));
+        assertEquals(List.of("/comic", "/ai"), AiDramaFilterCompatibility.fetchConcurrent(urls, client, call -> tracked.incrementAndGet()));
+        assertEquals(2, tracked.get());
+    }
+
+    @Test public void interruptedNativeMetadataCancelsBothTrackedRequestsAndCannotPublishPartialSuccess() throws Exception {
+        var entered = new CountDownLatch(2); var release = new CountDownLatch(1);
+        var tracked = new CopyOnWriteArrayList<okhttp3.Call>(); var failure = new AtomicReference<Throwable>();
+        var client = new OkHttpClient.Builder().addInterceptor(chain -> {
+            entered.countDown();
+            try { release.await(); }
+            catch (InterruptedException error) { Thread.currentThread().interrupt(); throw new java.io.InterruptedIOException(); }
+            return new Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200).message("OK")
+                    .body(ResponseBody.create("late-body", null)).build();
+        }).build();
+        var worker = new Thread(() -> {
+            try {
+                AiDramaFilterCompatibility.fetchConcurrent(List.of(HttpUrl.get("https://fixture.invalid/comic"),
+                        HttpUrl.get("https://fixture.invalid/ai")), client, tracked::add);
+                failure.set(new AssertionError("Cancelled metadata accepted"));
+            } catch (Throwable error) { failure.set(error); }
+        });
+        worker.start();
+        try {
+            assertTrue(entered.await(2, TimeUnit.SECONDS)); worker.interrupt(); worker.join(2000);
+            assertFalse(worker.isAlive()); assertTrue(failure.get() instanceof java.io.InterruptedIOException);
+            assertEquals(2, tracked.size()); assertTrue(tracked.stream().allMatch(okhttp3.Call::isCanceled));
+        } finally { worker.interrupt(); release.countDown(); worker.join(2000); }
+    }
+
+    @Test public void nativeMetadataRequestCountAndTrackerCancellationRemainBounded() throws Exception {
+        var count = new AtomicInteger(); var client = new OkHttpClient();
+        try {
+            AiDramaFilterCompatibility.fetchConcurrent(List.of(HttpUrl.get("https://fixture.invalid/1"),
+                    HttpUrl.get("https://fixture.invalid/2"), HttpUrl.get("https://fixture.invalid/3")), client, call -> count.incrementAndGet());
+            fail();
+        } catch (IOException expected) { assertEquals(0, count.get()); }
+        try {
+            AiDramaFilterCompatibility.fetchConcurrent(List.of(HttpUrl.get("http://127.0.0.1:1/comic"),
+                    HttpUrl.get("http://127.0.0.1:1/ai")), client, call -> { count.incrementAndGet(); call.cancel(); });
+            fail();
+        } catch (IOException expected) { assertEquals(2, count.get()); }
     }
 }

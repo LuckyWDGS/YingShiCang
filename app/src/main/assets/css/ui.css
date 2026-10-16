@@ -1,53 +1,28 @@
+/* Cinema palette shared with the TV and configuration center. */
 :root {
-    --md-primary:                  #006C4C;
-    --md-on-primary:               #FFFFFF;
-    --md-primary-container:        #89F7C6;
-    --md-on-primary-container:     #00210F;
-    --md-secondary-container:      #C8E6D5;
-    --md-on-secondary-container:   #082015;
-    --md-error:                    #BA1A1A;
-    --md-on-error:                 #FFFFFF;
-    --md-error-container:          #FFDAD6;
-    --md-on-error-container:       #410002;
-    --md-surface:                  #FFFFFF;
-    --md-on-surface:               #15140E;
-    --md-surface-variant:          #E3E3DC;
-    --md-on-surface-variant:       #343430;
-    --md-outline:                  #575752;
-    --md-outline-variant:          #C7C7C0;
-    --md-surface-container:        #FFFFFF;
-    --md-surface-container-high:   #F0EFE9;
-    --md-inverse-surface:          #2A2A25;
-    --md-inverse-on-surface:       #F2F1EB;
-    --md-scrim:                    rgba(0,0,0,0.32);
-    --md-shadow:                   rgba(0,0,0,0.20);
-}
-
-@media (prefers-color-scheme: dark) {
-    :root {
-        --md-primary:                  #6CDBA4;
-        --md-on-primary:               #003824;
-        --md-primary-container:        #005237;
-        --md-on-primary-container:     #89F7C6;
-        --md-secondary-container:      #354B40;
-        --md-on-secondary-container:   #CFE9D8;
-        --md-error:                    #FFB4AB;
-        --md-on-error:                 #690005;
-        --md-error-container:          #93000A;
-        --md-on-error-container:       #FFDAD6;
-        --md-surface:                  #101510;
-        --md-on-surface:               #DEE4DF;
-        --md-surface-variant:          #414942;
-        --md-on-surface-variant:       #C0C9BF;
-        --md-outline:                  #8B9389;
-        --md-outline-variant:          #414942;
-        --md-surface-container:        #1C211D;
-        --md-surface-container-high:   #262B27;
-        --md-inverse-surface:          #DEE4DF;
-        --md-inverse-on-surface:       #181D19;
-        --md-scrim:                    rgba(0,0,0,0.5);
-        --md-shadow:                   rgba(0,0,0,0.5);
-    }
+    color-scheme: dark;
+    --md-primary: #F2F2F2;
+    --md-on-primary: #141414;
+    --md-primary-container: #303030;
+    --md-on-primary-container: #F2F2F2;
+    --md-secondary-container: #252525;
+    --md-on-secondary-container: #E5E5E5;
+    --md-error: #FFB4AB;
+    --md-on-error: #690005;
+    --md-error-container: #93000A;
+    --md-on-error-container: #FFDAD6;
+    --md-surface: #080808;
+    --md-on-surface: #F2F2F2;
+    --md-surface-variant: #1E1E1E;
+    --md-on-surface-variant: #AAAAAA;
+    --md-outline: #707070;
+    --md-outline-variant: #303030;
+    --md-surface-container: #141414;
+    --md-surface-container-high: #252525;
+    --md-inverse-surface: #E5E5E5;
+    --md-inverse-on-surface: #141414;
+    --md-scrim: rgba(0,0,0,.7);
+    --md-shadow: rgba(0,0,0,.4);
 }
 
 /* ══ Reset ══ */
@@ -461,3 +436,9 @@ html, body {
 }
 
 @keyframes md-spin { to { transform: rotate(360deg); } }
+
+/* Consistent form surfaces and focus in every remote tool. */
+.md-input{border-radius:10px;background:var(--md-surface-container);border-color:var(--md-outline-variant)}
+.md-btn{border-radius:10px;min-height:44px}
+.md-btn:focus-visible,a:focus-visible,summary:focus-visible{outline:2px solid #FFFFFF;outline-offset:4px}
+.panel-content{gap:24px}

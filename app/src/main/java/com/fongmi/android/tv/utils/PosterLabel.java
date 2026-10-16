@@ -10,6 +10,42 @@ public final class PosterLabel {
     private static final Pattern SCORE = Pattern.compile("(?:评分\\s*[:：]?\\s*)?([0-9]{1,2}(?:\\.[0-9]{1,2})?)\\s*分?");
     private PosterLabel() {}
 
+    private static final Pattern EPISODE = Pattern.compile("(?:第\\s*)?0*([1-9]\\d{0,3})\\s*(?:集|话|期)?");
+
+    /** AI catalog cards only show source-declared totals, never progress or ratings. */
+    public static String totalEpisodes(String remarks) {
+        Matcher total = TOTAL.matcher(remarks == null ? "" : remarks.trim());
+        return total.find() ? "共" + (total.group(1) != null ? total.group(1) : total.group(2)) + "集" : "";
+    }
+
+    /** Search cards describe episodes; ratings never substitute for missing episode data. */
+    public static String episodes(String remarks) {
+        String note = remarks == null ? "" : remarks.trim();
+        Matcher total = TOTAL.matcher(note);
+        if (total.find()) return "共" + (total.group(1) != null ? total.group(1) : total.group(2)) + "集";
+        Matcher update = UPDATE.matcher(note);
+        if (update.find()) return "更新至" + update.group(1) + "集";
+        Matcher episode = EPISODE.matcher(note);
+        return episode.matches() ? "第" + episode.group(1) + "集" : "";
+    }
+
+    /** History also has genuine non-numeric names, such as specials and film editions. */
+    public static String history(String remarks) {
+        String episode = episodes(remarks);
+        return episode.isEmpty() ? remarks == null ? "" : remarks.trim() : episode;
+    }
+
+    public static String rating(String remarks, String score) {
+        String value = rating(score);
+        if (!value.isEmpty()) return value;
+        String note = remarks == null ? "" : remarks.trim();
+        return note.contains(".") || note.contains("评分") || note.endsWith("分") ? rating(note) : "";
+    }
+
+    public static String source(String name, String key) {
+        return name != null && !name.trim().isEmpty() ? name.trim() : key == null ? "" : key.trim();
+    }
+
     public static String text(String remarks, String score) {
         String note = remarks == null ? "" : remarks.trim();
         Matcher total = TOTAL.matcher(note);

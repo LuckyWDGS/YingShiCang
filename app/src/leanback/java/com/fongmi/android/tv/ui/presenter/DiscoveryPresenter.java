@@ -6,30 +6,42 @@ import androidx.annotation.NonNull;
 import androidx.leanback.widget.Presenter;
 import com.bumptech.glide.Glide;
 import com.fongmi.android.tv.bean.Vod;
+import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.databinding.AdapterDiscoveryBinding;
 import com.fongmi.android.tv.utils.ImgUtil;
-import com.fongmi.android.tv.utils.ResUtil;
 import com.fongmi.android.tv.utils.PosterLabel;
+import java.util.function.BooleanSupplier;
 
-/** The home discovery grid has its own geometry; playback/source cards are independent. */
+/** Shared history-style poster/footer card with explicit metadata semantics for each surface. */
 public class DiscoveryPresenter extends Presenter {
     private final VodPresenter.OnClickListener listener;
-    private final float heightRatio;
+    private final boolean showEpisodes;
+    private final BooleanSupplier showSource;
+    private final BooleanSupplier showTotalEpisodes;
 
     public DiscoveryPresenter(VodPresenter.OnClickListener listener) {
-        this(listener, 1.32f);
+        this(listener, false);
     }
 
-    public DiscoveryPresenter(VodPresenter.OnClickListener listener, float heightRatio) {
+    public DiscoveryPresenter(VodPresenter.OnClickListener listener, boolean showEpisodes) {
+        this(listener, showEpisodes, () -> true, () -> false);
+    }
+
+    public DiscoveryPresenter(VodPresenter.OnClickListener listener, boolean showEpisodes, BooleanSupplier showSource, BooleanSupplier showTotalEpisodes) {
         this.listener = listener;
-        this.heightRatio = heightRatio;
+        this.showEpisodes = showEpisodes;
+        this.showSource = showSource;
+        this.showTotalEpisodes = showTotalEpisodes;
     }
 
     @NonNull
     @Override
     public ViewHolder onCreateViewHolder(@NonNull ViewGroup parent) {
         AdapterDiscoveryBinding binding = AdapterDiscoveryBinding.inflate(LayoutInflater.from(parent.getContext()), parent, false);
-        binding.getRoot().setHeightRatio(heightRatio);
+        if (!showEpisodes) {
+            binding.remark.setBackgroundResource(R.drawable.poster_rating);
+            binding.remark.setTextSize(16);
+        }
         return new Holder(binding);
     }
 
@@ -39,16 +51,17 @@ public class DiscoveryPresenter extends Presenter {
         Holder holder = (Holder) viewHolder;
         holder.binding.name.setText(item.getName());
         boolean discovery = item.getAction().startsWith("search:");
-        holder.binding.rating.setText(item.getSiteName());
-        holder.binding.rating.setVisibility(discovery || item.getSiteName().isEmpty() ? android.view.View.GONE : android.view.View.VISIBLE);
-        holder.binding.rating.setBackgroundResource(com.fongmi.android.tv.R.drawable.discovery_rating);
-        holder.binding.rating.setTextColor(0xFFCED9DD);
-        holder.binding.rating.setTextSize(11);
-        holder.binding.rating.setTypeface(null, android.graphics.Typeface.NORMAL);
-        String information = PosterLabel.text(item.getRemarks(), item.getScore());
+        String source = !showSource.getAsBoolean() ? "" : discovery ? "豆瓣推荐"
+                : PosterLabel.source(item.getSiteName(), item.getSiteKey());
+        holder.binding.rating.setText(source);
+        holder.binding.rating.setVisibility(source.isEmpty() ? android.view.View.GONE : android.view.View.VISIBLE);
+        boolean totalOnly = showTotalEpisodes.getAsBoolean();
+        String information = totalOnly ? PosterLabel.totalEpisodes(item.getRemarks())
+                : showEpisodes ? PosterLabel.episodes(item.getRemarks()) : PosterLabel.rating(item.getRemarks(), item.getScore());
+        if (!totalOnly && !showEpisodes && !information.isEmpty()) information += "分";
         holder.binding.remark.setText(information);
         holder.binding.remark.setVisibility(information.isEmpty() ? android.view.View.GONE : android.view.View.VISIBLE);
-        holder.view.setContentDescription(item.getName() + (information.isEmpty() ? "" : "，" + information) + (discovery ? "" : "，" + item.getSiteName()));
+        holder.view.setContentDescription(item.getName() + (information.isEmpty() ? "" : "，" + information) + (source.isEmpty() ? "" : "，" + source));
         holder.view.setOnClickListener(view -> listener.onItemClick(item));
         if (discovery) ImgUtil.loadPoster(item.getPic(), holder.binding.image);
         else ImgUtil.load(item.getName(), item.getPic(), holder.binding.image);

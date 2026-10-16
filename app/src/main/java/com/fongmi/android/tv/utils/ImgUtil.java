@@ -54,9 +54,21 @@ public class ImgUtil {
 
     public static void logo(ImageView view) {
         try {
-            Glide.with(view).load(UrlUtil.convert(VodConfig.get().getConfig().getLogo())).circleCrop().override(Target.SIZE_ORIGINAL, Target.SIZE_ORIGINAL).error(R.drawable.ic_logo).into(view);
-        } catch (Throwable e) {
-            e.printStackTrace();
+            // Cancel the previous source before showing the new logo or its fallback.
+            var requests = Glide.with(view);
+            requests.clear(view);
+            view.setImageResource(R.drawable.ic_logo);
+            String logo = VodConfig.get().getConfig().getLogo();
+            if (TextUtils.isEmpty(logo) || logo.trim().isEmpty()) return;
+            // Drawable loading preserves GIF animation; use the view's size, not full resolution.
+            requests.load(UrlUtil.convert(logo.trim()))
+                    .fitCenter()
+                    .placeholder(R.drawable.ic_logo)
+                    .fallback(R.drawable.ic_logo)
+                    .error(R.drawable.ic_logo)
+                    .into(view);
+        } catch (RuntimeException e) {
+            view.setImageResource(R.drawable.ic_logo);
         }
     }
 

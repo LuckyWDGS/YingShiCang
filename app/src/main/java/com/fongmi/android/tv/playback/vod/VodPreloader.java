@@ -45,6 +45,7 @@ final class VodPreloader {
 
     void onResult(PlaybackResult<VodPlayRequest> preload) {
         if (!isPending(preload)) return;
+        if (preload.error() != null) { clear(); return; }
         apply(preload.request(), preload.result());
     }
 
@@ -70,7 +71,7 @@ final class VodPreloader {
 
     private boolean isPending(PlaybackResult<VodPlayRequest> preload) {
         VodPlayRequest pending = state.getPreloadRequest();
-        return preload != null && pending != null && pending.matches(preload.request()) && state.getPreloadResult() == null;
+        return preload != null && pending != null && pending == preload.request() && state.getPreloadResult() == null;
     }
 
     private void apply(VodPlayRequest request, Result result) {
@@ -84,7 +85,7 @@ final class VodPreloader {
     }
 
     private void start(Result result, Episode episode) {
-        result.getUrl().set(state.getQualityPosition());
+        result.getUrl().set(host.preferredQualityPosition(result, state.getQualityPosition()));
         MediaMetadata metadata = VodPlaybackMedia.metadata(state.getHistory(), episode);
         if (host.preloadPlayback(result, getStartPositionMs(result), metadata)) state.completePreload(result);
         else clear();

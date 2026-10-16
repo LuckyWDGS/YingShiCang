@@ -6,7 +6,7 @@
     <path
         android:fillColor="@android:color/transparent"
         android:pathData="M3,4.5 L6,7.5 L9,4.5"
-        android:strokeColor="#A2EEF5"
+        android:strokeColor="@color/tv_theme_text"
         android:strokeLineCap="round"
         android:strokeLineJoin="round"
         android:strokeWidth="1.5" />

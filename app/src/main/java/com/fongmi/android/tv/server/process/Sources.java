@@ -2,9 +2,7 @@ package com.fongmi.android.tv.server.process;
 
 import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.bean.Config;
-import com.fongmi.android.tv.source.SourceInput;
 import com.fongmi.android.tv.source.SourceManager;
-import com.fongmi.android.tv.source.SourcePairing;
 import com.fongmi.android.tv.server.impl.Process;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
@@ -25,14 +23,6 @@ public final class Sources implements Process {
     @Override public Response doResponse(IHTTPSession session, String url, Map<String,String> files) {
         Map<String,String> params = session.getParms();
         JsonObject data = new JsonObject();
-        if (url.equals("/api/sources/login") && session.getMethod() == NanoHTTPD.Method.POST) {
-            String token = SourcePairing.INSTANCE.login(params.get("code"));
-            if (token == null) return reply(Response.Status.UNAUTHORIZED, "配对码无效或已过期；连续输错请稍后重试", data);
-            data.addProperty("token", token);
-            return reply(Response.Status.OK, "已连接电视", data);
-        }
-        if (!SourcePairing.INSTANCE.valid(session.getHeaders().get("x-source-token")))
-            return reply(Response.Status.UNAUTHORIZED, "请在电视打开「配置」，重新扫码或输入配对码", data);
         if (!url.equals("/api/sources")) return reply(Response.Status.NOT_FOUND, "接口不存在", data);
         try {
             if (session.getMethod() == NanoHTTPD.Method.POST) {
@@ -49,6 +39,7 @@ public final class Sources implements Process {
             data.add("items", list);
             return reply(Response.Status.OK, "", data);
         } catch (IllegalArgumentException error) { return reply(Response.Status.BAD_REQUEST, error.getMessage(), data); }
-        catch (Exception error) { return reply(Response.Status.INTERNAL_ERROR, "保存失败，请重试", data); }
+        catch (Exception error) { return reply(Response.Status.INTERNAL_ERROR,
+                session.getMethod() == NanoHTTPD.Method.POST ? "保存失败，请重试" : "读取线路失败，请重试", data); }
     }
 }

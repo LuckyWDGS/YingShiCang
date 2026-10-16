@@ -14,6 +14,7 @@ import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentActivity;
 import androidx.viewbinding.ViewBinding;
 
+import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.bean.Danmaku;
 import com.fongmi.android.tv.databinding.DialogDanmakuBinding;
 import com.fongmi.android.tv.player.PlayerManager;
@@ -60,7 +61,10 @@ public final class DanmakuDialog extends BaseBottomSheetDialog implements Danmak
         binding.recycler.addItemDecoration(new SpaceItemDecoration(1, 16));
         binding.recycler.post(() -> binding.recycler.scrollToPosition(adapter.getSelected()));
         binding.recycler.setVisibility(adapter.getItemCount() == 0 ? View.GONE : View.VISIBLE);
-        binding.search.setVisibility(player.getMetadata() == null || DanmakuSetting.getEffectiveApiUrl().isEmpty() ? View.GONE : View.VISIBLE);
+        binding.search.setVisibility(View.VISIBLE);
+        binding.emptyHint.setVisibility(adapter.getItemCount() == 0 ? View.VISIBLE : View.GONE);
+        binding.enabledSwitch.setChecked(DanmakuSetting.isLoad() && DanmakuSetting.isShow());
+        binding.enabledSwitch.setOnCheckedChangeListener((button, checked) -> player.enableDanmaku(checked));
     }
 
     @Override
@@ -71,22 +75,25 @@ public final class DanmakuDialog extends BaseBottomSheetDialog implements Danmak
     }
 
     private void onSearch(View view) {
-        DanmakuSearchDialog.create().player(player).show(getActivity());
-        dismiss();
+        FragmentActivity activity = requireActivity();
+        dismissNow();
+        DanmakuSearchDialog.create().player(player).show(activity);
     }
 
     private void onChoose(View view) {
-        FileChooser.from(launcher).show(new String[]{"text/*"});
+        FileChooser.from(launcher).show(new String[]{"text/*", "application/xml", "application/json", "application/octet-stream"});
         player.pause();
     }
 
     private void onSetting(View view) {
-        DanmakuSettingDialog.create().player(player).show(getActivity());
-        dismiss();
+        FragmentActivity activity = requireActivity();
+        dismissNow();
+        DanmakuSettingDialog.create().player(player).show(activity);
     }
 
     @Override
     public void onItemClick(Danmaku item) {
+        player.enableDanmaku(true);
         player.toggleDanmaku(item);
         dismiss();
     }
@@ -95,6 +102,7 @@ public final class DanmakuDialog extends BaseBottomSheetDialog implements Danmak
 
     private void setDanmaku(Uri uri) {
         if (!isAdded()) return;
+        player.enableDanmaku(true);
         player.setDanmaku(Danmaku.from(FileUtil.getDisplayName(uri), uri.toString()));
         dismiss();
     }

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="media_search">搜索</string>
+    <string name="media_import">导入本地文件</string>
+    <string name="media_style">样式与同步设置</string>
+    <string name="media_subtitle_enabled">显示字幕</string>
+    <string name="media_danmaku_enabled">显示弹幕</string>
+    <string name="media_subtitle_empty">当前没有字幕，可搜索在线字幕或导入 SRT、ASS、VTT 等文件。</string>
+    <string name="media_danmaku_empty">当前没有弹幕，可搜索在线弹幕或导入本地 XML 文件。</string>
+    <string name="media_search_hint">可修改片名后搜索；右侧设置可配置搜索服务。</string>
+    <string name="media_search_empty">没有找到匹配内容，可修改片名后再搜索。</string>
+    <string name="media_search_failed">暂时无法搜索，请检查搜索服务配置或稍后再试。</string>
+    <string name="media_danmaku_api_required">请先配置弹幕接口，再搜索当前片名。</string>
+    <string name="media_subtitle_token_required">在线字幕需要搜索令牌，请先在设置中配置。</string>
+</resources>

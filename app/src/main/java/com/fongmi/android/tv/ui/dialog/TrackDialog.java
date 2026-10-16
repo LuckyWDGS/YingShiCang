@@ -96,6 +96,11 @@ public final class TrackDialog extends BaseBottomSheetDialog implements TrackAda
     @Override
     protected void initView() {
         setRecyclerView();
+        binding.emptyHint.setVisibility(type == C.TRACK_TYPE_TEXT && adapter.getItemCount() == 0 ? View.VISIBLE : View.GONE);
+        binding.enabledSwitch.setVisibility(type == C.TRACK_TYPE_TEXT ? View.VISIBLE : View.GONE);
+        binding.enabledSwitch.setChecked(!player.getPlayer().getTrackSelectionParameters().disabledTrackTypes.contains(C.TRACK_TYPE_TEXT));
+        binding.enabledSwitch.setOnCheckedChangeListener((button, checked) -> player.getPlayer().setTrackSelectionParameters(
+                player.getPlayer().getTrackSelectionParameters().buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !checked).build()));
         binding.search.setVisibility(hasSearch() ? View.VISIBLE : View.GONE);
         binding.choose.setVisibility(hasChoose() ? View.VISIBLE : View.GONE);
         binding.setting.setVisibility(hasSetting() ? View.VISIBLE : View.GONE);
@@ -166,6 +171,7 @@ public final class TrackDialog extends BaseBottomSheetDialog implements TrackAda
 
     @Override
     public void onItemClick(Track item) {
+        if (type == C.TRACK_TYPE_TEXT) binding.enabledSwitch.setChecked(true);
         player.setTrack(Arrays.asList(item.key(player.getKey()).save()));
         dismiss();
     }
@@ -174,6 +180,7 @@ public final class TrackDialog extends BaseBottomSheetDialog implements TrackAda
 
     private void setSubtitle(Uri uri) {
         if (!isAdded()) return;
+        binding.enabledSwitch.setChecked(true);
         player.setSub(Sub.from(FileUtil.getDisplayName(uri), uri.toString()));
         dismiss();
     }

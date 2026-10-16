@@ -3,163 +3,91 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:background="@color/tv_theme_background"
     android:fillViewport="true"
     tools:ignore="NestedWeights">
 
     <androidx.appcompat.widget.LinearLayoutCompat
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:animateLayoutChanges="true"
+        android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="24dp">
+        android:padding="32dp">
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:fontFamily="sans-serif-medium" android:text="@string/player_preload_setting" android:textColor="@color/tv_theme_text" android:textSize="24sp" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:layout_marginBottom="22dp" android:text="@string/setting_preload_subtitle" android:textColor="@color/tv_theme_text_secondary" android:textSize="13sp" />
 
-        <androidx.appcompat.widget.LinearLayoutCompat
-            android:id="@+id/preload"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="@drawable/selector_item"
-            android:focusable="true"
-            android:focusableInTouchMode="false"
-            android:orientation="horizontal">
-
-            <com.google.android.material.textview.MaterialTextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="16dp"
-                android:text="@string/player_preload"
-                android:textColor="@color/white"
-                android:textSize="18sp" />
-
-            <com.google.android.material.textview.MaterialTextView
-                android:id="@+id/preloadText"
+        <androidx.appcompat.widget.LinearLayoutCompat android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+            <androidx.appcompat.widget.LinearLayoutCompat
+                android:id="@+id/preload"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_height="72dp"
+                android:layout_marginEnd="12dp"
                 android:layout_weight="1"
-                android:gravity="end"
-                android:textColor="@color/white"
-                android:textSize="18sp"
-                tools:text="Off" />
-
+                android:background="@drawable/selector_item"
+                android:focusable="true"
+                android:focusableInTouchMode="false"
+                android:orientation="vertical"
+                android:padding="14dp">
+                <TextView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:gravity="center_vertical" android:text="@string/player_preload" android:textColor="@color/tv_theme_text" android:textSize="15sp" />
+                <TextView android:id="@+id/preloadText" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/tv_theme_text_secondary" android:textSize="12sp" tools:text="关" />
+            </androidx.appcompat.widget.LinearLayoutCompat>
+            <androidx.appcompat.widget.LinearLayoutCompat
+                android:id="@+id/preloadNext"
+                android:layout_width="0dp"
+                android:layout_height="72dp"
+                android:layout_marginEnd="12dp"
+                android:layout_weight="1"
+                android:background="@drawable/selector_item"
+                android:focusable="true"
+                android:focusableInTouchMode="false"
+                android:orientation="vertical"
+                android:padding="14dp">
+                <TextView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:gravity="center_vertical" android:text="@string/player_preload_next" android:textColor="@color/tv_theme_text" android:textSize="15sp" />
+                <TextView android:id="@+id/preloadNextText" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/tv_theme_text_secondary" android:textSize="12sp" tools:text="关" />
+            </androidx.appcompat.widget.LinearLayoutCompat>
+            <androidx.appcompat.widget.LinearLayoutCompat
+                android:id="@+id/preloadThread"
+                android:layout_width="0dp"
+                android:layout_height="72dp"
+                android:layout_marginEnd="12dp"
+                android:layout_weight="1"
+                android:background="@drawable/selector_item"
+                android:focusable="true"
+                android:focusableInTouchMode="false"
+                android:orientation="vertical"
+                android:padding="14dp">
+                <TextView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:gravity="center_vertical" android:text="@string/player_preload_threads" android:textColor="@color/tv_theme_text" android:textSize="15sp" />
+                <TextView android:id="@+id/preloadThreadText" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/tv_theme_text_secondary" android:textSize="12sp" tools:text="1 条" />
+            </androidx.appcompat.widget.LinearLayoutCompat>
+            <androidx.appcompat.widget.LinearLayoutCompat
+                android:id="@+id/preloadSize"
+                android:layout_width="0dp"
+                android:layout_height="72dp"
+                android:layout_weight="1"
+                android:background="@drawable/selector_item"
+                android:focusable="true"
+                android:focusableInTouchMode="false"
+                android:orientation="vertical"
+                android:padding="14dp">
+                <TextView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:gravity="center_vertical" android:text="@string/player_preload_size" android:textColor="@color/tv_theme_text" android:textSize="15sp" />
+                <TextView android:id="@+id/preloadSizeText" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/tv_theme_text_secondary" android:textSize="12sp" tools:text="512 MB" />
+            </androidx.appcompat.widget.LinearLayoutCompat>
         </androidx.appcompat.widget.LinearLayoutCompat>
 
-        <androidx.appcompat.widget.LinearLayoutCompat
-            android:id="@+id/preloadNext"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:background="@drawable/selector_item"
-            android:focusable="true"
-            android:focusableInTouchMode="false"
-            android:orientation="horizontal">
-
-            <com.google.android.material.textview.MaterialTextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="16dp"
-                android:text="@string/player_preload_next"
-                android:textColor="@color/white"
-                android:textSize="18sp" />
-
-            <com.google.android.material.textview.MaterialTextView
-                android:id="@+id/preloadNextText"
+        <androidx.appcompat.widget.LinearLayoutCompat android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:orientation="horizontal">
+            <androidx.appcompat.widget.LinearLayoutCompat
+                android:id="@+id/preloadTime"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_height="72dp"
                 android:layout_weight="1"
-                android:gravity="end"
-                android:textColor="@color/white"
-                android:textSize="18sp"
-                tools:text="Off" />
-
-        </androidx.appcompat.widget.LinearLayoutCompat>
-
-        <androidx.appcompat.widget.LinearLayoutCompat
-            android:id="@+id/preloadThread"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:background="@drawable/selector_item"
-            android:focusable="true"
-            android:focusableInTouchMode="false"
-            android:orientation="horizontal">
-
-            <com.google.android.material.textview.MaterialTextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="16dp"
-                android:text="@string/player_preload_threads"
-                android:textColor="@color/white"
-                android:textSize="18sp" />
-
-            <com.google.android.material.textview.MaterialTextView
-                android:id="@+id/preloadThreadText"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:gravity="end"
-                android:textColor="@color/white"
-                android:textSize="18sp"
-                tools:text="1" />
-
-        </androidx.appcompat.widget.LinearLayoutCompat>
-
-        <androidx.appcompat.widget.LinearLayoutCompat
-            android:id="@+id/preloadSize"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:background="@drawable/selector_item"
-            android:focusable="true"
-            android:focusableInTouchMode="false"
-            android:orientation="horizontal">
-
-            <com.google.android.material.textview.MaterialTextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="16dp"
-                android:text="@string/player_preload_size"
-                android:textColor="@color/white"
-                android:textSize="18sp" />
-
-            <com.google.android.material.textview.MaterialTextView
-                android:id="@+id/preloadSizeText"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:gravity="end"
-                android:textColor="@color/white"
-                android:textSize="18sp"
-                tools:text="512 MB" />
-
-        </androidx.appcompat.widget.LinearLayoutCompat>
-
-        <androidx.appcompat.widget.LinearLayoutCompat
-            android:id="@+id/preloadTime"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:background="@drawable/selector_item"
-            android:focusable="true"
-            android:focusableInTouchMode="false"
-            android:orientation="horizontal">
-
-            <com.google.android.material.textview.MaterialTextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="16dp"
-                android:text="@string/player_preload_time"
-                android:textColor="@color/white"
-                android:textSize="18sp" />
-
-            <com.google.android.material.textview.MaterialTextView
-                android:id="@+id/preloadTimeText"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:gravity="end"
-                android:textColor="@color/white"
-                android:textSize="18sp"
-                tools:text="60 s" />
-
+                android:background="@drawable/selector_item"
+                android:focusable="true"
+                android:focusableInTouchMode="false"
+                android:orientation="vertical"
+                android:padding="14dp">
+                <TextView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:gravity="center_vertical" android:text="@string/player_preload_time" android:textColor="@color/tv_theme_text" android:textSize="15sp" />
+                <TextView android:id="@+id/preloadTimeText" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/tv_theme_text_secondary" android:textSize="12sp" tools:text="60 秒" />
+            </androidx.appcompat.widget.LinearLayoutCompat>
+            <Space android:layout_width="0dp" android:layout_height="1dp" android:layout_weight="3" />
         </androidx.appcompat.widget.LinearLayoutCompat>
     </androidx.appcompat.widget.LinearLayoutCompat>
 </androidx.core.widget.NestedScrollView>

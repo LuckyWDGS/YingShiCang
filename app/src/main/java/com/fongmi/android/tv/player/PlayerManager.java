@@ -60,6 +60,8 @@ public class PlayerManager implements ParseCallback {
     private VideoSize videoSize;
     private ParseJob parseJob;
     private PlaySpec spec;
+    private PlaySpec observedSpec;
+    private java.util.function.Consumer<Boolean> resourceObservation;
     private Player player;
 
     private DanmakuConfig danmakuConfig;
@@ -324,6 +326,13 @@ public class PlayerManager implements ParseCallback {
         callback.onDanmakuConfigChanged(danmakuConfig);
     }
 
+    public void enableDanmaku(boolean enabled) {
+        DanmakuSetting.putLoad(enabled);
+        DanmakuSetting.putShow(enabled);
+        setDanmakuEnabled(enabled);
+        notifyDanmakuSourceChanged();
+    }
+
     public void setDanmakuEnabled(boolean enabled) {
         if (danmakuEnabled == enabled) return;
         danmakuEnabled = enabled;
@@ -451,6 +460,23 @@ public class PlayerManager implements ParseCallback {
 
     public void clear() {
         spec = null;
+        observedSpec = null;
+        resourceObservation = null;
+    }
+
+    public void observeCurrentPlayback(java.util.function.Consumer<Boolean> observer) {
+        observedSpec = spec;
+        resourceObservation = observer;
+        if (currentMediaMatchesSpec() && player.getPlaybackState() == Player.STATE_READY) observeResource(true);
+    }
+
+    private boolean currentMediaMatchesSpec() {
+        MediaItem item = player == null ? null : player.getCurrentMediaItem();
+        return spec != null && item != null && item.localConfiguration != null && item.localConfiguration.tag == spec;
+    }
+
+    private void observeResource(boolean ready) {
+        if (spec != null && spec == observedSpec && resourceObservation != null) resourceObservation.accept(ready);
     }
 
     public boolean preload(PlaySpec spec, long startPositionMs) {
@@ -474,7 +500,10 @@ public class PlayerManager implements ParseCallback {
     }
 
     private void handleDecodeError(PlaybackException e) {
-        if (++retry > 1) callback.onError(engine.getErrorMessage(e));
+        if (++retry > 1) {
+            if (currentMediaMatchesSpec() && player.getPlayerError() == e) observeResource(false);
+            callback.onError(engine.getErrorMessage(e));
+        }
         else retryDecode(isHard() ? PlayerEngine.SOFT : PlayerEngine.HARD);
     }
 
@@ -496,6 +525,7 @@ public class PlayerManager implements ParseCallback {
     }
 
     private void onPlayTimeout() {
+        if (currentMediaMatchesSpec()) observeResource(false);
         callback.onError(ResUtil.getString(R.string.error_play_timeout));
         stop();
     }
@@ -533,7 +563,15 @@ public class PlayerManager implements ParseCallback {
         stopParse();
         pendingStartPositionMs = startPositionMs;
         spec = PlaySpec.fromParse(result, key, metadata);
-        parseJob = ParseJob.create(this).start(result, useParse);
+        PlaySpec requested = spec;
+        parseJob = ParseJob.create(new ParseCallback() {
+            @Override public void onParseSuccess(Map<String, String> headers, String url, String from) {
+                if (spec == requested) PlayerManager.this.onParseSuccess(headers, url, from);
+            }
+            @Override public void onParseError() {
+                if (spec == requested) PlayerManager.this.onParseError();
+            }
+        }).start(result, useParse);
     }
 
     private void stopParse() {
@@ -571,6 +609,7 @@ public class PlayerManager implements ParseCallback {
 
     @Nullable
     public Uri getSelectedDanmakuUri() {
+        if (!DanmakuSetting.isLoad()) return null;
         Danmaku item = spec != null ? spec.getSelectedDanmaku() : null;
         return item == null ? null : item.getUri();
     }
@@ -591,6 +630,15 @@ public class PlayerManager implements ParseCallback {
         if (spec != null) spec.addDanmaku(item);
     }
 
+    public java.util.function.Consumer<Danmaku> danmakuReceiver(boolean append) {
+        PlaySpec requested = spec;
+        return item -> {
+            if (requested == null || spec != requested) return;
+            if (append) addDanmaku(item);
+            else setDanmaku(item);
+        };
+    }
+
     @Override
     public void onParseSuccess(Map<String, String> headers, String url, String from) {
         if (!TextUtils.isEmpty(from)) Notify.show(ResUtil.getString(R.string.parse_from, from));
@@ -604,6 +652,7 @@ public class PlayerManager implements ParseCallback {
     @Override
     public void onParseError() {
         pendingStartPositionMs = C.TIME_UNSET;
+        observeResource(false);
         callback.onError(ResUtil.getString(R.string.error_play_parse));
     }
 
@@ -665,6 +714,7 @@ public class PlayerManager implements ParseCallback {
             DiagnosticLog.write(App.get(), "playback_state", String.valueOf(state));
             if (state == Player.STATE_READY || state == Player.STATE_ENDED) App.removeCallbacks(runnable);
             if (state == Player.STATE_READY) startPreloadIfReady();
+            if (state == Player.STATE_READY && currentMediaMatchesSpec()) observeResource(true);
         }
 
         @Override
@@ -700,7 +750,11 @@ public class PlayerManager implements ParseCallback {
             switch (action) {
                 case DECODE -> handleDecodeError(e);
                 case RECOVERED -> notifyDanmakuSourceChanged();
-                case FATAL -> callback.onError(engine.getErrorMessage(e));
+                case FATAL -> {
+                    // A queued old error cannot affect a newly prepared media item.
+                    if (currentMediaMatchesSpec() && player.getPlayerError() == e) observeResource(false);
+                    callback.onError(engine.getErrorMessage(e));
+                }
             }
         }
     };

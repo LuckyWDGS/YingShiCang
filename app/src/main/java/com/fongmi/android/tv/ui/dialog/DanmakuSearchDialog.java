@@ -74,6 +74,7 @@ public final class DanmakuSearchDialog extends BaseBottomSheetDialog implements 
     @Override
     protected void initEvent() {
         binding.setting.setOnClickListener(this::onSetting);
+        binding.searchAction.setOnClickListener(view -> { if (!getKeyword().isEmpty()) search(); });
         binding.keyword.setOnEditorActionListener((textView, actionId, event) -> {
             if (actionId == EditorInfo.IME_ACTION_SEARCH && !getKeyword().isEmpty()) search();
             return true;
@@ -86,6 +87,7 @@ public final class DanmakuSearchDialog extends BaseBottomSheetDialog implements 
 
     @Override
     public void onItemClick(Danmaku item) {
+        player.enableDanmaku(true);
         player.setDanmaku(item);
         dismiss();
     }
@@ -116,17 +118,27 @@ public final class DanmakuSearchDialog extends BaseBottomSheetDialog implements 
     }
 
     private void showProgress() {
+        binding.emptyHint.setVisibility(GONE);
         binding.recycler.setVisibility(GONE);
         binding.progress.setVisibility(VISIBLE);
     }
 
     private void showResults(boolean empty) {
+        if (binding == null) return;
+        binding.emptyHint.setVisibility(empty ? VISIBLE : GONE);
+        binding.emptyHint.setText(R.string.media_search_empty);
         binding.progress.setVisibility(GONE);
         binding.recycler.setVisibility(empty ? GONE : VISIBLE);
         if (!empty) binding.recycler.requestFocus();
     }
 
     private void search() {
+        if (DanmakuSetting.getEffectiveApiUrl().isEmpty()) {
+            binding.emptyHint.setText(R.string.media_danmaku_api_required);
+            binding.emptyHint.setVisibility(VISIBLE);
+            DanmakuApiDialog.show(this);
+            return;
+        }
         showProgress();
         adapter.clear();
         Util.hideKeyboard(binding.keyword);
@@ -140,13 +152,16 @@ public final class DanmakuSearchDialog extends BaseBottomSheetDialog implements 
     }
 
     private void onSuccess(List<Danmaku> items) {
+        if (binding == null) return;
         adapter.addAll(items);
         showResults(items.isEmpty());
         if (items.isEmpty()) Notify.show(R.string.error_empty);
     }
 
     private void onError(Exception e) {
+        if (binding == null) return;
         showResults(true);
+        binding.emptyHint.setText(R.string.media_search_failed);
         Notify.show(TextUtils.isEmpty(e.getMessage()) ? ResUtil.getString(R.string.error_empty) : e.getMessage());
     }
 

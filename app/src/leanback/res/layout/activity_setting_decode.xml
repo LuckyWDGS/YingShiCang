@@ -3,189 +3,104 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:background="@color/tv_theme_background"
     android:fillViewport="true"
     tools:ignore="NestedWeights">
 
     <androidx.appcompat.widget.LinearLayoutCompat
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:animateLayoutChanges="true"
+        android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="24dp">
+        android:padding="32dp">
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:fontFamily="sans-serif-medium" android:text="@string/player_decode_setting" android:textColor="@color/tv_theme_text" android:textSize="24sp" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:layout_marginBottom="22dp" android:text="@string/setting_decode_subtitle" android:textColor="@color/tv_theme_text_secondary" android:textSize="13sp" />
 
-        <androidx.appcompat.widget.LinearLayoutCompat
-            android:id="@+id/tunnel"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp"
-            android:background="@drawable/selector_item"
-            android:focusable="true"
-            android:focusableInTouchMode="false"
-            android:orientation="horizontal">
-
-            <com.google.android.material.textview.MaterialTextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="16dp"
-                android:text="@string/player_tunnel"
-                android:textColor="@color/white"
-                android:textSize="18sp" />
-
-            <com.google.android.material.textview.MaterialTextView
-                android:id="@+id/tunnelText"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:gravity="end"
-                android:textColor="@color/white"
-                android:textSize="18sp"
-                tools:text="Off" />
-
+        <androidx.appcompat.widget.LinearLayoutCompat android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+            <androidx.appcompat.widget.LinearLayoutCompat
+                android:id="@+id/tunnel"
+                android:layout_width="0dp"
+                android:layout_height="72dp"
+                android:layout_marginEnd="12dp"
+                android:layout_weight="1"
+                android:background="@drawable/selector_item"
+                android:focusable="true"
+                android:focusableInTouchMode="false"
+                android:orientation="vertical"
+                android:padding="14dp">
+                <TextView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:gravity="center_vertical" android:text="@string/player_tunnel" android:textColor="@color/tv_theme_text" android:textSize="15sp" />
+                <TextView android:id="@+id/tunnelText" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/tv_theme_text_secondary" android:textSize="12sp" tools:text="关" />
+            </androidx.appcompat.widget.LinearLayoutCompat>
+            <androidx.appcompat.widget.LinearLayoutCompat
+                android:id="@+id/audioPassThrough"
+                android:layout_width="0dp"
+                android:layout_height="72dp"
+                android:layout_marginEnd="12dp"
+                android:layout_weight="1"
+                android:background="@drawable/selector_item"
+                android:focusable="true"
+                android:focusableInTouchMode="false"
+                android:orientation="vertical"
+                android:padding="14dp">
+                <TextView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:gravity="center_vertical" android:text="@string/player_audio_pass_through" android:textColor="@color/tv_theme_text" android:textSize="15sp" />
+                <TextView android:id="@+id/audioPassThroughText" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/tv_theme_text_secondary" android:textSize="12sp" tools:text="关" />
+            </androidx.appcompat.widget.LinearLayoutCompat>
+            <androidx.appcompat.widget.LinearLayoutCompat
+                android:id="@+id/audioPrefer"
+                android:layout_width="0dp"
+                android:layout_height="72dp"
+                android:layout_weight="1"
+                android:background="@drawable/selector_item"
+                android:focusable="true"
+                android:focusableInTouchMode="false"
+                android:orientation="vertical"
+                android:padding="14dp">
+                <TextView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:gravity="center_vertical" android:text="@string/player_audio_decode" android:textColor="@color/tv_theme_text" android:textSize="15sp" />
+                <TextView android:id="@+id/audioPreferText" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/tv_theme_text_secondary" android:textSize="12sp" tools:text="关" />
+            </androidx.appcompat.widget.LinearLayoutCompat>
         </androidx.appcompat.widget.LinearLayoutCompat>
 
-        <androidx.appcompat.widget.LinearLayoutCompat
-            android:id="@+id/audioPassThrough"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp"
-            android:background="@drawable/selector_item"
-            android:focusable="true"
-            android:focusableInTouchMode="false"
-            android:orientation="horizontal">
-
-            <com.google.android.material.textview.MaterialTextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="16dp"
-                android:text="@string/player_audio_pass_through"
-                android:textColor="@color/white"
-                android:textSize="18sp" />
-
-            <com.google.android.material.textview.MaterialTextView
-                android:id="@+id/audioPassThroughText"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:gravity="end"
-                android:textColor="@color/white"
-                android:textSize="18sp"
-                tools:text="Off" />
-
+        <androidx.appcompat.widget.LinearLayoutCompat android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:orientation="horizontal">
+            <androidx.appcompat.widget.LinearLayoutCompat
+                android:id="@+id/videoPrefer"
+                android:layout_width="0dp"
+                android:layout_height="72dp"
+                android:layout_marginEnd="12dp"
+                android:layout_weight="1"
+                android:background="@drawable/selector_item"
+                android:focusable="true"
+                android:focusableInTouchMode="false"
+                android:orientation="vertical"
+                android:padding="14dp">
+                <TextView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:gravity="center_vertical" android:text="@string/player_video_decode" android:textColor="@color/tv_theme_text" android:textSize="15sp" />
+                <TextView android:id="@+id/videoPreferText" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/tv_theme_text_secondary" android:textSize="12sp" tools:text="关" />
+            </androidx.appcompat.widget.LinearLayoutCompat>
+            <androidx.appcompat.widget.LinearLayoutCompat
+                android:id="@+id/aac"
+                android:layout_width="0dp"
+                android:layout_height="72dp"
+                android:layout_marginEnd="12dp"
+                android:layout_weight="1"
+                android:background="@drawable/selector_item"
+                android:focusable="true"
+                android:focusableInTouchMode="false"
+                android:orientation="vertical"
+                android:padding="14dp">
+                <TextView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:gravity="center_vertical" android:text="@string/player_aac_track" android:textColor="@color/tv_theme_text" android:textSize="15sp" />
+                <TextView android:id="@+id/aacText" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/tv_theme_text_secondary" android:textSize="12sp" tools:text="关" />
+            </androidx.appcompat.widget.LinearLayoutCompat>
+            <androidx.appcompat.widget.LinearLayoutCompat
+                android:id="@+id/dolbyVisionOutput"
+                android:layout_width="0dp"
+                android:layout_height="72dp"
+                android:layout_weight="1"
+                android:background="@drawable/selector_item"
+                android:focusable="true"
+                android:focusableInTouchMode="false"
+                android:orientation="vertical"
+                android:padding="14dp">
+                <TextView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:gravity="center_vertical" android:text="@string/player_dolby_vision_output" android:textColor="@color/tv_theme_text" android:textSize="15sp" />
+                <TextView android:id="@+id/dolbyVisionOutputText" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/tv_theme_text_secondary" android:textSize="12sp" tools:text="自动" />
+            </androidx.appcompat.widget.LinearLayoutCompat>
         </androidx.appcompat.widget.LinearLayoutCompat>
-
-        <androidx.appcompat.widget.LinearLayoutCompat
-            android:id="@+id/audioPrefer"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp"
-            android:background="@drawable/selector_item"
-            android:focusable="true"
-            android:focusableInTouchMode="false"
-            android:orientation="horizontal">
-
-            <com.google.android.material.textview.MaterialTextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="16dp"
-                android:text="@string/player_audio_decode"
-                android:textColor="@color/white"
-                android:textSize="18sp" />
-
-            <com.google.android.material.textview.MaterialTextView
-                android:id="@+id/audioPreferText"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:gravity="end"
-                android:textColor="@color/white"
-                android:textSize="18sp"
-                tools:text="Off" />
-
-        </androidx.appcompat.widget.LinearLayoutCompat>
-
-        <androidx.appcompat.widget.LinearLayoutCompat
-            android:id="@+id/videoPrefer"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp"
-            android:background="@drawable/selector_item"
-            android:focusable="true"
-            android:focusableInTouchMode="false"
-            android:orientation="horizontal">
-
-            <com.google.android.material.textview.MaterialTextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="16dp"
-                android:text="@string/player_video_decode"
-                android:textColor="@color/white"
-                android:textSize="18sp" />
-
-            <com.google.android.material.textview.MaterialTextView
-                android:id="@+id/videoPreferText"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:gravity="end"
-                android:textColor="@color/white"
-                android:textSize="18sp"
-                tools:text="Off" />
-
-        </androidx.appcompat.widget.LinearLayoutCompat>
-
-        <androidx.appcompat.widget.LinearLayoutCompat
-            android:id="@+id/aac"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp"
-            android:background="@drawable/selector_item"
-            android:focusable="true"
-            android:focusableInTouchMode="false"
-            android:orientation="horizontal">
-
-            <com.google.android.material.textview.MaterialTextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="16dp"
-                android:text="@string/player_aac_track"
-                android:textColor="@color/white"
-                android:textSize="18sp" />
-
-            <com.google.android.material.textview.MaterialTextView
-                android:id="@+id/aacText"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:gravity="end"
-                android:textColor="@color/white"
-                android:textSize="18sp"
-                tools:text="Off" />
-
-        </androidx.appcompat.widget.LinearLayoutCompat>
-
-        <androidx.appcompat.widget.LinearLayoutCompat
-            android:id="@+id/dolbyVisionOutput"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp"
-            android:background="@drawable/selector_item"
-            android:focusable="true"
-            android:focusableInTouchMode="false"
-            android:orientation="horizontal">
-
-            <com.google.android.material.textview.MaterialTextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="16dp"
-                android:text="@string/player_dolby_vision_output"
-                android:textColor="@color/white"
-                android:textSize="18sp" />
-
-            <com.google.android.material.textview.MaterialTextView
-                android:id="@+id/dolbyVisionOutputText"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:gravity="end"
-                android:textColor="@color/white"
-                android:textSize="18sp"
-                tools:text="Auto" />
-
-        </androidx.appcompat.widget.LinearLayoutCompat>
-
     </androidx.appcompat.widget.LinearLayoutCompat>
 </androidx.core.widget.NestedScrollView>

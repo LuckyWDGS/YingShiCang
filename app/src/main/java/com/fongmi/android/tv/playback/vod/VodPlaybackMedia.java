@@ -23,6 +23,7 @@ public final class VodPlaybackMedia {
     }
 
     public static void searchDanmaku(Result result, History history, Episode episode, Consumer<Danmaku> set, Consumer<Danmaku> add) {
+        DanmakuApi.cancel();
         if (!DanmakuApi.canSearch()) return;
         if (VodConfig.get().getSite(result.getKey()).getDanmaku() == 0) return;
         DanmakuApi.search(history.getVodName(), episode.getName(), danmaku -> {

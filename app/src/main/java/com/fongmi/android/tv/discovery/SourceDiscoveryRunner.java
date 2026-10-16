@@ -49,7 +49,7 @@ public final class SourceDiscoveryRunner {
         final List<PageSlot> pages = new ArrayList<>();
         final Map<String, Vod> items = new LinkedHashMap<>();
         boolean initialized, failed;
-        int turn, categoryCount, adultCategoryCount;
+        int turn, categoryCount, adultCategoryCount, retryAttempts;
         SourceSlot(Site site) {
             this.site = site; signature = signature(site);
             requestSite = site.getType() == 4 ? App.gson().fromJson(App.gson().toJson(site), Site.class) : site;
@@ -125,6 +125,11 @@ public final class SourceDiscoveryRunner {
     public boolean owns(Vod item) {
         return current() && item.getSite() != null && sources.stream().anyMatch(slot -> slot.site == item.getSite());
     }
+    /** Retry budget belongs to the failed source/page, not to healthy paging rounds. */
+    public int retryAttempt() {
+        return sources.stream().filter(slot -> slot.failed && slot.available())
+                .mapToInt(slot -> slot.retryAttempts).min().orElse(2);
+    }
     public void next(boolean retry, Consumer<Batch> callback) {
         if (closed) return;
         long token = epoch.incrementAndGet();
@@ -146,7 +151,7 @@ public final class SourceDiscoveryRunner {
         Deque<SourceSlot> pending = new ArrayDeque<>();
         // Failed sources retain their exact raw-page cursor, but never hold up
         // healthy-source pagination. Only the explicit retry round reissues them.
-        for (SourceSlot slot : sources) if (slot.available() && (retry ? slot.failed : !slot.failed)) pending.add(slot);
+        for (SourceSlot slot : sources) if (slot.available() && (retry ? slot.failed && slot.retryAttempts < 2 : !slot.failed)) pending.add(slot);
         List<Work> active = new ArrayList<>();
         BlockingQueue<Work> completed = new LinkedBlockingQueue<>();
         try {
@@ -159,6 +164,7 @@ public final class SourceDiscoveryRunner {
                     if ((plugin ? crawlers : networks) >= WORKERS.limit(plugin)) continue;
                     iterator.remove();
                     Work work = new Work(slot);
+                    if (retry) slot.retryAttempts++;
                     work.slot.failed = false;
                     try {
                         work.future = WORKERS.submit(plugin, () -> execute(work, token), result -> completed.offer(work));
@@ -262,6 +268,7 @@ public final class SourceDiscoveryRunner {
             slot.categoryCount = outcome.categoryCount; slot.adultCategoryCount = outcome.adultCategoryCount;
         }
         slot.failed = outcome.error();
+        if (!outcome.error()) slot.retryAttempts = 0;
         if (stats != null) stats.error(outcome.errorType);
         if (outcome.error() || outcome.result == null) return;
         PageSlot page = work.page == null ? slot.next() : work.page;

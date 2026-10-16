@@ -4,6 +4,7 @@ import android.view.LayoutInflater;
 import android.view.ViewGroup;
 
 import androidx.annotation.NonNull;
+import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.fongmi.android.tv.bean.Vod;
@@ -26,10 +27,22 @@ public class QuickAdapter extends RecyclerView.Adapter<QuickAdapter.ViewHolder> 
         width = (ResUtil.getScreenWidth() - space) / 4;
     }
 
-    public void addAll(List<Vod> items) {
-        int start = mItems.size();
-        mItems.addAll(items);
-        notifyItemRangeInserted(start, items.size());
+    public void submitList(List<Vod> items) {
+        List<Vod> next = new ArrayList<>(items);
+        DiffUtil.DiffResult diff = DiffUtil.calculateDiff(new DiffUtil.Callback() {
+            @Override public int getOldListSize() { return mItems.size(); }
+            @Override public int getNewListSize() { return next.size(); }
+            @Override public boolean areItemsTheSame(int oldPosition, int newPosition) {
+                Vod old = mItems.get(oldPosition), item = next.get(newPosition);
+                return old.getSiteKey().equals(item.getSiteKey()) && old.getId().equals(item.getId());
+            }
+            @Override public boolean areContentsTheSame(int oldPosition, int newPosition) {
+                return mItems.get(oldPosition) == next.get(newPosition);
+            }
+        });
+        mItems.clear();
+        mItems.addAll(next);
+        diff.dispatchUpdatesTo(this);
     }
 
     public void remove(int position) {

@@ -31,6 +31,7 @@ public class Download {
     private Future<?> future;
     private int lastProgress;
     private long maxBytes;
+    private long timeoutMillis;
     private String tag;
 
     public static Download create(String url, File file) {
@@ -51,6 +52,11 @@ public class Download {
 
     public Download maxBytes(long maxBytes) {
         this.maxBytes = maxBytes > 0 ? maxBytes : Long.MAX_VALUE;
+        return this;
+    }
+
+    public Download timeout(long timeoutMillis) {
+        this.timeoutMillis = timeoutMillis;
         return this;
     }
 
@@ -91,6 +97,7 @@ public class Download {
 
     private Call createCall() {
         Call request = OkHttp.newCall(url, tag);
+        if (timeoutMillis > 0) request.timeout().timeout(timeoutMillis, java.util.concurrent.TimeUnit.MILLISECONDS);
         call = request;
         return request;
     }
@@ -127,7 +134,7 @@ public class Download {
     }
 
     private void checkCanceled() throws InterruptedIOException {
-        if (Thread.interrupted() || canceled) throw new InterruptedIOException();
+        if (Thread.currentThread().isInterrupted() || canceled) throw new InterruptedIOException();
     }
 
     private void checkSize(long size) throws IOException {

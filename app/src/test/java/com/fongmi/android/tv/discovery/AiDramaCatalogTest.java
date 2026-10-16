@@ -20,6 +20,30 @@ public class AiDramaCatalogTest {
                 new AiDramaCatalog.Category("ai", "AI短剧", List.of(topic))));
     }
 
+    private static AiDramaCatalog sortableCatalog() {
+        var topic = topic("", option("全部", ""), option("爱情", "romance"));
+        var sort = new AiDramaCatalog.Group(AiDramaCatalog.SORT, "排序", "",
+                List.of(option("默认", ""), option("最新", AiDramaCatalog.LATEST)));
+        return new AiDramaCatalog(List.of(new AiDramaCatalog.Category("comic", "AI漫剧", List.of(topic, sort)),
+                new AiDramaCatalog.Category("ai", "AI短剧", List.of(topic, sort))));
+    }
+
+    @Test public void latestAndTopicAreMutuallyExclusiveAndPersistOnlyLegalValues() {
+        var state = new AiDramaCatalog.State(sortableCatalog(), "scope");
+        assertTrue(state.select(AiDramaCatalog.SORT, AiDramaCatalog.LATEST));
+        assertEquals("", state.value("topic"));
+        assertEquals(AiDramaCatalog.LATEST, state.value(AiDramaCatalog.SORT));
+        assertTrue(state.select("topic", "romance"));
+        assertEquals("romance", state.value("topic"));
+        assertEquals("", state.value(AiDramaCatalog.SORT));
+        assertTrue(state.select(AiDramaCatalog.SORT, AiDramaCatalog.LATEST));
+        String saved = state.serialize();
+        var restored = new AiDramaCatalog.State(sortableCatalog(), "scope");
+        restored.restore(saved);
+        assertEquals("", restored.value("topic"));
+        assertEquals(AiDramaCatalog.LATEST, restored.value(AiDramaCatalog.SORT));
+    }
+
     @Test public void nativeTypeAndTopicAreIndependentFromMovieTvGroupsAndPreserveRequestValues() {
         var catalog = catalog(); var state = new AiDramaCatalog.State(catalog, "source-scope");
         assertEquals(List.of("类型", "题材"), state.groups().stream().map(group -> group.label).toList());

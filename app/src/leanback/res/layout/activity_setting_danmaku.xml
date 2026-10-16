@@ -3,137 +3,80 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:background="@color/tv_theme_background"
     android:fillViewport="true"
     tools:ignore="NestedWeights">
 
     <androidx.appcompat.widget.LinearLayoutCompat
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:animateLayoutChanges="true"
+        android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="24dp">
+        android:padding="32dp">
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:fontFamily="sans-serif-medium" android:text="@string/setting_danmaku" android:textColor="@color/tv_theme_text" android:textSize="24sp" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:layout_marginBottom="22dp" android:text="@string/setting_danmaku_subtitle" android:textColor="@color/tv_theme_text_secondary" android:textSize="13sp" />
 
-        <androidx.appcompat.widget.LinearLayoutCompat
-            android:id="@+id/danmakuLoad"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="@drawable/selector_item"
-            android:focusable="true"
-            android:focusableInTouchMode="false"
-            android:orientation="horizontal">
-
-            <com.google.android.material.textview.MaterialTextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="16dp"
-                android:text="@string/danmaku_load"
-                android:textColor="@color/white"
-                android:textSize="18sp" />
-
-            <com.google.android.material.textview.MaterialTextView
-                android:id="@+id/danmakuLoadText"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:gravity="end"
-                android:textColor="@color/white"
-                android:textSize="18sp"
-                tools:text="關" />
-
-        </androidx.appcompat.widget.LinearLayoutCompat>
-
-        <androidx.appcompat.widget.LinearLayoutCompat
-            android:id="@+id/danmakuApi"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:background="@drawable/selector_item"
-            android:focusable="true"
-            android:focusableInTouchMode="false"
-            android:orientation="horizontal"
-            android:visibility="gone"
-            tools:visibility="visible">
-
-            <com.google.android.material.textview.MaterialTextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="16dp"
-                android:text="@string/danmaku_api"
-                android:textColor="@color/white"
-                android:textSize="18sp" />
-
-            <com.google.android.material.textview.MaterialTextView
-                android:id="@+id/danmakuApiText"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:ellipsize="middle"
-                android:gravity="end"
-                android:singleLine="true"
-                android:textColor="@color/white"
-                android:textSize="18sp"
-                tools:text="https://" />
-
-        </androidx.appcompat.widget.LinearLayoutCompat>
-
-        <androidx.appcompat.widget.LinearLayoutCompat
-            android:id="@+id/danmakuAuto"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:background="@drawable/selector_item"
-            android:focusable="true"
-            android:focusableInTouchMode="false"
-            android:orientation="horizontal"
-            android:visibility="gone"
-            tools:visibility="visible">
-
-            <com.google.android.material.textview.MaterialTextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="16dp"
-                android:text="@string/danmaku_auto_load"
-                android:textColor="@color/white"
-                android:textSize="18sp" />
-
-            <com.google.android.material.textview.MaterialTextView
-                android:id="@+id/danmakuAutoText"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:gravity="end"
-                android:textColor="@color/white"
-                android:textSize="18sp"
-                tools:text="關" />
-
-        </androidx.appcompat.widget.LinearLayoutCompat>
-
-        <androidx.appcompat.widget.LinearLayoutCompat
-            android:id="@+id/danmakuSpider"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:background="@drawable/selector_item"
-            android:focusable="true"
-            android:focusableInTouchMode="false"
-            android:orientation="horizontal"
-            android:visibility="gone"
-            tools:visibility="visible">
-
-            <com.google.android.material.textview.MaterialTextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="16dp"
-                android:text="@string/danmaku_spider_first"
-                android:textColor="@color/white"
-                android:textSize="18sp" />
-
-            <com.google.android.material.textview.MaterialTextView
-                android:id="@+id/danmakuSpiderText"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:gravity="end"
-                android:textColor="@color/white"
-                android:textSize="18sp"
-                tools:text="關" />
-
+        <androidx.appcompat.widget.LinearLayoutCompat android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+            <androidx.appcompat.widget.LinearLayoutCompat
+                android:id="@+id/danmakuLoad"
+                android:layout_width="0dp"
+                android:layout_height="72dp"
+                android:layout_marginEnd="12dp"
+                android:layout_weight="1"
+                android:background="@drawable/selector_item"
+                android:focusable="true"
+                android:focusableInTouchMode="false"
+                android:orientation="vertical"
+                android:padding="14dp">
+                <TextView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:gravity="center_vertical" android:text="@string/danmaku_load" android:textColor="@color/tv_theme_text" android:textSize="15sp" />
+                <TextView android:id="@+id/danmakuLoadText" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/tv_theme_text_secondary" android:textSize="12sp" tools:text="关" />
+            </androidx.appcompat.widget.LinearLayoutCompat>
+            <androidx.appcompat.widget.LinearLayoutCompat
+                android:id="@+id/danmakuApi"
+                android:layout_width="0dp"
+                android:layout_height="72dp"
+                android:layout_marginEnd="12dp"
+                android:layout_weight="1"
+                android:background="@drawable/selector_item"
+                android:focusable="true"
+                android:focusableInTouchMode="false"
+                android:orientation="vertical"
+                android:padding="14dp"
+                android:visibility="gone"
+                tools:visibility="visible">
+                <TextView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:gravity="center_vertical" android:text="@string/danmaku_api" android:textColor="@color/tv_theme_text" android:textSize="15sp" />
+                <TextView android:id="@+id/danmakuApiText" android:layout_width="match_parent" android:layout_height="wrap_content" android:ellipsize="middle" android:singleLine="true" android:textColor="@color/tv_theme_text_secondary" android:textSize="12sp" tools:text="已配置" />
+            </androidx.appcompat.widget.LinearLayoutCompat>
+            <androidx.appcompat.widget.LinearLayoutCompat
+                android:id="@+id/danmakuAuto"
+                android:layout_width="0dp"
+                android:layout_height="72dp"
+                android:layout_marginEnd="12dp"
+                android:layout_weight="1"
+                android:background="@drawable/selector_item"
+                android:focusable="true"
+                android:focusableInTouchMode="false"
+                android:orientation="vertical"
+                android:padding="14dp"
+                android:visibility="gone"
+                tools:visibility="visible">
+                <TextView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:gravity="center_vertical" android:text="@string/danmaku_auto_load" android:textColor="@color/tv_theme_text" android:textSize="15sp" />
+                <TextView android:id="@+id/danmakuAutoText" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/tv_theme_text_secondary" android:textSize="12sp" tools:text="关" />
+            </androidx.appcompat.widget.LinearLayoutCompat>
+            <androidx.appcompat.widget.LinearLayoutCompat
+                android:id="@+id/danmakuSpider"
+                android:layout_width="0dp"
+                android:layout_height="72dp"
+                android:layout_weight="1"
+                android:background="@drawable/selector_item"
+                android:focusable="true"
+                android:focusableInTouchMode="false"
+                android:orientation="vertical"
+                android:padding="14dp"
+                android:visibility="gone"
+                tools:visibility="visible">
+                <TextView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:gravity="center_vertical" android:text="@string/danmaku_spider_first" android:textColor="@color/tv_theme_text" android:textSize="15sp" />
+                <TextView android:id="@+id/danmakuSpiderText" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/tv_theme_text_secondary" android:textSize="12sp" tools:text="关" />
+            </androidx.appcompat.widget.LinearLayoutCompat>
         </androidx.appcompat.widget.LinearLayoutCompat>
     </androidx.appcompat.widget.LinearLayoutCompat>
 </androidx.core.widget.NestedScrollView>

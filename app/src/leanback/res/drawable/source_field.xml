@@ -1,5 +1,6 @@
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:state_focused="true"><shape><solid android:color="#172E3A"/><corners android:radius="7dp"/><stroke android:width="2dp" android:color="#A2DFEA"/></shape></item>
-    <item android:state_pressed="true"><shape><solid android:color="#263F4D"/><corners android:radius="7dp"/></shape></item>
-    <item><shape><solid android:color="#0C1D28"/><corners android:radius="7dp"/><stroke android:width="1dp" android:color="#2A414F"/></shape></item>
+    <item android:state_focused="true"><shape><solid android:color="@color/tv_theme_selected"/><corners android:radius="8dp"/><stroke android:width="2dp" android:color="@color/tv_theme_focus_border"/></shape></item>
+    <item android:state_selected="true"><shape><solid android:color="@color/tv_theme_selected"/><corners android:radius="8dp"/><stroke android:width="1dp" android:color="@color/tv_theme_selected_border"/></shape></item>
+    <item android:state_pressed="true"><shape><solid android:color="@color/tv_theme_selected"/><corners android:radius="8dp"/></shape></item>
+    <item><shape><solid android:color="@color/tv_theme_control"/><corners android:radius="8dp"/><stroke android:width="1dp" android:color="@color/tv_theme_border"/></shape></item>
 </selector>

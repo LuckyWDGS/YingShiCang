@@ -87,6 +87,7 @@ public final class SubtitleSearchDialog extends BaseBottomSheetDialog implements
     @Override
     protected void initEvent() {
         binding.setting.setOnClickListener(this::onSetting);
+        binding.searchAction.setOnClickListener(view -> { if (!getKeyword().isEmpty()) search(); });
         requireDialog().setOnKeyListener((dialog, keyCode, event) -> KeyUtil.isActionDown(event) && KeyUtil.isBackKey(event) && restoreState());
         binding.keyword.setOnEditorActionListener((textView, actionId, event) -> {
             if (actionId == EditorInfo.IME_ACTION_SEARCH && !getKeyword().isEmpty()) search();
@@ -130,11 +131,15 @@ public final class SubtitleSearchDialog extends BaseBottomSheetDialog implements
     }
 
     private void showProgress() {
+        binding.emptyHint.setVisibility(GONE);
         binding.recycler.setVisibility(GONE);
         binding.progress.setVisibility(VISIBLE);
     }
 
     private void showResults(boolean empty) {
+        if (binding == null) return;
+        binding.emptyHint.setVisibility(empty ? VISIBLE : GONE);
+        binding.emptyHint.setText(R.string.media_search_empty);
         binding.progress.setVisibility(GONE);
         binding.recycler.setVisibility(empty ? GONE : VISIBLE);
         if (!empty) binding.recycler.requestFocus();
@@ -142,7 +147,12 @@ public final class SubtitleSearchDialog extends BaseBottomSheetDialog implements
     }
 
     private void search() {
-        if (!SubtitleApi.hasToken()) return;
+        if (!SubtitleApi.hasToken()) {
+            binding.emptyHint.setText(R.string.media_subtitle_token_required);
+            binding.emptyHint.setVisibility(VISIBLE);
+            SubtitleApiDialog.show(this);
+            return;
+        }
         Util.hideKeyboard(binding.keyword);
         showProgress();
         states.clear();
@@ -172,6 +182,8 @@ public final class SubtitleSearchDialog extends BaseBottomSheetDialog implements
     }
 
     private void applySub(Sub sub) {
+        player.getPlayer().setTrackSelectionParameters(player.getPlayer().getTrackSelectionParameters().buildUpon()
+                .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, false).build());
         player.setSub(sub);
         dismiss();
     }
@@ -241,7 +253,9 @@ public final class SubtitleSearchDialog extends BaseBottomSheetDialog implements
     }
 
     private void onError(Exception e) {
+        if (binding == null) return;
         showResults(adapter.getItemCount() == 0);
+        binding.emptyHint.setText(R.string.media_search_failed);
         Notify.show(TextUtils.isEmpty(e.getMessage()) ? ResUtil.getString(R.string.error_empty) : e.getMessage());
     }
 

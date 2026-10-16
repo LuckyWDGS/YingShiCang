@@ -569,6 +569,7 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     @Override
     public void startPlayback(Result result, boolean useParse, long startPositionMs, MediaMetadata metadata) {
         startPlayer(getHistoryKey(), result, useParse, getSite().getTimeout(), startPositionMs, metadata);
+        player().observeCurrentPlayback(mVod.playbackObservation());
     }
 
     @Override
@@ -583,7 +584,7 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
 
     @Override
     public void loadDanmaku(Result result, History history, Episode episode) {
-        VodPlaybackMedia.searchDanmaku(result, history, episode, player()::setDanmaku, player()::addDanmaku);
+        VodPlaybackMedia.searchDanmaku(result, history, episode, player().danmakuReceiver(false), player().danmakuReceiver(true));
     }
 
     @Override
@@ -666,7 +667,7 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
 
     @Override
     public void renderSources(List<Vod> items) {
-        mQuickAdapter.addAll(items);
+        mQuickAdapter.submitList(items);
         mBinding.quick.setVisibility(mQuickAdapter.isEmpty() ? View.GONE : View.VISIBLE);
     }
 
@@ -1339,6 +1340,7 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
                 mClock.setCallback(null);
                 break;
             case Player.STATE_READY:
+                mVod.playbackReady();
                 hideProgress();
                 checkControl();
                 player().reset();

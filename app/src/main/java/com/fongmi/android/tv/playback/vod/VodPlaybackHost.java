@@ -44,6 +44,10 @@ public interface VodPlaybackHost {
 
     boolean canPreloadNext();
 
+    default int preferredQualityPosition(Result result, int previousPosition) {
+        return previousPosition;
+    }
+
     long getPlayerPosition();
 
     long getPlayerDuration();

@@ -26,6 +26,7 @@
 
         <androidx.appcompat.widget.AppCompatImageView
             android:id="@+id/search"
+            android:contentDescription="@string/media_search"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginEnd="16dp"
@@ -36,6 +37,7 @@
 
         <androidx.appcompat.widget.AppCompatImageView
             android:id="@+id/choose"
+            android:contentDescription="@string/media_import"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginEnd="16dp"
@@ -46,6 +48,7 @@
 
         <androidx.appcompat.widget.AppCompatImageView
             android:id="@+id/setting"
+            android:contentDescription="@string/media_style"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:background="?attr/selectableItemBackgroundBorderless"
@@ -54,6 +57,23 @@
             tools:visibility="visible" />
 
     </androidx.appcompat.widget.LinearLayoutCompat>
+
+    <com.google.android.material.switchmaterial.SwitchMaterial
+        android:id="@+id/enabledSwitch"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:layout_marginHorizontal="24dp"
+        android:focusable="true"
+        android:text="@string/media_subtitle_enabled" />
+
+    <com.google.android.material.textview.MaterialTextView
+        android:id="@+id/emptyHint"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingHorizontal="24dp"
+        android:paddingBottom="24dp"
+        android:text="@string/media_subtitle_empty"
+        android:textSize="14sp" />
 
     <com.fongmi.android.tv.ui.custom.CustomRecyclerView
         android:id="@+id/recycler"

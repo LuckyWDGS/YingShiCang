@@ -31,7 +31,7 @@ public class Server {
     }
 
     public String getAddress(int tab) {
-        return getAddress(false) + "?tab=" + tab;
+        return getAddress(false) + "/index.html?tab=" + tab;
     }
 
     public String getAddress(String path) {

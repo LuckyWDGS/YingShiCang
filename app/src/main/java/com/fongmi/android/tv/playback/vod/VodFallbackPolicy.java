@@ -5,6 +5,7 @@ import com.fongmi.android.tv.bean.Flag;
 import com.fongmi.android.tv.bean.Result;
 import com.fongmi.android.tv.bean.Site;
 import com.fongmi.android.tv.bean.Vod;
+import com.fongmi.android.tv.resource.ResourceHealth;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -40,6 +41,8 @@ class VodFallbackPolicy {
     }
 
     void search(String keyword, boolean autoFallback) {
+        state.getSources().clear();
+        state.setFallbackSearchStarted(autoFallback);
         state.setSearchKeyword(keyword);
         state.setAutoFallback(autoFallback);
         state.setSelectFirstSource(autoFallback);
@@ -48,9 +51,11 @@ class VodFallbackPolicy {
     }
 
     void onSearchResult(Result result) {
+        if (result == null) return;
         List<Vod> items = new ArrayList<>(result.getList());
         items.removeIf(this::mismatch);
-        state.setSources(items);
+        state.getSources().removeIf(this::mismatch);
+        state.appendSources(items);
         if (state.isSelectFirstSource() && state.hasSources()) nextSource();
         else host.renderSources(state.getSources());
         if (items.isEmpty()) return;
@@ -73,8 +78,11 @@ class VodFallbackPolicy {
     }
 
     private void fallbackToNextSource(boolean force) {
-        if (!state.hasSources()) search(host.getVodName(), true);
-        else if (state.isAutoFallback() || force) nextSource();
+        if (!force) state.addFailedId(host.getVodKey(), host.getVodId());
+        state.getSources().removeIf(this::mismatch);
+        if (state.hasSources()) nextSource();
+        else if (!state.hasFallbackSearchStarted() || force) search(host.getVodName(), true);
+        else state.setSelectFirstSource(true); // Wait for later batches; never start a search loop.
     }
 
     private void nextSource() {
@@ -82,7 +90,6 @@ class VodFallbackPolicy {
         Vod item = state.removeFirstSource();
         host.renderSources(state.getSources());
         host.showSwitchSource(item);
-        state.addFailedId(host.getVodId());
         state.setSelectFirstSource(false);
         controller.fallbackSource(item);
     }
@@ -99,8 +106,10 @@ class VodFallbackPolicy {
     }
 
     private boolean mismatch(Vod item) {
-        if (host.getVodId().equals(item.getId())) return true;
-        if (state.hasFailedId(item.getId())) return true;
+        if (!ResourceHealth.isSearchCard(item)) return true;
+        if (host.getVodKey().equals(item.getSiteKey()) && host.getVodId().equals(item.getId())) return true;
+        if (state.hasFailedId(item.getSiteKey(), item.getId())) return true;
+        if (ResourceHealth.isFiltered(VodConfig.getDiscoveryRevision(), item.getSiteKey(), item.getId())) return true;
         if (state.isAutoFallback()) return !item.getName().equals(state.getSearchKeyword());
         return !item.getName().contains(state.getSearchKeyword());
     }

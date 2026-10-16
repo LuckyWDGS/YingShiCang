@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="detail_summary_action">内容简介</string>
+    <string name="detail_add_keep">加入收藏</string>
+    <string name="detail_remove_keep">取消收藏</string>
+</resources>

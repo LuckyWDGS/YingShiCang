@@ -1,5 +1,5 @@
 <shape xmlns:android="http://schemas.android.com/apk/res/android">
-    <solid android:color="#132733" />
+    <solid android:color="@color/tv_theme_background" />
     <corners android:radius="10dp" />
-    <stroke android:width="0.5dp" android:color="#324A57" />
+    <stroke android:width="0.5dp" android:color="@color/tv_theme_border" />
 </shape>

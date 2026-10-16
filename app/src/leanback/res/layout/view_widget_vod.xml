@@ -96,17 +96,20 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="center"
-        android:background="@drawable/shape_widget"
+        android:background="@drawable/player_vod_pause"
         android:gravity="center"
-        android:orientation="vertical"
+        android:orientation="horizontal"
+        android:paddingHorizontal="20dp"
+        android:paddingVertical="16dp"
         android:visibility="gone"
         tools:visibility="visible">
 
         <androidx.appcompat.widget.AppCompatImageView
             android:id="@+id/action"
-            android:layout_width="56dp"
-            android:layout_height="56dp"
-            android:src="@drawable/ic_widget_play" />
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:layout_marginEnd="14dp"
+            android:src="@drawable/ic_vod_resume" />
 
         <androidx.appcompat.widget.LinearLayoutCompat
             android:layout_width="wrap_content"
@@ -119,7 +122,7 @@
                 android:layout_height="wrap_content"
                 android:fontFeatureSettings="tnum"
                 android:textColor="@color/white"
-                android:textSize="16sp"
+                android:textSize="24sp"
                 tools:text="00:00:00" />
 
             <com.google.android.material.textview.MaterialTextView
@@ -129,7 +132,7 @@
                 android:layout_marginEnd="4dp"
                 android:text="/"
                 android:textColor="@color/white"
-                android:textSize="16sp" />
+                android:textSize="24sp" />
 
             <com.google.android.material.textview.MaterialTextView
                 android:id="@+id/duration"
@@ -137,7 +140,7 @@
                 android:layout_height="wrap_content"
                 android:fontFeatureSettings="tnum"
                 android:textColor="@color/white"
-                android:textSize="16sp"
+                android:textSize="24sp"
                 tools:text="00:00:00" />
 
         </androidx.appcompat.widget.LinearLayoutCompat>

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="PosterMetadata" parent="">
+        <item name="android:background">@drawable/shape_vod_remark</item>
+        <item name="android:paddingHorizontal">6dp</item>
+        <item name="android:paddingVertical">3dp</item>
+        <item name="android:minHeight">27dp</item>
+        <item name="android:textColor">@color/tv_theme_text</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:singleLine">true</item>
+        <item name="android:ellipsize">end</item>
+    </style>
+</resources>

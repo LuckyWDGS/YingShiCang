@@ -1,14 +1,14 @@
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="horizontal" android:background="#050505" android:paddingStart="15dp" android:paddingEnd="10dp" android:paddingTop="15dp" android:paddingBottom="8dp">
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="horizontal" android:background="@color/tv_theme_background" android:paddingStart="24dp" android:paddingEnd="24dp" android:paddingTop="24dp" android:paddingBottom="16dp">
     <LinearLayout android:id="@+id/recordLayout" android:layout_width="0dp" android:layout_weight="24" android:layout_height="match_parent" android:orientation="vertical">
         <LinearLayout android:layout_width="match_parent" android:layout_height="37dp">
             <TextView style="@style/SearchBlackKey" android:layout_width="0dp" android:layout_weight="1" android:text="搜索历史" android:focusable="false" android:background="@drawable/search_black_label" />
             <TextView android:id="@+id/clearHistory" style="@style/SearchBlackKey" android:layout_width="0dp" android:layout_weight="1" android:layout_marginStart="8dp" android:text="清空" android:nextFocusUp="@id/clearHistory" />
         </LinearLayout>
-        <TextView android:id="@+id/emptyHistory" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingTop="12dp" android:paddingStart="7dp" android:text="暂无搜索记录" android:textColor="#6E6E6E" android:textSize="14sp" />
+        <TextView android:id="@+id/emptyHistory" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingTop="12dp" android:paddingStart="7dp" android:text="暂无搜索记录" android:textColor="@color/tv_theme_text_secondary" android:textSize="14sp" />
         <androidx.recyclerview.widget.RecyclerView android:id="@+id/recordRecycler" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:layout_marginTop="8dp" android:layout_marginStart="7dp" android:overScrollMode="never" android:scrollbars="none" />
-        <TextView android:id="@+id/historyTip" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingStart="7dp" android:text="长按记录可单独删除" android:textColor="#5C5C5C" android:textSize="12sp" />
+        <TextView android:id="@+id/historyTip" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingStart="7dp" android:text="长按记录可单独删除" android:textColor="@color/tv_theme_text_secondary" android:textSize="12sp" />
     </LinearLayout>
-    <LinearLayout android:layout_width="0dp" android:layout_weight="31" android:layout_height="match_parent" android:layout_marginHorizontal="15dp" android:orientation="vertical">
+    <LinearLayout android:layout_width="0dp" android:layout_weight="31" android:layout_height="match_parent" android:layout_marginHorizontal="20dp" android:orientation="vertical">
         <TextView android:id="@+id/source" style="@style/SearchBlackKey" android:text="指定搜索源" android:nextFocusUp="@id/source" />
         <FrameLayout android:layout_width="match_parent" android:layout_height="37dp" android:layout_marginTop="8dp">
             <com.fongmi.android.tv.ui.custom.CustomEditText android:id="@+id/keyword" android:layout_width="match_parent" android:layout_height="match_parent" android:paddingStart="8dp" android:paddingEnd="8dp" android:background="@drawable/search_black_input" android:hint="请输入要搜索的内容" android:singleLine="true" android:inputType="text" android:maxLength="255" android:imeOptions="actionSearch" android:focusable="true" android:focusableInTouchMode="true" android:textColor="#F5F5F5" android:textColorHint="#7A7A7A" android:textSize="16sp" android:nextFocusDown="@id/search" />
@@ -26,7 +26,7 @@
     </LinearLayout>
     <androidx.core.widget.NestedScrollView android:id="@+id/scroll" android:layout_width="0dp" android:layout_weight="45" android:layout_height="match_parent" android:fillViewport="true" android:scrollbars="none" android:overScrollMode="never">
         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
-            <TextView android:id="@+id/word" android:layout_width="match_parent" android:layout_height="37dp" android:gravity="center" android:text="热门搜索" android:textColor="#FFFFFF" android:textSize="17sp" android:fontFamily="sans-serif-medium" />
+            <TextView android:id="@+id/word" android:layout_width="match_parent" android:layout_height="37dp" android:gravity="center" android:text="热门搜索" android:textColor="#FFFFFF" android:textSize="16sp" android:fontFamily="sans-serif-medium" />
             <TextView android:id="@+id/searchStatus" android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center" android:paddingBottom="4dp" android:textColor="#7A7A7A" android:textSize="13sp" android:visibility="gone" />
             <LinearLayout android:id="@+id/hotGroups" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
                 <TextView style="@style/SearchBlackHeading" android:text="电视榜" />

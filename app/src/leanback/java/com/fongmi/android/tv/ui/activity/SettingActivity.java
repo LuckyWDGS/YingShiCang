@@ -33,6 +33,7 @@ import com.fongmi.android.tv.ui.dialog.HistoryDialog;
 import com.fongmi.android.tv.ui.dialog.LiveDialog;
 import com.fongmi.android.tv.ui.dialog.RestoreDialog;
 import com.fongmi.android.tv.ui.dialog.SiteDialog;
+import com.fongmi.android.tv.ui.dialog.SourceLineDialog;
 import com.fongmi.android.tv.utils.FileUtil;
 import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.PermissionUtil;
@@ -76,11 +77,10 @@ public class SettingActivity extends BaseActivity implements ConfigListener, Sit
         mBinding.vodUrl.setText(VodConfig.getDesc());
         mBinding.liveUrl.setText(LiveConfig.getDesc());
         mBinding.wallUrl.setText(WallConfig.getDesc());
+        mBinding.vodHomeText.setText(VodConfig.get().getHome().getName());
+        mBinding.liveHomeText.setText(LiveConfig.get().getHome().getName());
+        mBinding.linesText.setText(VodConfig.get().getConfig().getName());
         mBinding.versionText.setText(BuildConfig.VERSION_NAME);
-        // Keep daily viewing controls; secondary decoration options stay out of the TV settings surface.
-        ((View) mBinding.wall.getParent()).setVisibility(View.GONE);
-        mBinding.danmaku.setVisibility(View.GONE);
-        mBinding.incognito.setVisibility(View.GONE);
         setCacheText();
         setOtherText();
     }
@@ -103,6 +103,7 @@ public class SettingActivity extends BaseActivity implements ConfigListener, Sit
     @Override
     protected void initEvent() {
         mBinding.vod.setOnClickListener(this::onVod);
+        mBinding.lines.setOnClickListener(this::onLines);
         mBinding.doh.setOnClickListener(this::setDoh);
         mBinding.live.setOnClickListener(this::onLive);
         mBinding.wall.setOnClickListener(this::onWall);
@@ -119,8 +120,6 @@ public class SettingActivity extends BaseActivity implements ConfigListener, Sit
         mBinding.liveHome.setOnClickListener(this::onLiveHome);
         mBinding.wall.setOnLongClickListener(this::onWallEdit);
         mBinding.incognito.setOnClickListener(this::setIncognito);
-        mBinding.vodHistory.setOnClickListener(this::onVodHistory);
-        mBinding.liveHistory.setOnClickListener(this::onLiveHistory);
         mBinding.wallDefault.setOnClickListener(this::setWallDefault);
         mBinding.wallRefresh.setOnClickListener(this::setWallRefresh);
         mBinding.wallRefresh.setOnLongClickListener(this::onWallHistory);
@@ -174,11 +173,13 @@ public class SettingActivity extends BaseActivity implements ConfigListener, Sit
     @Override
     public void setSite(Site item) {
         VodConfig.get().setHome(item);
+        mBinding.vodHomeText.setText(item.getName());
     }
 
     @Override
     public void setLive(Live item) {
         LiveConfig.get().setHome(item);
+        mBinding.liveHomeText.setText(item.getName());
     }
 
     private void onVod(View view) {
@@ -187,6 +188,10 @@ public class SettingActivity extends BaseActivity implements ConfigListener, Sit
 
     private void onLive(View view) {
         ConfigDialog.create().live().show(this);
+    }
+
+    private void onLines(View view) {
+        SourceLineDialog.showOn(this);
     }
 
     private void onWall(View view) {
@@ -214,14 +219,6 @@ public class SettingActivity extends BaseActivity implements ConfigListener, Sit
 
     private void onLiveHome(View view) {
         LiveDialog.create().action().show(this);
-    }
-
-    private void onVodHistory(View view) {
-        HistoryDialog.create().vod().show(this);
-    }
-
-    private void onLiveHistory(View view) {
-        HistoryDialog.create().live().show(this);
     }
 
     private void onPlayer(View view) {
@@ -326,6 +323,9 @@ public class SettingActivity extends BaseActivity implements ConfigListener, Sit
         mBinding.vodUrl.setText(VodConfig.getDesc());
         mBinding.liveUrl.setText(LiveConfig.getDesc());
         mBinding.wallUrl.setText(WallConfig.getDesc());
+        mBinding.vodHomeText.setText(VodConfig.get().getHome().getName());
+        mBinding.liveHomeText.setText(LiveConfig.get().getHome().getName());
+        mBinding.linesText.setText(VodConfig.get().getConfig().getName());
     }
 
 }

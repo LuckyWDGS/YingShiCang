@@ -256,7 +256,7 @@ public class TypeFragment extends BaseFragment implements CustomScroller.Callbac
             getParent().openFolder(item.getId(), mExtends);
             headerVisible = mBinding.recycler.isHeaderVisible();
         } else {
-            if (getSite().isIndex()) CollectActivity.start(requireActivity(), item.getName());
+            if (getSite().isIndex()) CollectActivity.startForCard(requireActivity(), item.getName(), item.getYear(), false);
             else VideoActivity.start(requireActivity(), getKey(), item.getId(), item.getName(), item.getPic(), isFolder() ? item.getName() : null);
         }
     }
@@ -264,7 +264,7 @@ public class TypeFragment extends BaseFragment implements CustomScroller.Callbac
     @Override
     public boolean onLongClick(Vod item) {
         if (item.isAction() || item.isFolder()) return false;
-        CollectActivity.start(requireActivity(), item.getName());
+        CollectActivity.startForCard(requireActivity(), item.getName(), item.getYear(), false);
         return true;
     }
 

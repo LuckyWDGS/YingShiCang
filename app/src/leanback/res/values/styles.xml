@@ -2,6 +2,35 @@
 
     <style name="Theme.Base" parent="Theme.Material3.Dark.NoActionBar">
         <item name="colorPrimary">@color/white</item>
+        <item name="colorOnPrimary">#0A0A0A</item>
+        <item name="colorSecondary">@color/white</item>
+        <item name="colorOnSecondary">#0A0A0A</item>
+        <item name="colorPrimaryContainer">@color/tv_theme_selected</item>
+        <item name="colorOnPrimaryContainer">@color/tv_theme_text</item>
+        <item name="colorSecondaryContainer">@color/tv_theme_selected</item>
+        <item name="colorOnSecondaryContainer">@color/tv_theme_text</item>
+        <item name="colorTertiary">@color/white</item>
+        <item name="colorOnTertiary">#0A0A0A</item>
+        <item name="colorTertiaryContainer">@color/tv_theme_selected</item>
+        <item name="colorOnTertiaryContainer">@color/tv_theme_text</item>
+        <item name="colorSurface">@color/tv_theme_panel</item>
+        <item name="colorOnSurface">@color/tv_theme_text</item>
+        <item name="colorSurfaceVariant">@color/tv_theme_control</item>
+        <item name="colorOnSurfaceVariant">@color/tv_theme_text_secondary</item>
+        <item name="colorSurfaceDim">@color/tv_theme_background</item>
+        <item name="colorSurfaceBright">@color/tv_theme_selected</item>
+        <item name="colorSurfaceContainerLowest">@color/tv_theme_background</item>
+        <item name="colorSurfaceContainerLow">@color/tv_theme_panel</item>
+        <item name="colorSurfaceContainer">@color/tv_theme_panel</item>
+        <item name="colorSurfaceContainerHigh">@color/tv_theme_control</item>
+        <item name="colorSurfaceContainerHighest">@color/tv_theme_selected</item>
+        <item name="colorOutline">#666666</item>
+        <item name="colorOutlineVariant">@color/tv_theme_border</item>
+        <item name="colorSurfaceInverse">@color/tv_theme_text</item>
+        <item name="colorOnSurfaceInverse">@color/tv_theme_control</item>
+        <item name="colorPrimaryInverse">@color/tv_theme_selected</item>
+        <item name="android:colorBackground">@color/tv_theme_background</item>
+        <item name="android:windowBackground">@color/tv_theme_background</item>
         <item name="android:windowFullscreen">true</item>
         <item name="android:windowTranslucentStatus">true</item>
         <item name="android:windowTranslucentNavigation">true</item>
@@ -10,7 +39,7 @@
 
     <style name="Theme.Splash" parent="Theme.SplashScreen">
         <item name="postSplashScreenTheme">@style/Theme.App</item>
-        <item name="windowSplashScreenBackground">#141218</item>
+        <item name="windowSplashScreenBackground">@color/tv_theme_background</item>
         <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
     </style>
 

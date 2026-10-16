@@ -12,13 +12,18 @@ import com.fongmi.android.tv.bean.Vod;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.CompletionService;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorCompletionService;
 import java.util.concurrent.Future;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -31,11 +36,12 @@ import okhttp3.OkHttpClient;
 /** Independent native AiDj browsing; source order, category parameters and origin ids are retained. */
 public final class AiDramaRunner {
     public record Batch(AiDramaCatalog catalog, AiDramaCatalog.State state, List<Vod> items,
-                        boolean more, boolean failed, boolean finished) {}
+                        boolean more, boolean failed, boolean metadataFailed, boolean finished) {}
 
     public static final class MetadataCache {
+        private static final int MAX_ENTRIES = 32;
         private long revision = -1;
-        private final Map<String, AiDramaCatalog> entries = new HashMap<>();
+        private final Map<String, AiDramaCatalog> entries = new LinkedHashMap<>(16, .75f, true);
         synchronized AiDramaCatalog get(long scope, String signature) {
             if (scope < revision) return null;
             if (scope != revision) { revision = scope; entries.clear(); }
@@ -43,22 +49,49 @@ public final class AiDramaRunner {
         }
         synchronized void put(long scope, String signature, AiDramaCatalog catalog) {
             // Empty/error catalogs are retryable, and old work cannot replace a newer scope.
-            if (scope == revision && catalog != null && !catalog.isEmpty()) entries.put(signature, catalog);
+            if (scope == revision && catalog != null && !catalog.isEmpty()) {
+                entries.put(signature, catalog);
+                while (entries.size() > MAX_ENTRIES) entries.remove(entries.keySet().iterator().next());
+            }
+        }
+        synchronized Restored restore(long scope, String signature, String saved) {
+            AiDramaCatalog catalog = get(scope, signature);
+            if (catalog == null) return null;
+            AiDramaCatalog.State state = new AiDramaCatalog.State(catalog, signature);
+            state.restore(saved);
+            return new Restored(catalog, state);
         }
         public synchronized void clear() { revision = -1; entries.clear(); }
     }
+    record Restored(AiDramaCatalog catalog, AiDramaCatalog.State state) {}
 
     /** Failure leaves the exact raw page available; accepted pages preserve source order and identity. */
     static final class Pages<T> {
-        private SourcePageCursor cursor = new SourcePageCursor();
+        // AiDj's default API reports a placeholder pagecount; allow short gaps but stop a repeated tail.
+        private static final int MAX_PAGES = 500, MAX_UNPRODUCTIVE_PAGES = 3;
+        private final Set<String> identities = new HashSet<>();
         private final Map<String, T> items = new LinkedHashMap<>();
-        int next() { return cursor.next(); }
-        boolean more() { return !cursor.exhausted(); }
+        private int next = 1, unproductive;
+        private boolean exhausted;
+        int next() { return next; }
+        boolean more() { return !exhausted; }
         List<T> items() { return List.copyOf(items.values()); }
         void accept(List<String> raw, int pageCount, Map<String, T> accepted) {
-            accepted.forEach(items::putIfAbsent); cursor.accept(raw, pageCount);
+            if (exhausted) return;
+            boolean added = false;
+            for (String id : raw) if (id != null && !id.isEmpty() && identities.add(id)) added = true;
+            accepted.forEach(items::putIfAbsent);
+            unproductive = added ? 0 : unproductive + 1;
+            exhausted = pageCount > 0 && next >= pageCount || next >= MAX_PAGES
+                    || unproductive >= MAX_UNPRODUCTIVE_PAGES;
+            next++;
         }
-        void reset() { cursor = new SourcePageCursor(); items.clear(); }
+        boolean accept(int page, List<String> raw, int pageCount, Map<String, T> accepted) {
+            if (page != next || exhausted) return false;
+            accept(raw, pageCount, accepted);
+            return true;
+        }
+        void reset() { next = 1; unproductive = 0; exhausted = false; identities.clear(); items.clear(); }
     }
 
     // Shared only by this feature: cancelled, interrupt-ignoring plugins cannot create unbounded threads.
@@ -77,35 +110,47 @@ public final class AiDramaRunner {
     private Work active;
     private Future<?> round;
     private volatile boolean closed;
-    private boolean busy, failed;
+    private boolean busy, failed, metadataFailed;
 
     private static final class Work {
         final long token, deadline;
         final int page;
+        int requestedPage;
         final AiDramaCatalog.State state;
         final List<Call> calls = new CopyOnWriteArrayList<>();
+        final List<Future<?>> children = new CopyOnWriteArrayList<>();
         volatile boolean cancelled;
-        volatile Future<Outcome> future;
+        volatile boolean pageAccepted;
+        volatile boolean metadataAccepted;
+        boolean metadataOnly;
         Work(long token, int page, AiDramaCatalog.State state, long timeout) {
             this.token = token; this.page = page; this.state = state;
+            requestedPage = page;
             deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeout);
         }
         void track(Call call) {
             call.timeout().deadlineNanoTime(deadline); calls.add(call);
             if (cancelled) call.cancel();
         }
+        void child(Future<?> future) {
+            children.add(future);
+            if (cancelled) future.cancel(true);
+        }
         void cancel() {
             cancelled = true; calls.forEach(Call::cancel);
-            if (future != null) future.cancel(true);
+            children.forEach(future -> future.cancel(true));
         }
     }
-    private record Outcome(AiDramaCatalog catalog, AiDramaCatalog.State state, Result result, boolean failed) {}
+    private record Outcome(AiDramaCatalog catalog, AiDramaCatalog.State state, Result result, boolean failed, boolean metadataFailed) {}
 
     public AiDramaRunner(OkHttpClient client, MetadataCache cache, String savedState) {
         this.client = client; this.cache = cache; this.savedState = savedState;
         site = config.getSites().stream().filter(candidate -> candidate.getType() == 3
                 && !candidate.getKey().isEmpty() && supportedApi(candidate.getApi())).findFirst().orElse(null);
         signature = site == null ? "" : signature(site);
+        // Successful metadata is enough for UI restoration; spider initialization stays off this path.
+        Restored restored = site == null ? null : cache.restore(revision, signature, savedState);
+        if (restored != null) { catalog = restored.catalog; state = restored.state; }
     }
 
     private static ThreadPoolExecutor pool(int threads, int queue, String name) {
@@ -139,7 +184,7 @@ public final class AiDramaRunner {
     /** UI-only state mutation: it never initializes a spider or makes a network request. */
     public synchronized boolean select(String key, String value) {
         if (closed || state == null || !state.select(key, value)) return false;
-        invalidate(); pages.reset(); failed = false; return true;
+        invalidate(); pages.reset(); failed = false; metadataFailed = false; return true;
     }
     private boolean valid(Work work) {
         return !work.cancelled && work.token == epoch.get() && current() && !Thread.currentThread().isInterrupted();
@@ -150,11 +195,13 @@ public final class AiDramaRunner {
         if (closed || busy) return;
         if (site == null) { failed = true; publish(null, true, callback); return; }
         if (!current()) { failed = true; publish(null, true, callback); return; }
-        if (!pages.more()) { publish(null, true, callback); return; }
+        boolean metadataOnly = retry && metadataFailed && !failed && !pages.items().isEmpty();
+        if (!pages.more() && !metadataOnly) { publish(null, true, callback); return; }
         long token = epoch.incrementAndGet();
         Work work = new Work(token, pages.next(), state == null ? null : state.snapshot(),
                 Math.min(20000, Math.max(5000, site.getTimeout())));
-        active = work; busy = true; failed = false;
+        work.metadataOnly = metadataOnly;
+        active = work; busy = true; failed = false; metadataFailed = false;
         try {
             round = coordinator.submit(() -> run(work, callback));
         } catch (RuntimeException unavailable) { busy = false; failed = true; publish(work, true, callback); }
@@ -162,70 +209,234 @@ public final class AiDramaRunner {
     private void run(Work work, Consumer<Batch> callback) {
         Outcome outcome;
         try {
-            work.future = WORKERS.submit(() -> execute(work, callback));
-            if (work.cancelled) work.future.cancel(true);
-            outcome = work.future.get(Math.max(1, work.deadline - System.nanoTime()), TimeUnit.NANOSECONDS);
+            String selection = work.state == null ? savedState : work.state.serialize();
+            if (work.metadataOnly) {
+                AiDramaCatalog metadata = fromResult(await(work, submit(work, () -> SiteApi.discoveryClasses(site, client, work::track))));
+                if (metadata.isEmpty()) throw new IllegalStateException("AI metadata unavailable");
+                if (!valid(work)) throw new CancellationException();
+                cache.put(revision, signature, metadata);
+                AiDramaCatalog.State requested = restored(metadata, selection);
+                if (!sameQuery(work.state, requested)) {
+                    synchronized (this) {
+                        if (!valid(work)) throw new CancellationException();
+                        pages.reset(); work.requestedPage = 1; work.metadataOnly = false;
+                    }
+                }
+                metadataReady(work, metadata, requested, callback);
+                Result page = work.metadataOnly ? null : await(work, submit(work, () -> requestPage(work, requested, 1)));
+                App.post(() -> apply(work, new Outcome(metadata, requested, page, false, false), callback));
+                return;
+            }
+            AiDramaCatalog metadata = cache.get(revision, signature);
+            if (metadata == null) {
+                // Read the actual native type declarations on a bounded worker.
+                // Its static home response contains no web topic request.
+                AiDramaCatalog nativeMetadata = fromResult(await(work, submit(work, () ->
+                        SiteApi.discoveryNativeAiClasses(site))));
+                if (nativeMetadata.isEmpty()) throw new IllegalStateException("AI native types unavailable");
+                AiDramaCatalog.State nativeState = restored(nativeMetadata, selection);
+                if (nativeStateEligible(selection, signature, nativeMetadata)) {
+                    outcome = cold(work, callback, nativeMetadata, nativeState, selection);
+                    Outcome completed = outcome;
+                    App.post(() -> apply(work, completed, callback));
+                    return;
+                }
+                metadata = fromResult(await(work, submit(work, () ->
+                        SiteApi.discoveryClasses(site, client, work::track))));
+                if (metadata.isEmpty()) throw new IllegalStateException("AI metadata unavailable");
+                if (!valid(work)) throw new CancellationException();
+                cache.put(revision, signature, metadata);
+            }
+            AiDramaCatalog.State requested = restored(metadata, selection);
+            metadataReady(work, metadata, requested, callback);
+            Result page = await(work, submit(work, () -> requestPage(work, requested, work.requestedPage)));
+            outcome = new Outcome(metadata, requested, page, false, false);
         } catch (Exception error) {
             if (error instanceof InterruptedException) Thread.currentThread().interrupt();
-            work.cancel(); outcome = new Outcome(null, null, null, true);
+            work.cancel(); outcome = new Outcome(null, null, null,
+                    !work.pageAccepted && !work.metadataOnly, !work.metadataAccepted);
         }
         Outcome result = outcome;
         App.post(() -> apply(work, result, callback));
     }
-    private Outcome execute(Work work, Consumer<Batch> callback) {
+
+    /** Each cold lane is consumed when it finishes, independent of the other lane. */
+    private Outcome cold(Work work, Consumer<Batch> callback, AiDramaCatalog nativeMetadata,
+                         AiDramaCatalog.State nativeState, String selection) throws Exception {
+        CompletionService<Result> completed = new ExecutorCompletionService<>(WORKERS);
+        Future<Result> metadataFuture = submit(work, completed, () -> SiteApi.discoveryClasses(site, client, work::track));
+        Future<Result> pageFuture = submit(work, completed, () -> requestPage(work, nativeState, work.requestedPage));
+        AiDramaCatalog ready = null;
+        AiDramaCatalog.State requested = nativeState;
+        boolean metadataDone = false, pageDone = false, metadataFailed = false, pageFailed = false;
+        while (!metadataDone || !pageDone) {
+            Future<Result> event = completed.poll(remaining(work), TimeUnit.NANOSECONDS);
+            if (event == null) throw new java.util.concurrent.TimeoutException();
+            if (!valid(work)) throw new CancellationException();
+            if (event == metadataFuture) {
+                metadataDone = true;
+                try {
+                    ready = fromResult(event.get());
+                    if (ready.isEmpty()) throw new IllegalStateException("AI metadata unavailable");
+                    if (!valid(work)) throw new CancellationException();
+                    cache.put(revision, signature, ready);
+                    requested = restored(ready, selection);
+                    work.metadataAccepted = true;
+                } catch (ExecutionException | IllegalStateException unavailable) {
+                    // A failed metadata lane does not discard a valid native page.
+                    metadataFailed = true; ready = null; continue;
+                }
+                if (!sameQuery(nativeState, requested)) {
+                    synchronized (this) {
+                        if (!valid(work)) throw new CancellationException();
+                        pages.reset(); work.pageAccepted = false; work.requestedPage = 1;
+                        catalog = ready; state = requested; publish(work, false, callback);
+                    }
+                    pageFuture.cancel(true);
+                    AiDramaCatalog.State replacement = requested;
+                    pageFuture = submit(work, completed, () -> requestPage(work, replacement, 1));
+                    pageDone = false; pageFailed = false;
+                } else metadataReady(work, ready, requested, callback);
+            } else if (event == pageFuture) {
+                pageDone = true;
+                try {
+                    Result page = event.get();
+                    progressivePage(work, ready == null ? nativeMetadata : ready, requested, page, callback);
+                } catch (ExecutionException unavailable) {
+                    // The topic catalog can still complete and make the filters usable after a page failure.
+                    pageFailed = true;
+                }
+            }
+        }
+        return new Outcome(ready == null ? nativeMetadata : ready, requested, null, pageFailed, metadataFailed);
+    }
+
+    private AiDramaCatalog.State restored(AiDramaCatalog metadata, String selection) {
+        AiDramaCatalog.State result = new AiDramaCatalog.State(metadata, signature);
+        result.restore(selection); return result;
+    }
+
+    static boolean sameQuery(AiDramaCatalog.State first, AiDramaCatalog.State second) {
+        if (!first.categoryId().equals(second.categoryId())) return false;
+        Map<String, String> a = new LinkedHashMap<>(first.extend()), b = new LinkedHashMap<>(second.extend());
+        a.values().removeIf(String::isEmpty); b.values().removeIf(String::isEmpty);
+        return a.equals(b);
+    }
+
+    private Result requestPage(Work work, AiDramaCatalog.State requested, int page) throws Exception {
+        if (!PythonPluginCompatibility.requiresRuntime(site.spider())) throw new IllegalStateException("AI runtime unavailable");
+        if (!valid(work)) throw new CancellationException();
+        return SiteApi.discoveryPage(site, requested.categoryId(), page, requested.extend(), client, work::track);
+    }
+
+    private synchronized void progressivePage(Work work, AiDramaCatalog metadata,
+                                               AiDramaCatalog.State requested, Result result,
+                                               Consumer<Batch> callback) {
+        if (!valid(work) || result == null) return;
+        catalog = metadata; state = requested;
+        if (!work.pageAccepted && pages.next() == work.requestedPage) {
+            acceptPage(work, result); work.pageAccepted = true;
+        }
+        publish(work, false, callback);
+    }
+
+    private <T> Callable<T> checked(Work work, Callable<T> operation) {
+        return () -> {
+            if (!valid(work)) throw new CancellationException();
+            T result = operation.call();
+            if (!valid(work)) throw new CancellationException();
+            return result;
+        };
+    }
+    private <T> Future<T> submit(Work work, Callable<T> operation) {
+        Future<T> future = WORKERS.submit(checked(work, operation));
+        work.child(future); return future;
+    }
+    private <T> Future<T> submit(Work work, CompletionService<T> completion, Callable<T> operation) {
+        Future<T> future = completion.submit(checked(work, operation));
+        work.child(future); return future;
+    }
+    private <T> T await(Work work, Future<T> future) throws Exception {
+        return future.get(remaining(work), TimeUnit.NANOSECONDS);
+    }
+
+    private static long remaining(Work work) throws java.io.InterruptedIOException {
+        long left = work.deadline - System.nanoTime();
+        if (left <= 0) throw new java.io.InterruptedIOException("AI source request timed out");
+        return left;
+    }
+
+    static boolean defaultStateEligible(String saved) {
+        if (saved == null || saved.isEmpty()) return true;
         try {
-            if (!valid(work)) throw new CancellationException();
-            // An API spelling alone is not proof that a replacement plugin has the audited runtime.
-            if (!PythonPluginCompatibility.requiresRuntime(site.spider())) return new Outcome(null, null, null, true);
-            if (!valid(work)) throw new CancellationException();
-            AiDramaCatalog metadata = cache.get(revision, signature);
-            if (metadata == null) {
-                metadata = fromResult(SiteApi.discoveryClasses(site, client, work::track));
-                if (!valid(work)) throw new CancellationException();
-                cache.put(revision, signature, metadata);
+            var json = com.google.gson.JsonParser.parseString(saved);
+            if (!json.isJsonObject()) return false;
+            String category = json.getAsJsonObject().has("category")
+                    ? json.getAsJsonObject().get("category").getAsString() : "";
+            // Native classes are read before the parallel lanes start, so either
+            // declared AI type can safely request its own default first page.
+            if (!category.isEmpty() && !"comic".equals(category) && !"ai".equals(category)) return false;
+            var extend = json.getAsJsonObject().get("extend");
+            if (extend == null || !extend.isJsonObject()) return true;
+            for (var entry : extend.getAsJsonObject().entrySet())
+                if (!entry.getValue().isJsonPrimitive() || !entry.getValue().getAsString().isEmpty()) return false;
+            return true;
+        } catch (RuntimeException ignored) { return false; }
+    }
+
+    /** Cold native requests are safe only when every saved choice is declared by this exact source. */
+    static boolean nativeStateEligible(String saved, String scope, AiDramaCatalog nativeMetadata) {
+        if (saved == null || saved.isEmpty()) return true;
+        try {
+            var json = com.google.gson.JsonParser.parseString(saved).getAsJsonObject();
+            if (!json.has("scope") || !scope.equals(json.get("scope").getAsString())) return true;
+            if (!json.has("category")) return false;
+            AiDramaCatalog.Category category = nativeMetadata.category(json.get("category").getAsString());
+            if (category == null) return false;
+            var extend = json.get("extend");
+            if (extend == null) return true;
+            if (!extend.isJsonObject()) return false;
+            for (var entry : extend.getAsJsonObject().entrySet()) {
+                if (!entry.getValue().isJsonPrimitive() || !entry.getValue().getAsJsonPrimitive().isString()) return false;
+                String value = entry.getValue().getAsString();
+                if (value.isEmpty()) continue;
+                if (category.groups.stream().noneMatch(group -> group.key.equals(entry.getKey()) && group.option(value) != null)) return false;
             }
-            if (metadata.isEmpty()) return new Outcome(metadata, null, null, true);
-            AiDramaCatalog.State requested = work.state;
-            if (requested == null) {
-                requested = new AiDramaCatalog.State(metadata, signature); requested.restore(savedState);
-                AiDramaCatalog ready = metadata;
-                AiDramaCatalog.State defaults = requested.snapshot();
-                App.post(() -> metadataReady(work, ready, defaults, callback));
-            }
-            if (!valid(work)) throw new CancellationException();
-            Result result = SiteApi.discoveryPage(site, requested.categoryId(), work.page, requested.extend(), client, work::track);
-            if (!valid(work)) throw new CancellationException();
-            return new Outcome(metadata, requested, result, false);
-        } catch (Exception error) { return new Outcome(null, null, null, true); }
+            return true;
+        } catch (RuntimeException invalid) { return false; }
     }
     private synchronized void metadataReady(Work work, AiDramaCatalog metadata, AiDramaCatalog.State requested, Consumer<Batch> callback) {
         if (!valid(work)) return;
+        work.metadataAccepted = true;
         catalog = metadata; state = requested; publish(work, false, callback);
     }
     private synchronized void apply(Work work, Outcome outcome, Consumer<Batch> callback) {
         // A timeout cancelled the job, but its failure still completes this current UI request.
         if (closed || work.token != epoch.get() || !current()) return;
-        busy = false; active = null; work.calls.clear(); failed = outcome.failed;
+        busy = false; active = null; work.calls.clear(); failed = outcome.failed; metadataFailed = outcome.metadataFailed;
         if (outcome.catalog != null) catalog = outcome.catalog;
         if (outcome.state != null) state = outcome.state;
-        if (!outcome.failed && outcome.result != null) {
-            List<String> raw = new ArrayList<>(); Map<String, Vod> accepted = new LinkedHashMap<>();
-            for (Vod item : outcome.result.getList()) {
-                if (item == null) continue;
-                if (!item.getId().isEmpty()) raw.add(item.getId());
-                if (item.getId().isEmpty() || item.getName().isEmpty() || item.isFolder()
-                        || DiscoveryContentGate.isAdult(item.getTypeName(), item.getDiscoveryTags())) continue;
-                item.setSite(site); item.setAction("");
-                accepted.putIfAbsent(site.getKey() + "\0" + item.getId(), item);
-            }
-            pages.accept(raw, outcome.result.getPageCount(), accepted);
-        }
+        if (!outcome.failed && outcome.result != null && !work.pageAccepted) acceptPage(work, outcome.result);
         publish(work, true, callback); WORKERS.purge();
     }
+
+    private void acceptPage(Work work, Result result) {
+        List<String> raw = new ArrayList<>(); Map<String, Vod> accepted = new LinkedHashMap<>();
+        for (Vod item : result.getList()) {
+            if (item == null) continue;
+            if (!item.getId().isEmpty()) raw.add(item.getId());
+            if (item.getId().isEmpty() || item.getName().isEmpty() || item.isFolder()
+                    || DiscoveryContentGate.isAdult(item.getTypeName(), item.getDiscoveryTags())) continue;
+            item.setSite(site); item.setAction("");
+            accepted.putIfAbsent(site.getKey() + "\0" + item.getId(), item);
+        }
+        pages.accept(raw, result.getPageCount(), accepted);
+    }
+
     private synchronized void publish(Work work, boolean finished, Consumer<Batch> callback) {
         long token = work == null ? epoch.get() : work.token;
         Batch batch = new Batch(catalog, state == null ? null : state.snapshot(), pages.items(),
-                site != null && pages.more(), failed, finished);
+                site != null && pages.more(), failed, metadataFailed, finished);
         App.post(() -> {
             if (!closed && token == epoch.get() && current()) callback.accept(batch);
         });

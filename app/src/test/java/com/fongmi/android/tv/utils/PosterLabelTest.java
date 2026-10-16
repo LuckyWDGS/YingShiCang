@@ -4,6 +4,32 @@ import org.junit.Test;
 import static org.junit.Assert.assertEquals;
 
 public class PosterLabelTest {
+    @Test public void aiCardsOnlyDisplaySourceDeclaredTotals() {
+        assertEquals("共24集", PosterLabel.totalEpisodes("全24集"));
+        assertEquals("共9集", PosterLabel.totalEpisodes("共09集"));
+        assertEquals("共12集", PosterLabel.totalEpisodes("12集已完结"));
+        assertEquals("共24集", PosterLabel.totalEpisodes("更新至18集 / 共24集"));
+        for (String note : new String[]{null, "", "更新至18集", "第18集", "18", "8.2分", "评分：9.1", "完结", "全0集", "1080P", "2026-10-16"})
+            assertEquals(note, "", PosterLabel.totalEpisodes(note));
+    }
+
+    @Test public void eachSurfaceUsesItsOwnMetadataMeaning() {
+        assertEquals("8.2", PosterLabel.rating("更新至18集 / 共24集", "8.2"));
+        assertEquals("共24集", PosterLabel.episodes("更新至18集 / 共24集"));
+        assertEquals("", PosterLabel.rating("全24集", ""));
+        assertEquals("", PosterLabel.episodes("8.2分"));
+        assertEquals("", PosterLabel.episodes("1080P"));
+        assertEquals("", PosterLabel.episodes("2026-10-14"));
+    }
+    @Test public void historyNamesAndSourceIdentitySurviveMissingConfiguration() {
+        assertEquals("第1集", PosterLabel.history("1"));
+        assertEquals("第3集", PosterLabel.history("第03集"));
+        assertEquals("特别篇", PosterLabel.history("特别篇"));
+        assertEquals("", PosterLabel.history(null));
+        assertEquals("热播", PosterLabel.source("", "热播"));
+        assertEquals("真实站源", PosterLabel.source("真实站源", "key"));
+        assertEquals("", PosterLabel.source(null, null));
+    }
     @Test public void explicitTotalTakesPriorityOverProgressAndRating() {
         assertEquals("共24集", PosterLabel.text("更新至18集 / 共24集", "8.2"));
         assertEquals("共9集", PosterLabel.text("全9集", "7.5"));

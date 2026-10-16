@@ -41,7 +41,12 @@ public class DanmakuApi {
 
     public static void search(String name, String episode, Consumer<List<Danmaku>> success, Consumer<Exception> error) {
         int requestId = begin();
-        newCall(name, episode).enqueue(new ApiCallback<>(requestId, REQUEST_ID, response -> Danmaku.arrayFrom(read(response)), success, error));
+        try {
+            newCall(name, episode).enqueue(new ApiCallback<>(requestId, REQUEST_ID,
+                    response -> Danmaku.arrayFrom(read(response)).stream().filter(item -> item != null && !item.isEmpty()).toList(), success, error));
+        } catch (RuntimeException e) {
+            ApiCallback.post(requestId, REQUEST_ID, () -> error.accept(e));
+        }
     }
 
     private static int begin() {

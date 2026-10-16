@@ -173,7 +173,8 @@ public class LiveConfig extends BaseConfig {
     }
 
     public void parse(JsonObject object) {
-        initLive(getConfig(), object);
+        // VodConfig has already attempted the shared plugin; do not repeat a failed download here.
+        initLive(getConfig(), object, false);
     }
 
     private void initList(JsonObject object) {
@@ -185,8 +186,12 @@ public class LiveConfig extends BaseConfig {
     }
 
     private void initLive(Config config, JsonObject object) {
+        initLive(config, object, true);
+    }
+
+    private void initLive(Config config, JsonObject object, boolean loadPlugin) {
         String spider = Json.safeString(object, "spider");
-        BaseLoader.get().parseJar(spider, false);
+        if (loadPlugin) BaseLoader.get().parseJar(spider, false);
         setLives(Json.safeListElement(object, "lives").stream().map(e -> Live.objectFrom(e, spider)).distinct().collect(Collectors.toCollection(ArrayList::new)));
         Map<String, Live> items = Live.findAll().stream().collect(Collectors.toMap(Live::getName, Function.identity()));
         getLives().forEach(live -> live.sync(items.get(live.getName())));

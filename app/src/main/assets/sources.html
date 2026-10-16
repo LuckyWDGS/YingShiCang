@@ -1,11 +1,49 @@
 <!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="referrer" content="no-referrer"><title>影视仓 · 配置中心</title><link rel="stylesheet" href="css/sources.css"><script src="js/sources.js" defer></script></head>
-<body><main>
-<header><div class="mark" aria-hidden="true">⇄</div><div><p class="eyebrow">影视仓 · 局域网连接</p><h1>配置中心</h1></div><span id="connection">未连接</span></header>
-<p class="intro">把手机里的 TVbox 整合源保存到电视，再到电视的「线路」中选择启用。</p>
-<p id="status" role="status" aria-live="polite"></p>
-<section id="pairPanel"><h2>连接你的电视</h2><p>在电视首页打开「配置」，输入屏幕上的 6 位配对码。扫码访问会自动连接。</p><form id="pairForm"><label for="pairCode">配对码</label><div class="pairRow"><input id="pairCode" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" placeholder="000000" required><button id="login" type="submit">连接电视</button></div></form></section>
-<div id="connectedPanel" hidden><section><div class="sectionTitle"><h2>添加整合源</h2><span class="pill">保留当前线路</span></div><form id="sourceForm"><label for="sourceUrl">TVbox 配置链接</label><textarea id="sourceUrl" rows="3" placeholder="https://…" maxlength="4096" required spellcheck="false" autocapitalize="off"></textarea><p class="hint">名称自动识别，相同链接不会重复添加。</p><button type="submit" id="save">保存到电视</button></form></section>
-<section><div class="sectionTitle"><h2>已保存的线路</h2><button id="refresh" type="button" class="quiet">刷新</button></div><ul id="sources"></ul><p class="hint">切换与删除请在电视「线路」中操作。</p></section></div>
-<footer>手机和电视需连接同一局域网 · 配对有效 15 分钟<br><a href="/">打开遥控与内容推送</a></footer>
-</main></body></html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>影视仓 · 局域网配置</title>
+  <link rel="stylesheet" href="css/sources.css">
+  <script src="js/sources.js" defer></script>
+</head>
+<body>
+<main>
+  <header class="pageHeader">
+    <div class="brand">
+      <div class="mark" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8m-4-4v4"/></svg></div>
+      <div><p class="eyebrow">影视仓</p><h1>配置中心</h1></div>
+    </div>
+    <span id="connection" class="connection" role="status">连接中</span>
+  </header>
+  <p class="intro">粘贴配置链接，保存到电视。同一局域网内打开此页面即可使用。</p>
+
+  <div class="workspace">
+    <section aria-labelledby="addTitle">
+      <div class="sectionTitle"><h2 id="addTitle">添加配置</h2></div>
+      <form id="sourceForm">
+        <label for="sourceUrl">TVBox 配置链接</label>
+        <textarea id="sourceUrl" rows="4" placeholder="https://example.com/config.json" maxlength="4096" required spellcheck="false" autocapitalize="off" autocomplete="off" aria-describedby="urlHint" enterkeyhint="done"></textarea>
+        <p id="urlHint" class="hint">名称自动识别，相同链接不会重复添加。</p>
+        <button type="submit" id="save" class="primary">保存到电视</button>
+        <p id="status" class="formStatus" role="status" aria-live="polite" hidden></p>
+      </form>
+      <div class="nextStep"><strong>保存后如何使用？</strong><p>在电视打开「线路」，选择刚保存的配置即可启用。</p></div>
+    </section>
+
+    <section aria-labelledby="listTitle">
+      <div class="sectionTitle"><h2 id="listTitle">已保存线路 <span id="sourceCount" class="count" hidden></span></h2><button id="refresh" type="button" class="quiet">刷新</button></div>
+      <div id="listContent" aria-busy="true">
+        <p id="listStatus" class="listStatus" role="status" aria-live="polite">正在读取线路…</p>
+        <ul id="sources" aria-label="已保存的线路"></ul>
+        <div id="empty" class="empty" hidden><p>还没有保存线路</p><span>添加一个配置链接，就会出现在这里。</span></div>
+      </div>
+      <p class="listHint hint">「当前使用」表示电视正在使用的线路。切换与删除请在电视「线路」中操作。</p>
+    </section>
+  </div>
+
+  <footer><span>手机、电脑和电视需连接同一局域网</span><a href="/index.html">遥控与内容推送 <span aria-hidden="true">↗</span></a></footer>
+</main>
+</body>
+</html>

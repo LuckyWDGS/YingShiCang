@@ -17,7 +17,7 @@ import java.util.Set;
 
 public class VodPlaybackState {
 
-    private final Set<String> failedIds;
+    private final Set<SourceId> failedSources;
     private final List<Vod> sources;
     private final List<Flag> flags;
     private VodPlayRequest pendingRequest;
@@ -29,14 +29,16 @@ public class VodPlaybackState {
     private History history;
     private String detailKey;
     private String detailId;
+    private long resourceRevision;
     private String searchKeyword;
     private int qualityPosition;
     private boolean selectFirstSource;
     private boolean autoFallback;
     private boolean useParse;
+    private boolean fallbackSearchStarted;
 
     public VodPlaybackState() {
-        this.failedIds = new HashSet<>();
+        this.failedSources = new HashSet<>();
         this.sources = new ArrayList<>();
         this.flags = new ArrayList<>();
         this.quality = Result.empty();
@@ -46,7 +48,7 @@ public class VodPlaybackState {
     }
 
     public void reset() {
-        failedIds.clear();
+        failedSources.clear();
         sources.clear();
         flags.clear();
         clearPlayRequest();
@@ -61,24 +63,28 @@ public class VodPlaybackState {
         selectFirstSource = false;
         autoFallback = false;
         useParse = false;
+        fallbackSearchStarted = false;
     }
 
-    void addFailedId(String id) {
-        if (id != null && !id.isEmpty()) failedIds.add(id);
+    void addFailedId(String key, String id) {
+        if (key != null && !key.isEmpty() && id != null && !id.isEmpty()) failedSources.add(new SourceId(key, id));
     }
 
-    boolean hasFailedId(String id) {
-        return id != null && failedIds.contains(id);
+    boolean hasFailedId(String key, String id) {
+        return key != null && id != null && failedSources.contains(new SourceId(key, id));
     }
 
     List<Vod> getSources() {
         return sources;
     }
 
-    void setSources(List<Vod> items) {
-        sources.clear();
-        sources.addAll(items);
+    void appendSources(List<Vod> items) {
+        for (Vod item : items) if (sources.stream().noneMatch(existing ->
+                existing.getSiteKey().equals(item.getSiteKey()) && existing.getId().equals(item.getId()))) sources.add(item);
     }
+
+    boolean hasFallbackSearchStarted() { return fallbackSearchStarted; }
+    void setFallbackSearchStarted(boolean value) { fallbackSearchStarted = value; }
 
     Vod removeFirstSource() {
         return sources.remove(0);
@@ -175,7 +181,10 @@ public class VodPlaybackState {
     void setDetailRequest(String key, String id) {
         detailKey = key == null ? "" : key;
         detailId = id == null ? "" : id;
+        resourceRevision = com.fongmi.android.tv.api.config.VodConfig.getDiscoveryRevision();
     }
+
+    long getResourceRevision() { return resourceRevision; }
 
     VodPlayRequest getPendingRequest() {
         return pendingRequest;
@@ -276,5 +285,8 @@ public class VodPlaybackState {
 
     void setSearchKeyword(String searchKeyword) {
         this.searchKeyword = searchKeyword == null ? "" : searchKeyword;
+    }
+
+    private record SourceId(String key, String id) {
     }
 }
