@@ -16,12 +16,12 @@
     <color name="tv_theme_primary_text">#141414</color>
     <color name="tv_theme_browse_control">#1E1E1E</color>
     <color name="tv_theme_shortcut_control">#151515</color>
-    <color name="tv_theme_filter_focus">#373737</color>
-    <color name="tv_theme_filter_selected">#303030</color>
-    <color name="tv_theme_filter_pressed">#282828</color>
-    <color name="tv_theme_filter_control">#1E1E1E</color>
+    <color name="tv_theme_filter_focus">#F0373737</color>
+    <color name="tv_theme_filter_selected">#E6303030</color>
+    <color name="tv_theme_filter_pressed">#E6282828</color>
+    <color name="tv_theme_filter_control">#CC303030</color>
     <color name="tv_theme_filter_border">#383838</color>
-    <color name="tv_theme_filter_panel">#FA141414</color>
+    <color name="tv_theme_filter_panel">#59080808</color>
     <color name="tv_theme_rating_panel">#D9141414</color>
     <color name="tv_theme_scrim_start">#FA080808</color>
     <color name="tv_theme_scrim_end">#00080808</color>

@@ -195,9 +195,10 @@ public final class HomeDiscovery {
         more = true;
         failed = false;
         pendingRefresh = false;
-        boolean actionFocused = binding.actions.hasFocus();
+        boolean headerFocused = binding.actions.hasFocus() || binding.toolbar.hasFocus();
+        binding.toolbar.setVisibility(isHome() ? View.VISIBLE : View.GONE);
         binding.actions.setVisibility(isHome() ? View.VISIBLE : View.GONE);
-        if (actionFocused && !isHome()) focusCurrentTab();
+        if (headerFocused && !isHome()) focusCurrentTab();
         for (int i = 0; i < binding.actions.getChildCount(); i++) {
             View action = binding.actions.getChildAt(i);
             action.setSelected(isHistory() && Integer.valueOf(R.string.home_recent).equals(action.getTag()));
@@ -286,7 +287,7 @@ public final class HomeDiscovery {
             row.setGravity(android.view.Gravity.CENTER_VERTICAL);
             TextView label = new TextView(activity);
             label.setText(group.label);
-            label.setTextColor(ResUtil.getColor(com.fongmi.android.tv.R.color.tv_theme_text_secondary));
+            label.setTextColor(ResUtil.getColor(com.fongmi.android.tv.R.color.tv_theme_text));
             label.setTextSize(13);
             label.setGravity(android.view.Gravity.CENTER_VERTICAL);
             int labelWidth = ResUtil.dp2px(active == 5 ? 88 : 58);

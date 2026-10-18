@@ -19,9 +19,9 @@ android {
         applicationId "com.yingshicang.player"
         minSdk libs.versions.minSdk.get().toInteger()
         targetSdk libs.versions.targetSdk.get().toInteger()
-        // Home header: source-provided logos only and simplified weather text.
-        versionCode providers.gradleProperty('appVersionCode').getOrElse('58').toInteger()
-        versionName providers.gradleProperty('appVersionName').getOrElse('1.0.2')
+        // Discovery: translucent filters and compact category headers.
+        versionCode providers.gradleProperty('appVersionCode').getOrElse('59').toInteger()
+        versionName providers.gradleProperty('appVersionName').getOrElse('1.0.3')
         buildConfigField "String", "UPDATE_MANIFEST_URL", groovy.json.JsonOutput.toJson(providers.gradleProperty("updateManifestUrl").getOrElse(""))
         buildConfigField "String", "LOG_UPLOAD_URL", groovy.json.JsonOutput.toJson(providers.gradleProperty("logUploadUrl").getOrElse(""))
         javaCompileOptions {

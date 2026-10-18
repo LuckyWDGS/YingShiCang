@@ -1,6 +1,6 @@
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:state_focused="true"><shape><solid android:color="@color/tv_theme_selected"/><corners android:radius="8dp"/><stroke android:width="2dp" android:color="@color/tv_theme_focus_border"/></shape></item>
-    <item android:state_selected="true"><shape><solid android:color="@color/tv_theme_selected"/><corners android:radius="8dp"/><stroke android:width="1dp" android:color="@color/tv_theme_selected_border"/></shape></item>
-    <item android:state_pressed="true"><shape><solid android:color="@color/tv_theme_selected"/><corners android:radius="8dp"/></shape></item>
-    <item><shape><solid android:color="@color/tv_theme_control"/><corners android:radius="8dp"/><stroke android:width="1dp" android:color="@color/tv_theme_border"/></shape></item>
+    <item android:state_focused="true"><shape><solid android:color="@color/tv_theme_filter_focus"/><corners android:radius="8dp"/><stroke android:width="2dp" android:color="@color/tv_theme_focus_border"/></shape></item>
+    <item android:state_selected="true"><shape><solid android:color="@color/tv_theme_filter_selected"/><corners android:radius="8dp"/><stroke android:width="1dp" android:color="@color/tv_theme_selected_border"/></shape></item>
+    <item android:state_pressed="true"><shape><solid android:color="@color/tv_theme_filter_pressed"/><corners android:radius="8dp"/></shape></item>
+    <item><shape><solid android:color="@color/tv_theme_filter_control"/><corners android:radius="8dp"/><stroke android:width="1dp" android:color="@color/tv_theme_border"/></shape></item>
 </selector>
