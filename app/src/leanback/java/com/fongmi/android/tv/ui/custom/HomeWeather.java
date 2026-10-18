@@ -216,7 +216,7 @@ public final class HomeWeather {
         boolean cn = WeatherLocation.chinese(prefs.getString("country", ""));
         boolean approximate = prefs.getBoolean("approximate", true);
         String text = String.format(Locale.ROOT, "%s  %.0f°C", prefs.getString("weather_city", ""), prefs.getFloat("temperature", 0));
-        info.setText((stale ? (cn ? "上次 · " : "Last · ") : approximate ? (cn ? "约 " : "≈ ") : "") + text);
+        info.setText((stale ? (cn ? "上次 · " : "Last · ") : "") + text);
         int code = prefs.getInt("weather_code", -1);
         icon.setWeather(code, prefs.getBoolean("is_day", true)); icon.setAlpha(stale ? .6f : 1f);
         view.setContentDescription(text + "，" + WeatherInfo.describe(code) + (stale ? "，上次天气" : approximate ? "，IP估算位置" : "，设备定位") + "，点按校准位置");

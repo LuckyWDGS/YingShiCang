@@ -54,21 +54,37 @@ public class ImgUtil {
 
     public static void logo(ImageView view) {
         try {
-            // Cancel the previous source before showing the new logo or its fallback.
+            // Clearing the view's request cancels late callbacks from the previous source.
             var requests = Glide.with(view);
             requests.clear(view);
-            view.setImageResource(R.drawable.ysc_icon);
+            view.setImageDrawable(null);
+            view.setVisibility(View.GONE);
             String logo = VodConfig.get().getConfig().getLogo();
             if (TextUtils.isEmpty(logo) || logo.trim().isEmpty()) return;
-            // Drawable loading preserves GIF animation; use the view's size, not full resolution.
+            // A GONE view may never be measured. Supply its fixed layout size so loading
+            // can finish while hidden; Drawable loading keeps GIF animation intact.
+            int width = view.getLayoutParams().width;
+            int height = view.getLayoutParams().height;
             requests.load(UrlUtil.convert(logo.trim()))
+                    .override(width > 0 ? width : ResUtil.dp2px(36), height > 0 ? height : ResUtil.dp2px(36))
                     .fitCenter()
-                    .placeholder(R.drawable.ysc_icon)
-                    .fallback(R.drawable.ysc_icon)
-                    .error(R.drawable.ysc_icon)
+                    .listener(new RequestListener<Drawable>() {
+                        @Override
+                        public boolean onLoadFailed(GlideException e, Object model, Target<Drawable> target, boolean isFirstResource) {
+                            view.setVisibility(View.GONE);
+                            return false;
+                        }
+
+                        @Override
+                        public boolean onResourceReady(Drawable resource, Object model, Target<Drawable> target, DataSource dataSource, boolean isFirstResource) {
+                            view.setVisibility(View.VISIBLE);
+                            return false;
+                        }
+                    })
                     .into(view);
         } catch (RuntimeException e) {
-            view.setImageResource(R.drawable.ysc_icon);
+            view.setImageDrawable(null);
+            view.setVisibility(View.GONE);
         }
     }
 
