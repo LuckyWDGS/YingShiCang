@@ -18,8 +18,9 @@
   </LinearLayout>
   <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:paddingHorizontal="12dp" android:paddingVertical="8dp" android:orientation="horizontal" android:gravity="center_vertical" android:background="@drawable/source_field">
     <LinearLayout android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:orientation="vertical" android:layout_marginEnd="12dp">
-      <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="同一局域网 · 浏览器输入以下地址即可打开" android:textColor="@color/tv_theme_text_secondary" android:textSize="12sp" />
+      <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="另一台手机需连接同一 Wi-Fi · 扫码后在浏览器打开" android:textColor="@color/tv_theme_text_secondary" android:textSize="12sp" />
       <TextView android:id="@+id/address" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="5dp" android:textColor="@color/tv_theme_text" android:textSize="16sp" android:singleLine="true" />
     </LinearLayout>
+    <TextView android:id="@+id/openLocal" android:layout_width="100dp" android:layout_height="40dp" android:text="本机打开" android:gravity="center" android:textColor="@color/tv_theme_text" android:textSize="14sp" android:background="@drawable/source_field" android:focusable="true" />
   </LinearLayout>
 </LinearLayout>

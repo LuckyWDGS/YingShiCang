@@ -2,6 +2,8 @@ package com.fongmi.android.tv.ui.dialog;
 
 import android.app.Dialog;
 import android.os.Bundle;
+import android.content.Intent;
+import android.view.View;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatDialog;
 import androidx.fragment.app.DialogFragment;
@@ -19,6 +21,11 @@ import org.greenrobot.eventbus.ThreadMode;
 public class SourceConfigDialog extends DialogFragment {
     private DialogSourceConfigBinding binding;
     private boolean saving;
+    private String shownAddress;
+    private final android.os.Handler handler = new android.os.Handler(android.os.Looper.getMainLooper());
+    private final Runnable refreshAddress = new Runnable() {
+        @Override public void run() { updateAddress(); handler.postDelayed(this, 2000); }
+    };
     public static void showOn(FragmentActivity activity) {
         if (activity.getSupportFragmentManager().findFragmentByTag("source-config") == null)
             new SourceConfigDialog().show(activity.getSupportFragmentManager(), "source-config");
@@ -28,13 +35,21 @@ public class SourceConfigDialog extends DialogFragment {
         binding = DialogSourceConfigBinding.inflate(getLayoutInflater());
         dialog.setContentView(binding.getRoot());
         Server.get().start();
-        String address = Server.get().getAddress();
-        binding.address.setText(address);
-        binding.code.setImageBitmap(QRCode.getStandardBitmap(address, 348));
+        updateAddress();
+        binding.openLocal.setOnClickListener(v -> startActivity(new Intent(requireContext(), com.fongmi.android.tv.ui.activity.SourceWebActivity.class)));
         binding.close.setOnClickListener(v -> dismiss());
         binding.save.setOnClickListener(v -> save());
         binding.url.setOnEditorActionListener((v,id,event) -> { save(); return true; });
         return dialog;
+    }
+    private void updateAddress() {
+        if (binding == null) return;
+        String address = Server.get().getLanAddress();
+        if (address.equals(shownAddress)) return;
+        shownAddress = address;
+        binding.address.setText(address.isEmpty() ? "未连接局域网，可点右侧本机打开" : address);
+        binding.code.setVisibility(address.isEmpty() ? View.INVISIBLE : View.VISIBLE);
+        if (!address.isEmpty()) binding.code.setImageBitmap(QRCode.getStandardBitmap(address, 348));
     }
     private void save() {
         if (saving) return;
@@ -49,11 +64,12 @@ public class SourceConfigDialog extends DialogFragment {
             catch (Exception error) { com.fongmi.android.tv.App.post(() -> { if(isAdded()) status("添加失败，请重试",true); }); }
             finally { com.fongmi.android.tv.App.post(() -> {
                 saving = false;
-                if (isAdded()) { binding.save.setEnabled(true);binding.save.setText("添加"); }
+                if (isAdded() && binding != null) { binding.save.setEnabled(true);binding.save.setText("添加"); }
             }); }
         });
     }
     private void status(String text, boolean error) {
+        if (binding == null) return;
         binding.status.setTextColor(error ? 0xFFF2B4AE : ResUtil.getColor(com.fongmi.android.tv.R.color.tv_theme_text_secondary));
         binding.status.setText(text);
     }
@@ -66,6 +82,8 @@ public class SourceConfigDialog extends DialogFragment {
         getDialog().getWindow().setDimAmount(0.72f);
         getDialog().getWindow().setLayout((int)(ResUtil.getScreenWidth()*.64f),-2);
         EventBus.getDefault().register(this);
+        handler.post(refreshAddress);
     }
-    @Override public void onStop() { EventBus.getDefault().unregister(this);super.onStop(); }
+    @Override public void onStop() { handler.removeCallbacks(refreshAddress); EventBus.getDefault().unregister(this);super.onStop(); }
+    @Override public void onDestroyView() { binding = null; super.onDestroyView(); }
 }

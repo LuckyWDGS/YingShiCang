@@ -57,18 +57,18 @@ public class ImgUtil {
             // Cancel the previous source before showing the new logo or its fallback.
             var requests = Glide.with(view);
             requests.clear(view);
-            view.setImageResource(R.drawable.ic_logo);
+            view.setImageResource(R.drawable.ysc_icon);
             String logo = VodConfig.get().getConfig().getLogo();
             if (TextUtils.isEmpty(logo) || logo.trim().isEmpty()) return;
             // Drawable loading preserves GIF animation; use the view's size, not full resolution.
             requests.load(UrlUtil.convert(logo.trim()))
                     .fitCenter()
-                    .placeholder(R.drawable.ic_logo)
-                    .fallback(R.drawable.ic_logo)
-                    .error(R.drawable.ic_logo)
+                    .placeholder(R.drawable.ysc_icon)
+                    .fallback(R.drawable.ysc_icon)
+                    .error(R.drawable.ysc_icon)
                     .into(view);
         } catch (RuntimeException e) {
-            view.setImageResource(R.drawable.ic_logo);
+            view.setImageResource(R.drawable.ysc_icon);
         }
     }
 

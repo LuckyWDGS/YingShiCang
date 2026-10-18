@@ -25,6 +25,6 @@ public final class SourceNames {
         Set<String> generic = Set.of("", "index", "config", "tvbox", "api", "tv", "all", "vod");
         if (!generic.contains(file.toLowerCase(Locale.ROOT)) && file.length() <= 60
                 && !file.contains(".") && !file.matches("[0-9a-fA-F-]{16,}") && file.chars().noneMatch(Character::isISOControl)) return file;
-        return uri.getHost();
+        return SourceInput.host(url);
     }
 }

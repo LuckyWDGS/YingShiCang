@@ -3,7 +3,6 @@ package com.fongmi.android.tv.server;
 import com.fongmi.android.tv.service.PlaybackService;
 import com.fongmi.android.tv.utils.Task;
 import com.github.catvod.Proxy;
-import com.github.catvod.utils.Util;
 
 public class Server {
 
@@ -39,28 +38,37 @@ public class Server {
     }
 
     public String getAddress(boolean local) {
-        return "http://" + (local ? "127.0.0.1" : Util.getIp()) + ":" + Proxy.getPort();
+        String host = local ? "127.0.0.1" : LanAddress.get();
+        return "http://" + (host.isEmpty() ? "127.0.0.1" : host) + ":" + Proxy.getPort();
+    }
+
+    public String getLanAddress() {
+        String host = LanAddress.get();
+        Nano running = nano;
+        return running == null || !running.isAlive() || host.isEmpty() ? "" : "http://" + host + ":" + running.getListeningPort();
     }
 
     public synchronized void start() {
-        if (nano != null) return;
+        if (nano != null && nano.isAlive()) return;
         for (int i = 9978; i < 9999; i++) {
+            Nano candidate = new Nano(i);
             try {
-                nano = new Nano(i);
-                nano.start(500);
+                candidate.start(10000);
+                nano = candidate;
                 Proxy.set(i);
                 break;
             } catch (Throwable e) {
+                candidate.stop();
                 nano = null;
             }
         }
     }
 
-    public void stop() {
-        Task.execute(() -> {
-            if (nano != null) nano.stop();
-            service = null;
-            nano = null;
-        });
+    public synchronized void stop() {
+        // Detach now: a delayed shutdown must never stop a newly started server.
+        Nano previous = nano;
+        service = null;
+        nano = null;
+        if (previous != null) Task.execute(previous::stop);
     }
 }
