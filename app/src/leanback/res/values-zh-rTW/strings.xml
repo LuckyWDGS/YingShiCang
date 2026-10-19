@@ -1,4 +1,4 @@
-<resources xmlns:xliff="http://schemas.android.com/apk/res-auto">
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
 
     <!-- Home -->
     <string name="home_recent">歷史</string>

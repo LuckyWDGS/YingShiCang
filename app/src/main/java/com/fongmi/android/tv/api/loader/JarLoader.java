@@ -1,8 +1,10 @@
 package com.fongmi.android.tv.api.loader;
 
 import android.content.Context;
+import android.util.Log;
 
 import com.fongmi.android.tv.App;
+import com.fongmi.android.tv.api.compat.PluginNoticeCompatibility;
 import com.fongmi.android.tv.api.compat.PythonPluginCompatibility;
 import com.fongmi.android.tv.utils.Download;
 import com.fongmi.android.tv.utils.UrlUtil;
@@ -47,6 +49,12 @@ public class JarLoader {
     private final ConcurrentHashMap<String, DexClassLoader> loaders;
     private final ConcurrentHashMap<String, Method> methods;
     private final ConcurrentHashMap<String, Spider> spiders;
+    /**
+     * A missing class is a property of the current source artifact, not a
+     * transient network failure. Keep that result for this loader lifetime so
+     * aggregate searches do not repeatedly initialize the same broken source.
+     */
+    private final ConcurrentHashMap<String, String> deterministicFailures;
     private final ConcurrentHashMap<String, Object> locks;
     private volatile String recent;
 
@@ -54,6 +62,7 @@ public class JarLoader {
         loaders = new ConcurrentHashMap<>();
         methods = new ConcurrentHashMap<>();
         spiders = new ConcurrentHashMap<>();
+        deterministicFailures = new ConcurrentHashMap<>();
         locks = new ConcurrentHashMap<>();
     }
 
@@ -62,6 +71,7 @@ public class JarLoader {
         loaders.clear();
         methods.clear();
         spiders.clear();
+        deterministicFailures.clear();
         locks.clear();
         recent = null;
     }
@@ -77,6 +87,7 @@ public class JarLoader {
         DexClassLoader loader = new DexClassLoader(file.getAbsolutePath(), cachePath, cachePath, App.get().getClassLoader());
         invokeInit(loader);
         checkCancellation();
+        Log.d("PluginNotice", PluginNoticeCompatibility.install(loader, file).name());
         invokeProxy(key, loader);
         checkCancellation();
         loaders.put(key, loader);
@@ -161,6 +172,8 @@ public class JarLoader {
         checkCancellation();
         String jaKey = Crypto.md5(jar);
         String spKey = jaKey + key + Crypto.md5(api + "\0" + ext);
+        String cachedFailure = deterministicFailures.get(spKey);
+        if (cachedFailure != null) throw new IllegalStateException(cachedFailure);
         return spiders.computeIfAbsent(spKey, k -> {
             Spider spider = null;
             try {
@@ -189,11 +202,22 @@ public class JarLoader {
                 String message = detail.contains("EM_AARCH64") || detail.contains("EM_ARM") || detail.contains("UnsatisfiedLinkError")
                         ? "源插件原生库与当前设备架构不兼容" : "源插件初始化失败";
                 RuntimeException failure = new IllegalStateException(message, e);
-                // Only successes are cached. A later search may recover after a transient failure.
+                // Missing classes are deterministic for this exact artifact/API.
+                // Cache only that case; transient download/init/network failures
+                // remain retryable on a later search.
+                if (hasMissingClass(e)) deterministicFailures.putIfAbsent(spKey, message);
                 com.fongmi.android.tv.diagnostics.DiagnosticLog.write(App.get(), "plugin_load_failed", message + " " + cause.getClass().getSimpleName());
                 throw failure;
             }
         });
+    }
+
+    private static boolean hasMissingClass(Throwable error) {
+        Throwable cause = error;
+        for (int depth = 0; cause != null && depth < 10; depth++, cause = cause.getCause()) {
+            if (cause instanceof ClassNotFoundException || cause instanceof NoClassDefFoundError) return true;
+        }
+        return false;
     }
 
     private static void checkCancellation() {

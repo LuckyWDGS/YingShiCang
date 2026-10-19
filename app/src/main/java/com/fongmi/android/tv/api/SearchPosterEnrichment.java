@@ -20,7 +20,9 @@ final class SearchPosterEnrichment {
             }
             var retained = new ArrayList<>(original.getList());
             for (int i = 0; i < retained.size(); i++) {
-                Vod replacement = byId.get(retained.get(i).getId());
+                Vod item = retained.get(i);
+                if (item == null) continue;
+                Vod replacement = byId.get(item.getId());
                 if (replacement != null) retained.set(i, replacement);
             }
             original.setList(retained);

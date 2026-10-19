@@ -3,13 +3,18 @@
     <!-- App -->
     <string name="app_name">影視倉+</string>
 
+    <string-array name="select_engine">
+        <item>Exo / Media3 · 推薦（穩定優先）</item>
+        <item>MPV · 相容模式（硬解優先）</item>
+    </string-array>
+
     <!-- Live -->
     <string name="live_pass">密碼</string>
     <string name="live_refresh">刷新</string>
     <string name="live_line">來源 <xliff:g name="name">%s</xliff:g></string>
 
     <!-- Detail -->
-    <string name="detail_title"><xliff:g name="name">%s</xliff:g>：<xliff:g name="name">%s</xliff:g></string>
+    <string name="detail_title">%1$s：%2$s</string>
     <string name="detail_site">站源：<xliff:g name="name">%s</xliff:g></string>
     <string name="detail_year">年份：<xliff:g name="name">%s</xliff:g></string>
     <string name="detail_area">地區：<xliff:g name="name">%s</xliff:g></string>

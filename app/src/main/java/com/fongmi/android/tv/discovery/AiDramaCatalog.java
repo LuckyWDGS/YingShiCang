@@ -57,8 +57,14 @@ public final class AiDramaCatalog {
 
     private final List<Category> categories;
     private final Group categoryGroup;
+    private final boolean complete;
 
     public AiDramaCatalog(List<Category> categories) {
+        this(categories, true);
+    }
+
+    public AiDramaCatalog(List<Category> categories, boolean complete) {
+        this.complete = complete;
         Map<String, Category> unique = new LinkedHashMap<>();
         if (categories != null) for (Category category : categories)
             if (category != null && !category.id.isEmpty() && !category.label.isEmpty()) unique.putIfAbsent(category.id, category);
@@ -69,6 +75,7 @@ public final class AiDramaCatalog {
 
     public List<Category> categories() { return categories; }
     public boolean isEmpty() { return categories.isEmpty(); }
+    public boolean complete() { return complete; }
     public Category category(String id) {
         return categories.stream().filter(category -> category.id.equals(id)).findFirst().orElse(null);
     }

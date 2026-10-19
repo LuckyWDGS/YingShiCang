@@ -50,6 +50,7 @@ import com.fongmi.android.tv.db.AppDatabase;
 import com.fongmi.android.tv.event.RefreshEvent;
 import com.fongmi.android.tv.impl.CustomTarget;
 import com.fongmi.android.tv.model.VideoViewModel;
+import com.fongmi.android.tv.playback.MediaSeekPolicy;
 import com.fongmi.android.tv.playback.PlaybackAction;
 import com.fongmi.android.tv.playback.PlaybackIntent;
 import com.fongmi.android.tv.playback.PlaybackReset;
@@ -366,7 +367,8 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
         updateMoreLabels();
         for (View action : new View[]{mBinding.control.action.next, mBinding.control.action.prev,
                 mBinding.control.action.reset, mBinding.control.action.replay, mBinding.control.action.episodes,
-                mBinding.control.action.speed, mBinding.control.action.more}) action.setNextFocusUpId(action.getId());
+                mBinding.control.action.speed, mBinding.control.action.text, mBinding.control.action.danmaku,
+                mBinding.control.action.audio, mBinding.control.action.scale, mBinding.control.action.more}) action.setNextFocusUpId(action.getId());
     }
 
     private void setPlaybackMode() {
@@ -491,6 +493,7 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
 
     @Override
     public void prepareSource(Vod item) {
+        cancelPendingSeek();
         mBinding.playAddress.setText("");
         mBinding.playAddress.setVisibility(View.GONE);
         getIntent().putExtra("key", item.getSiteKey());
@@ -505,6 +508,7 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
 
     @Override
     public void stopPlaybackForRefresh() {
+        cancelPendingSeek();
         player().stop();
         player().clear();
         mClock.setCallback(null);
@@ -512,17 +516,20 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
 
     @Override
     public void resetPlaybackForError(String msg) {
+        cancelPendingSeek();
         PlaybackReset.afterError(player(), () -> mClock.setCallback(null));
         showError(msg);
     }
 
     @Override
     public void replay(long position) {
+        cancelPendingSeek();
         player().replay(position);
     }
 
     @Override
     public void startPlayback(Result result, boolean useParse, long startPositionMs, MediaMetadata metadata) {
+        cancelPendingSeek();
         String address = result.getRealUrl();
         mBinding.playAddress.setText(address.isEmpty() ? "" : getString(R.string.detail_play_address, address));
         mBinding.playAddress.setVisibility(address.isEmpty() ? View.GONE : View.VISIBLE);
@@ -780,6 +787,7 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
 
     @Override
     public void onItemClick(Flag item) {
+        cancelPendingSeek();
         mVod.selectFlag(item);
     }
 
@@ -787,6 +795,9 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
         int visibility = items.isEmpty() ? View.GONE : View.VISIBLE;
         mBinding.episodeSection.setVisibility(visibility);
         mBinding.episode.setVisibility(visibility);
+        int columns = EpisodeAdapter.columnsFor(items);
+        mEpisodeAdapter.setColumnCount(columns);
+        mBinding.episode.setColumnCount(columns);
         mEpisodeAdapter.addAll(items);
         setR2Callback();
     }
@@ -794,6 +805,7 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
     @Override
     public void onItemClick(Episode item) {
         if (shouldEnterFullscreen(item)) return;
+        cancelPendingSeek();
         mVod.selectEpisode(item);
     }
 
@@ -875,6 +887,7 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
     }
 
     private void onChange() {
+        cancelPendingSeek();
         mVod.manualSwitchSource();
     }
 
@@ -889,6 +902,7 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
     }
 
     private void checkNext() {
+        cancelPendingSeek();
         checkNext(true);
     }
 
@@ -897,6 +911,7 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
     }
 
     private void checkPrev() {
+        cancelPendingSeek();
         mVod.prevEpisode(true);
     }
 
@@ -937,11 +952,17 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
         hideControl();
     }
 
+    private void cancelPendingSeek() {
+        if (mKeyDown != null) mKeyDown.cancelPendingSeek();
+    }
+
     private void onReplay() {
+        cancelPendingSeek();
         mVod.replay();
     }
 
     private void onRefresh() {
+        cancelPendingSeek();
         mVod.refresh();
     }
 
@@ -1015,7 +1036,9 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
         ViewGroup toolbar = (ViewGroup) mBinding.control.action.replay.getParent();
         List<View> common = Arrays.asList(mBinding.control.action.next, mBinding.control.action.prev,
                 mBinding.control.action.reset, mBinding.control.action.replay, mBinding.control.action.episodes,
-                mBinding.control.action.speed, mBinding.control.action.opening, mBinding.control.action.ending);
+                mBinding.control.action.speed, mBinding.control.action.opening, mBinding.control.action.ending,
+                mBinding.control.action.text, mBinding.control.action.danmaku, mBinding.control.action.audio,
+                mBinding.control.action.scale);
         // Source plugins may append actions after inflation. Keep their handlers in the overflow menu.
         for (int i = 0; i < toolbar.getChildCount();) {
             View child = toolbar.getChildAt(i);
@@ -1026,7 +1049,8 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
             toolbar.removeView(child);
             if (child.getId() == View.NO_ID) child.setId(View.generateViewId());
             child.setBackgroundResource(R.drawable.player_vod_action);
-            TextView template = mBinding.control.action.danmaku;
+            // Keep the template in the grid: common actions now use LinearLayout parameters.
+            TextView template = mBinding.control.action.player;
             child.setPadding(template.getPaddingLeft(), template.getPaddingTop(), template.getPaddingRight(), template.getPaddingBottom());
             if (child instanceof TextView text) {
                 text.setSingleLine(false);
@@ -1217,7 +1241,11 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
 
     @Override
     protected void onScrubbingChanged(boolean scrubbing) {
-        if (scrubbing) App.removeCallbacks(mR1);
+        if (scrubbing) {
+            cancelPendingSeek();
+            hideCenter();
+            App.removeCallbacks(mR1);
+        }
         else if (isVisible(mBinding.control.getRoot())) setR1Callback();
     }
 
@@ -1307,6 +1335,10 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
 
     @Override
     protected void onPrepare() {
+        // A prepare can be triggered asynchronously by the playback service
+        // after the user has released a directional seek key. Drop that
+        // stale callback before the new player state is applied.
+        cancelPendingSeek();
         setPlaybackMode();
     }
 
@@ -1327,11 +1359,13 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
 
     @Override
     protected void onError(String msg) {
+        cancelPendingSeek();
         mVod.playbackError(msg);
     }
 
     @Override
     protected void onReclaim() {
+        cancelPendingSeek();
         mVod.refresh();
     }
 
@@ -1349,6 +1383,9 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
                 mClock.setCallback(this);
                 break;
             case Player.STATE_ENDED:
+                // If there is no next episode, the delayed seek callback must
+                // not apply to the ended item after playback transitions.
+                cancelPendingSeek();
                 hideProgress();
                 mVod.playbackEnded();
                 mClock.setCallback(null);
@@ -1383,9 +1420,16 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
     @Subscribe(threadMode = ThreadMode.MAIN)
     public void onRefreshEvent(RefreshEvent event) {
         if (isRedirect()) return;
-        if (event.getType() == RefreshEvent.Type.DETAIL) mVod.requestDetail();
-        else if (event.getType() == RefreshEvent.Type.PLAYER) mVod.refresh();
-        else if (event.getType() == RefreshEvent.Type.VOD) mVod.updateVod(event.getVod());
+        if (event.getType() == RefreshEvent.Type.DETAIL) {
+            cancelPendingSeek();
+            mVod.requestDetail();
+        } else if (event.getType() == RefreshEvent.Type.PLAYER) {
+            cancelPendingSeek();
+            mVod.refresh();
+        } else if (event.getType() == RefreshEvent.Type.VOD) {
+            cancelPendingSeek();
+            mVod.updateVod(event.getVod());
+        }
         else if (event.getType() == RefreshEvent.Type.SUBTITLE) player().setSub(Sub.from(event.getPath()));
         else if (event.getType() == RefreshEvent.Type.DANMAKU) player().setDanmaku(Danmaku.from(event.getPath()));
     }
@@ -1407,11 +1451,13 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
 
     @Override
     public void onItemClick(Vod item) {
+        cancelPendingSeek();
         mVod.selectSource(item);
     }
 
     @Override
     public void onParse(Parse item) {
+        cancelPendingSeek();
         mVod.selectParse(item);
     }
 
@@ -1423,16 +1469,6 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
         if (mHistory != null && isEnded()) controller().seekTo(mHistory.getOpening());
         if (!player().isEmpty() && isIdle()) controller().prepare();
         controller().play();
-    }
-
-    private boolean onSeekBack() {
-        controller().seekBack();
-        return true;
-    }
-
-    private boolean onSeekForward() {
-        controller().seekForward();
-        return true;
     }
 
     private boolean isFullscreen() {
@@ -1457,7 +1493,16 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
 
     private View getFocus2() {
         if (isMoreControl(mFocus2)) return mBinding.control.action.more;
-        return mFocus2 == null || mFocus2.getVisibility() != View.VISIBLE || mFocus2 == mBinding.control.action.opening || mFocus2 == mBinding.control.action.ending ? mBinding.control.action.next : mFocus2;
+        return !isControlFocus(mFocus2) || mFocus2.getVisibility() != View.VISIBLE || mFocus2 == mBinding.control.action.opening || mFocus2 == mBinding.control.action.ending ? mBinding.control.action.next : mFocus2;
+    }
+
+    private boolean isControlFocus(View view) {
+        if (view == null || !view.isFocusable()) return false;
+        View root = mBinding.control.getRoot();
+        for (android.view.ViewParent parent = view.getParent(); parent != null; parent = parent.getParent()) {
+            if (parent == root) return true;
+        }
+        return false;
     }
 
     @Override
@@ -1465,11 +1510,50 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
         if (isVisible(mBinding.control.action.morePanel) && moveMoreFocus(event)) return true;
         if (isFullscreen() && KeyUtil.isMenuKey(event)) onToggle();
         if (isVisible(mBinding.control.getRoot())) setR1Callback();
-        if (isVisible(mBinding.control.getRoot())) mFocus2 = getCurrentFocus();
+        if (handleMediaEpisodeKey(event)) return true;
+        int code = event.getKeyCode();
+        boolean direction = code == KeyEvent.KEYCODE_DPAD_UP || code == KeyEvent.KEYCODE_DPAD_DOWN || code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT;
+        if (isFullscreen() && isVisible(mBinding.control.getRoot()) && event.getAction() == KeyEvent.ACTION_DOWN && direction && !isControlFocus(getCurrentFocus()) && !isScrubbing()) {
+            View target = getFocus2();
+            if (target.requestFocusFromTouch()) {
+                mFocus2 = target;
+                return true;
+            }
+        }
+        if (isVisible(mBinding.control.getRoot()) && isControlFocus(getCurrentFocus())) mFocus2 = getCurrentFocus();
         if (isFullscreen() && isGone(mBinding.control.getRoot()) && mKeyDown.hasEvent(event) && service() != null) return mKeyDown.onKeyDown(event);
-        if (KeyUtil.isMediaFastForward(event)) return onSeekForward();
-        if (KeyUtil.isMediaRewind(event)) return onSeekBack();
+        if (handleMediaSeekKey(event)) return true;
         return super.dispatchKeyEvent(event);
+    }
+
+    private boolean handleMediaEpisodeKey(KeyEvent event) {
+        int code = event.getKeyCode();
+        if (code != KeyEvent.KEYCODE_MEDIA_PREVIOUS && code != KeyEvent.KEYCODE_MEDIA_NEXT) return false;
+        // Consume both edges. Letting ACTION_DOWN reach MediaSession while
+        // handling ACTION_UP here executes the same key twice on some TV
+        // firmwares.
+        if (event.getAction() == KeyEvent.ACTION_UP) {
+            if (code == KeyEvent.KEYCODE_MEDIA_PREVIOUS) checkPrev();
+            else checkNext();
+        }
+        return true;
+    }
+
+    private boolean handleMediaSeekKey(KeyEvent event) {
+        int code = event.getKeyCode();
+        if (code != KeyEvent.KEYCODE_MEDIA_FAST_FORWARD && code != KeyEvent.KEYCODE_MEDIA_REWIND) return false;
+        if (controller() == null || !hasPlaybackSource() || isScrubbing()) return true;
+        // Consume the press edge so the service MediaSession cannot perform a
+        // second seek; apply the one user action on release.
+        if (event.getAction() == KeyEvent.ACTION_UP) {
+            long intervalMs = mediaSeekInterval(event);
+            mKeyDown.onMediaSeek(code == KeyEvent.KEYCODE_MEDIA_FAST_FORWARD ? intervalMs : -intervalMs);
+        }
+        return true;
+    }
+
+    private long mediaSeekInterval(KeyEvent event) {
+        return MediaSeekPolicy.intervalMs(event.getEventTime() - event.getDownTime(), event.getRepeatCount());
     }
 
     @Override
@@ -1483,6 +1567,11 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
 
     @Override
     public void onSeekEnd(long time) {
+        if (time == 0 || controller() == null || !hasPlaybackSource() || isScrubbing()) {
+            mKeyDown.reset();
+            hideCenter();
+            return;
+        }
         if (seekTo(time)) hideCenter();
         mKeyDown.reset();
     }
@@ -1519,7 +1608,11 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
 
     @Override
     public void onKeyCenter() {
-        if (player().isPlaying()) onPaused();
+        if (controller() == null || service() == null) return;
+        // Commit the coalesced directional seek before toggling playback. A
+        // delayed callback must not resume a pause requested by this key.
+        mKeyDown.commitPendingSeek();
+        if (controller().getPlayWhenReady()) onPaused();
         else if (player().isEmpty()) onRefresh();
         else onPlay();
         hideControl();
@@ -1548,7 +1641,19 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
     }
 
     @Override
+    protected void onPause() {
+        // Home/another activity can animate for longer than the seek debounce
+        // before onStop. Revoke queued input as soon as this screen loses focus.
+        cancelPendingSeek();
+        hideCenter();
+        super.onPause();
+    }
+
+    @Override
     protected void onStop() {
+        // The activity may stop without being destroyed (home/PiP/another
+        // surface). Do not let a queued key seek mutate a hidden player.
+        cancelPendingSeek();
         super.onStop();
         saveHistory(false);
         if (PlayerSetting.isBackgroundOff()) mClock.stop();
@@ -1556,6 +1661,7 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
 
     @Override
     protected void onBackInvoked() {
+        cancelPendingSeek();
         if (isVisible(mBinding.control.action.morePanel)) {
             hideMore();
         } else if (isVisible(mBinding.control.getRoot())) {
@@ -1573,6 +1679,7 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
 
     @Override
     protected void onDestroy() {
+        cancelPendingSeek();
         mClock.release();
         saveHistory(true);
         DanmakuApi.cancel();

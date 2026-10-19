@@ -4,6 +4,8 @@ import org.junit.Test;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import static org.junit.Assert.*;
 
 public class AiDramaRunnerTest {
@@ -35,6 +37,34 @@ public class AiDramaRunnerTest {
         return new AiDramaCatalog(List.of(new AiDramaCatalog.Category(id, "AI漫剧", List.of())));
     }
 
+    @Test public void partialMetadataCannotClearSavedNativeTopicAcrossRetries() {
+        var full = new AiDramaCatalog(List.of(new AiDramaCatalog.Category("comic", "AI漫剧", List.of(
+                new AiDramaCatalog.Group("topic", "题材", "", List.of(
+                        new AiDramaCatalog.Option("全部", ""), new AiDramaCatalog.Option("求生", "native:379")))))));
+        var selected = new AiDramaCatalog.State(full, "source"); selected.select("topic", "native:379");
+        String saved = selected.serialize();
+        var partial = new AiDramaCatalog(catalog("comic").categories(), false);
+        assertFalse(AiDramaRunner.selectionRestorable(partial, "source", saved));
+        assertFalse(AiDramaRunner.selectionRestorable(partial, "source", saved));
+        assertEquals("native:379", selected.value("topic"));
+        assertEquals(saved, selected.serialize());
+        assertTrue(AiDramaRunner.selectionRestorable(full, "source", saved));
+        var recovered = new AiDramaCatalog.State(full, "source"); recovered.restore(saved);
+        assertEquals("native:379", recovered.value("topic"));
+        var removed = new AiDramaCatalog(partial.categories());
+        assertTrue(AiDramaRunner.selectionRestorable(removed, "source", saved));
+        var removedState = new AiDramaCatalog.State(removed, "source"); removedState.restore(saved);
+        assertEquals("", removedState.value("topic"));
+    }
+
+    @Test public void partialMetadataDoesNotBlockForeignScopeOrDefaultSelection() {
+        var partial = new AiDramaCatalog(catalog("comic").categories(), false);
+        String saved = "{\"scope\":\"old-source\",\"category\":\"comic\",\"extend\":{\"topic\":\"native:379\"}}";
+        assertTrue(AiDramaRunner.selectionRestorable(partial, "new-source", saved));
+        assertTrue(AiDramaRunner.selectionRestorable(partial, "old-source", saved.replace("native:379", "")));
+        assertTrue(AiDramaRunner.selectionRestorable(partial, "old-source", "broken"));
+    }
+
     @Test public void apiCandidateGateUsesAuditedSymbolsRatherThanDisplayNameOrSubstring() {
         assertTrue(AiDramaRunner.supportedApi("csp_AiDj")); assertTrue(AiDramaRunner.supportedApi("csp_AiDjGuard"));
         for (String api : List.of("csp_OtherAiDj", "csp_AiDjGuardExtra", "AI漫剧", "https://example.invalid/AiDj.js", ""))
@@ -50,6 +80,94 @@ public class AiDramaRunnerTest {
         var valid = catalog("comic"); cache.put(1, "original-signature", valid);
         assertSame(valid, cache.get(1, "original-signature"));
         assertNull(cache.get(1, "replacement-signature"));
+    }
+
+    @Test public void metadataExpiresAtThirtyMinutesAndHitsDoNotRenewIt() {
+        var clock = new AtomicLong(-100);
+        var cache = new AiDramaRunner.MetadataCache(clock::get);
+        var metadata = catalog("comic");
+        cache.get(1, "signature"); cache.put(1, "signature", metadata);
+        long fetchedAt = clock.get();
+        clock.set(fetchedAt + TimeUnit.MINUTES.toNanos(29));
+        assertSame(metadata, cache.get(1, "signature"));
+        clock.set(fetchedAt + TimeUnit.MINUTES.toNanos(30) - 1);
+        assertSame(metadata, cache.get(1, "signature"));
+        clock.incrementAndGet();
+        assertNull(cache.get(1, "signature"));
+    }
+
+    @Test public void failedOrEmptyRefreshCannotRenewSuccessfulMetadata() {
+        var clock = new AtomicLong();
+        var cache = new AiDramaRunner.MetadataCache(clock::get);
+        var metadata = catalog("comic");
+        cache.get(1, "signature"); cache.put(1, "signature", metadata);
+        clock.set(TimeUnit.MINUTES.toNanos(29));
+        cache.put(1, "signature", null);
+        cache.put(1, "signature", new AiDramaCatalog(List.of()));
+        assertSame(metadata, cache.get(1, "signature"));
+        clock.set(TimeUnit.MINUTES.toNanos(30));
+        assertNull(cache.get(1, "signature"));
+        cache.put(1, "signature", null);
+        assertNull(cache.get(1, "signature"));
+    }
+
+    @Test public void expiredMetadataCannotRestoreStateUntilNewSuccess() {
+        var clock = new AtomicLong();
+        var cache = new AiDramaRunner.MetadataCache(clock::get);
+        var original = catalog("comic");
+        cache.get(1, "signature"); cache.put(1, "signature", original);
+        String saved = new AiDramaCatalog.State(original, "signature").serialize();
+        clock.set(TimeUnit.MINUTES.toNanos(30));
+        assertNull(cache.restore(1, "signature", saved));
+        var fresh = new AiDramaCatalog(List.of(
+                new AiDramaCatalog.Category("comic", "AI漫剧", List.of()),
+                new AiDramaCatalog.Category("ai", "AI短剧", List.of())));
+        cache.put(1, "signature", fresh);
+        var restored = cache.restore(1, "signature", saved);
+        assertSame(fresh, restored.catalog());
+        assertEquals("comic", restored.state().categoryId());
+        assertEquals(2, restored.state().groups().get(0).options.size());
+        clock.set(TimeUnit.MINUTES.toNanos(60) - 1);
+        assertSame(fresh, cache.get(1, "signature"));
+        clock.incrementAndGet();
+        assertNull(cache.restore(1, "signature", saved));
+    }
+
+    @Test public void activeSessionKeepsItsChoicesWhileNewSessionRequiresFreshMetadata() {
+        var clock = new AtomicLong();
+        var cache = new AiDramaRunner.MetadataCache(clock::get);
+        var original = catalog("comic");
+        cache.get(1, "signature"); cache.put(1, "signature", original);
+        assertSame(original, AiDramaRunner.metadataForSession(null, cache, 1, "signature"));
+        clock.set(TimeUnit.MINUTES.toNanos(30));
+        assertSame(original, AiDramaRunner.metadataForSession(original, cache, 1, "signature"));
+        assertNull(AiDramaRunner.metadataForSession(null, cache, 1, "signature"));
+        var fresh = catalog("ai"); cache.put(1, "signature", fresh);
+        assertSame(original, AiDramaRunner.metadataForSession(original, cache, 1, "signature"));
+        assertSame(fresh, AiDramaRunner.metadataForSession(null, cache, 1, "signature"));
+    }
+
+    @Test public void partialTopicsStayUsableButCannotBecomeOrRenewSuccessfulMetadata() {
+        var clock = new AtomicLong();
+        var cache = new AiDramaRunner.MetadataCache(clock::get);
+        var full = catalog("comic");
+        var partial = new AiDramaCatalog(full.categories(), false);
+        assertTrue(full.complete()); assertFalse(partial.complete());
+        assertEquals(full.categories(), partial.categories());
+        assertEquals("comic", new AiDramaCatalog.State(partial, "signature").categoryId());
+        assertNull(AiDramaRunner.retainedMetadata(partial));
+        assertSame(full, AiDramaRunner.retainedMetadata(full));
+        cache.get(1, "signature"); cache.put(1, "signature", partial);
+        assertNull(cache.get(1, "signature"));
+        assertNull(AiDramaRunner.metadataForSession(partial, cache, 1, "signature"));
+        cache.put(1, "signature", full);
+        clock.set(TimeUnit.MINUTES.toNanos(29));
+        cache.put(1, "signature", partial);
+        assertSame(full, cache.get(1, "signature"));
+        assertSame(full, AiDramaRunner.metadataForSession(partial, cache, 1, "signature"));
+        clock.set(TimeUnit.MINUTES.toNanos(30));
+        assertNull(cache.get(1, "signature"));
+        assertNull(AiDramaRunner.metadataForSession(partial, cache, 1, "signature"));
     }
 
     @Test public void lateOldMetadataCannotEvictNewConfigurationAndClearForcesFreshFetch() {

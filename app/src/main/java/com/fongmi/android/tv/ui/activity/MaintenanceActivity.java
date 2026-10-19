@@ -53,7 +53,8 @@ public class MaintenanceActivity extends AppCompatActivity {
         button("测试输入的媒体地址", v -> startProbe(false));
         label("快速测试最多约 9MB / 30 秒。仅显示短时媒体吞吐，不代表解码成功或长期稳定；请退出播放器后测试。",14);
         label("应用更新", 22);
-        updateUrl = input("HTTPS 版本清单地址", ServiceSettings.manifestUrl());
+        label("默认检查 GitHub Releases 最新正式版，自动选择适合设备的安装包。",14);
+        updateUrl = input("可选：自定义 HTTPS 更新清单（留空使用 GitHub）", ServiceSettings.customManifestUrl());
         button("保存更新地址", v -> save(true));
         button("检查更新", v -> Updater.create().force().start(this));
         label("日志上传", 22);
@@ -91,7 +92,7 @@ public class MaintenanceActivity extends AppCompatActivity {
         try {
             if (!value.isEmpty()) MaintenanceHttp.validate(value);
             if (update) ServiceSettings.manifestUrl(value); else ServiceSettings.logsUrl(value);
-            show(value.isEmpty() ? "已清除服务地址" : "已保存服务地址");
+            show(value.isEmpty() ? (update ? "已恢复 GitHub Releases 更新" : "已清除服务地址") : "已保存服务地址");
         } catch (Exception error) { show(error.getMessage()); }
     }
     private void cancel() {

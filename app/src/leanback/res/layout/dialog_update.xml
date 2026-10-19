@@ -23,14 +23,17 @@
         android:background="?attr/colorOutlineVariant" />
 
     <androidx.core.widget.NestedScrollView
+        android:id="@+id/descriptionScroll"
         android:layout_width="match_parent"
-        android:layout_height="0dp"
+        android:layout_height="160dp"
         android:layout_marginBottom="16dp"
-        android:layout_weight="1">
+        android:focusable="true"
+        android:nextFocusDown="@id/confirm"
+        android:overScrollMode="never">
 
         <com.google.android.material.textview.MaterialTextView
             android:id="@+id/desc"
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:letterSpacing="0.02"
             android:lineSpacingExtra="8dp"
@@ -39,6 +42,48 @@
             tools:text="1. 新增 ffmpeg 音頻軟解\n2. 詳情頁新增分詞快搜\n3. 修復搜尋閃退問題\n4. 設定支援渲染切換" />
 
     </androidx.core.widget.NestedScrollView>
+
+    <androidx.appcompat.widget.LinearLayoutCompat
+        android:id="@+id/transfer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="16dp"
+        android:orientation="vertical"
+        android:visibility="gone"
+        tools:visibility="visible">
+
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="3"
+            android:textColor="@color/white"
+            android:textSize="14sp"
+            tools:text="正在下载安装包…" />
+
+        <ProgressBar
+            android:id="@+id/progressBar"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="8dp"
+            android:layout_marginTop="10dp"
+            android:indeterminate="false"
+            android:max="100"
+            android:progressBackgroundTint="#303030"
+            android:progressTint="#F2F2F2"
+            tools:progress="45" />
+
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/progressText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:textColor="#AAAAAA"
+            android:textSize="13sp"
+            tools:text="45%  ·  42.6 MB / 94.7 MB" />
+
+    </androidx.appcompat.widget.LinearLayoutCompat>
 
     <androidx.appcompat.widget.LinearLayoutCompat
         android:layout_width="match_parent"
@@ -55,6 +100,9 @@
             android:focusable="true"
             android:focusableInTouchMode="false"
             android:gravity="center"
+            android:minHeight="44dp"
+            android:nextFocusRight="@id/cancel"
+            android:nextFocusUp="@id/descriptionScroll"
             android:text="@string/update_confirm"
             android:textColor="@color/white" />
 
@@ -67,6 +115,9 @@
             android:focusable="true"
             android:focusableInTouchMode="false"
             android:gravity="center"
+            android:minHeight="44dp"
+            android:nextFocusLeft="@id/confirm"
+            android:nextFocusUp="@id/descriptionScroll"
             android:text="@string/dialog_negative"
             android:textColor="@color/white" />
 

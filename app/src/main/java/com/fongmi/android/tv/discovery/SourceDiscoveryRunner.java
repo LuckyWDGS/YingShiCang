@@ -37,6 +37,14 @@ public final class SourceDiscoveryRunner {
         }
         public synchronized void clear() { entries.clear(); revision = -1; }
     }
+    /** A manual retry starts a fresh bounded automatic-retry budget for that failed page. */
+    static final class RetryBudget {
+        private int attempts;
+        int attempts() { return attempts; }
+        boolean available() { return attempts < 2; }
+        void start(boolean manual) { attempts = manual ? 0 : attempts + 1; }
+        void succeeded() { attempts = 0; }
+    }
     private static final class PageSlot {
         final SourceDiscoveryPlanner.Query query;
         final SourcePageCursor cursor = new SourcePageCursor();
@@ -48,8 +56,9 @@ public final class SourceDiscoveryRunner {
         final String signature;
         final List<PageSlot> pages = new ArrayList<>();
         final Map<String, Vod> items = new LinkedHashMap<>();
+        final RetryBudget retryBudget = new RetryBudget();
         boolean initialized, failed;
-        int turn, categoryCount, adultCategoryCount, retryAttempts;
+        int turn, categoryCount, adultCategoryCount;
         SourceSlot(Site site) {
             this.site = site; signature = signature(site);
             requestSite = site.getType() == 4 ? App.gson().fromJson(App.gson().toJson(site), Site.class) : site;
@@ -128,14 +137,21 @@ public final class SourceDiscoveryRunner {
     /** Retry budget belongs to the failed source/page, not to healthy paging rounds. */
     public int retryAttempt() {
         return sources.stream().filter(slot -> slot.failed && slot.available())
-                .mapToInt(slot -> slot.retryAttempts).min().orElse(2);
+                .mapToInt(slot -> slot.retryBudget.attempts()).min().orElse(2);
     }
     public void next(boolean retry, Consumer<Batch> callback) {
+        next(retry, false, callback);
+    }
+    /** Reissue only failed sources at their unchanged raw cursor; keep all healthy results. */
+    public void retryFailed(Consumer<Batch> callback) {
+        next(true, true, callback);
+    }
+    private void next(boolean retry, boolean manual, Consumer<Batch> callback) {
         if (closed) return;
         long token = epoch.incrementAndGet();
         // Let runRound finish an invalidated scope so its callback can release the UI's
         // loading state even when the configuration changed just before this call.
-        round = coordinator.submit(() -> runRound(token, retry, callback));
+        round = coordinator.submit(() -> runRound(token, retry, manual, callback));
     }
     private boolean valid(long token) {
         return !closed && token == epoch.get() && config == VodConfig.get()
@@ -146,12 +162,12 @@ public final class SourceDiscoveryRunner {
                 && work.slot.signature.equals(signature(work.slot.site));
     }
 
-    private void runRound(long token, boolean retry, Consumer<Batch> callback) {
+    private void runRound(long token, boolean retry, boolean manual, Consumer<Batch> callback) {
         SourceDiscoveryRoundStats stats = BuildConfig.DEBUG ? new SourceDiscoveryRoundStats() : null;
         Deque<SourceSlot> pending = new ArrayDeque<>();
         // Failed sources retain their exact raw-page cursor, but never hold up
         // healthy-source pagination. Only the explicit retry round reissues them.
-        for (SourceSlot slot : sources) if (slot.available() && (retry ? slot.failed && slot.retryAttempts < 2 : !slot.failed)) pending.add(slot);
+        for (SourceSlot slot : sources) if (slot.available() && (retry ? slot.failed && (manual || slot.retryBudget.available()) : !slot.failed)) pending.add(slot);
         List<Work> active = new ArrayList<>();
         BlockingQueue<Work> completed = new LinkedBlockingQueue<>();
         try {
@@ -164,7 +180,7 @@ public final class SourceDiscoveryRunner {
                     if ((plugin ? crawlers : networks) >= WORKERS.limit(plugin)) continue;
                     iterator.remove();
                     Work work = new Work(slot);
-                    if (retry) slot.retryAttempts++;
+                    if (retry) slot.retryBudget.start(manual);
                     work.slot.failed = false;
                     try {
                         work.future = WORKERS.submit(plugin, () -> execute(work, token), result -> completed.offer(work));
@@ -268,7 +284,7 @@ public final class SourceDiscoveryRunner {
             slot.categoryCount = outcome.categoryCount; slot.adultCategoryCount = outcome.adultCategoryCount;
         }
         slot.failed = outcome.error();
-        if (!outcome.error()) slot.retryAttempts = 0;
+        if (!outcome.error()) slot.retryBudget.succeeded();
         if (stats != null) stats.error(outcome.errorType);
         if (outcome.error() || outcome.result == null) return;
         PageSlot page = work.page == null ? slot.next() : work.page;

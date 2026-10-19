@@ -38,6 +38,8 @@ import okhttp3.Response;
 public class ParseJob implements ParseCallback {
 
     private final AtomicBoolean done = new AtomicBoolean();
+    /** Serializes WebView creation with cancellation cleanup. */
+    private final Object webViewLock = new Object();
     private final List<CustomWebView> webViews;
     private ExecutorService executor;
     private ExecutorService infinite;
@@ -157,7 +159,11 @@ public class ParseJob implements ParseCallback {
     }
 
     private void checkResult(Map<String, String> headers, String url, String from, boolean fatal) {
-        if (url.length() > 40) onParseSuccess(headers, url, from);
+        // Providers occasionally return a missing/blank URL (or a short local
+        // URL).  Never dereference it here; let the player validate the value
+        // and surface the normal parse error on the main thread.
+        if (!TextUtils.isEmpty(url) && !url.trim().isEmpty() && !UrlUtil.scheme(url).isEmpty())
+            onParseSuccess(headers, url.trim(), from);
         else if (fatal) onParseError();
     }
 
@@ -183,10 +189,30 @@ public class ParseJob implements ParseCallback {
     }
 
     private void startWeb(String key, String from, Map<String, String> headers, String url, String click) {
+        if (TextUtils.isEmpty(url) || url.trim().isEmpty()) {
+            onParseError();
+            return;
+        }
         if (!WebViewUtil.support()) {
             onParseError();
         } else {
-            App.post(() -> webViews.add(CustomWebView.create(App.get()).start(key, from, headers, url, click, this, !url.contains("player/?url="))));
+            // WebView creation must remain on the main thread, but cancellation
+            // can arrive from the parse worker at any point before that runnable
+            // executes.  Guard both sides with the same lock so a canceled job
+            // cannot create a WebView after stopWeb() has already cleaned up.
+            App.post(() -> {
+                synchronized (webViewLock) {
+                    if (done.get()) return;
+                    CustomWebView webView = CustomWebView.create(App.get())
+                            .start(key, from, headers, url, click, this, !url.contains("player/?url="));
+                    if (done.get()) {
+                        webView.stop(false);
+                        webView.destroy();
+                    } else {
+                        webViews.add(webView);
+                    }
+                }
+            });
         }
     }
 
@@ -215,9 +241,11 @@ public class ParseJob implements ParseCallback {
     }
 
     private void stopWeb() {
-        for (CustomWebView webView : webViews) webView.stop(false);
-        for (CustomWebView webView : webViews) webView.destroy();
-        if (!webViews.isEmpty()) webViews.clear();
+        synchronized (webViewLock) {
+            for (CustomWebView webView : webViews) webView.stop(false);
+            for (CustomWebView webView : webViews) webView.destroy();
+            if (!webViews.isEmpty()) webViews.clear();
+        }
     }
 
     public void stop() {

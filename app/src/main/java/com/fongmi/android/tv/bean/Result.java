@@ -56,6 +56,9 @@ public class Result implements Parcelable {
     @JsonAdapter(FilterAdapter.class)
     private LinkedHashMap<String, List<Filter>> filters;
 
+    @SerializedName("__ai_topics_partial")
+    private boolean aiTopicsPartial;
+
     @SerializedName("url")
     @JsonAdapter(UrlAdapter.class)
     private Url url;
@@ -198,6 +201,8 @@ public class Result implements Parcelable {
     public LinkedHashMap<String, List<Filter>> getFilters() {
         return filters == null ? new LinkedHashMap<>() : filters;
     }
+
+    public boolean isAiTopicsPartial() { return aiTopicsPartial; }
 
     public Url getUrl() {
         return url == null ? Url.create() : url;

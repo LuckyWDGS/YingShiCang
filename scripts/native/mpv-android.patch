@@ -1,0 +1,34 @@
+diff --git a/buildscripts/include/depinfo.sh b/buildscripts/include/depinfo.sh
+index d7e7369..0bbdf50 100755
+--- a/buildscripts/include/depinfo.sh
++++ b/buildscripts/include/depinfo.sh
+@@ -67,7 +67,7 @@ dep_mpv_android=(mpv)
+ 
+ # CI resolves these movable branches to immutable commits before selecting a cache.
+ v_ci_ffmpeg=release-9.0-fongmi
+-v_ci_uavs3d=e72f7c34be2f4de725c1ae498e8c4f3559e99b5b
++v_ci_uavs3d=0e20d2c291853f196c68922a264bcd8471d75b68
+ v_ci_dav1d=master
+ v_ci_libass=master
+ v_ci_libplacebo=fongmi
+diff --git a/buildscripts/scripts/ffmpeg.sh b/buildscripts/scripts/ffmpeg.sh
+index 90e6de2..4bbefd9 100755
+--- a/buildscripts/scripts/ffmpeg.sh
++++ b/buildscripts/scripts/ffmpeg.sh
+@@ -45,7 +45,15 @@ if [ ! -f "$av3a_source/CMakeLists.txt" ]; then
+ 	echo "FFmpeg source does not contain dependency/avs3a. Update the pinned FFmpeg branch." >&2
+ 	exit 1
+ fi
+-android_cmake_setup "$av3a_source" "$av3a_build" -DBUILD_SHARED_LIBS=OFF
++av3a_extra=()
++if [ -n "${ARCDAV3A_SHARED_DEPS:-}" ]; then
++	for dep in BOOST EAR; do
++		path="$ARCDAV3A_SHARED_DEPS/arcdav3a_${dep,,}-src"
++		[ -d "$path" ] || { echo "Missing shared source: $path" >&2; exit 1; }
++		av3a_extra+=("-DFETCHCONTENT_SOURCE_DIR_ARCDAV3A_$dep=$path")
++	done
++fi
++android_cmake_setup "$av3a_source" "$av3a_build" -DBUILD_SHARED_LIBS=OFF "${av3a_extra[@]}"
+ android_cmake_build "$av3a_build"
+ android_cmake_install "$av3a_build"
+ 

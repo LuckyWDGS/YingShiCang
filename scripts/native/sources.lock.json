@@ -1,0 +1,44 @@
+{
+  "ndk": "30.0.16248370",
+  "androidApi": 24,
+  "abis": [
+    "armeabi-v7a",
+    "arm64-v8a"
+  ],
+  "sources": {
+    "mpv-android": {
+      "repository": "https://github.com/FongMi/mpv-android.git",
+      "commit": "c75c5a74601460d023e140c208fb4731e022de2c",
+      "patchSha256": "4a1262088dc8d1e48c66c9df466cc10094539301d0191e803c6f5c07539d7260"
+    },
+    "mpv": {
+      "repository": "https://github.com/FongMi/mpv.git",
+      "commit": "7f0bd1f327b12db2bbe13c2b1d29e29a5ae5a632"
+    },
+    "ffmpeg": {
+      "repository": "https://github.com/FongMi/FFmpeg.git",
+      "commit": "e6d1f51f9e11c2c7b291029ba9b2c914396b58ad"
+    },
+    "libplacebo": {
+      "repository": "https://github.com/FongMi/libplacebo.git",
+      "commit": "558b03542315d532ded3ba5f9183d84d712eeedd"
+    },
+    "uavs3d": {
+      "repository": "https://github.com/uavs3/uavs3d.git",
+      "commit": "0e20d2c291853f196c68922a264bcd8471d75b68",
+      "patchSha256": "c8eff9f1edbdeb5dca739a76c9f20f566ee479b9d0fdb76c2be8fabc5fadcd20"
+    },
+    "dav1d": {
+      "repository": "https://github.com/videolan/dav1d",
+      "commit": "d7a83f6e0f9360188a38ceae0883f3d132d87b47"
+    },
+    "libass": {
+      "repository": "https://github.com/libass/libass",
+      "commit": "f61db567e6593df3470e91594bcd4ad2d0473aff"
+    },
+    "freetype2": {
+      "repository": "https://gitlab.freedesktop.org/freetype/freetype.git",
+      "commit": "37515cf56ba3349656049edbed89ffc6f6466f2d"
+    }
+  }
+}

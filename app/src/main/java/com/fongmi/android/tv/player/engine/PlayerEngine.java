@@ -23,6 +23,15 @@ public interface PlayerEngine {
 
     void setDecode(int decode);
 
+    /**
+     * Returns whether the current video is a 4K HEVC stream using the Exo
+     * software decoder that can cause sustained frame starvation.  Other
+     * engines return false; this is intentionally read-only and ephemeral.
+     */
+    default boolean isSoftware4kHevc() {
+        return false;
+    }
+
     default PlayerEffect getEffect() {
         return PlayerEffect.NONE;
     }

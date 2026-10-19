@@ -62,6 +62,7 @@ public abstract class PlaybackActivity extends BaseActivity implements MediaCont
     private boolean bound;
     private boolean stop;
     private boolean lock;
+    private boolean wasPlayingBeforeScrub;
 
     protected MediaController controller() {
         return mController;
@@ -231,12 +232,18 @@ public abstract class PlaybackActivity extends BaseActivity implements MediaCont
     }
 
     protected boolean seekTo(long deltaMs) {
-        PlayerManager player = player();
-        long targetMs = Math.max(0, player.getPosition() + deltaMs);
-        long durationMs = player.getDuration();
+        if (mController == null) return false;
+        // The controller masks each requested position immediately. The service
+        // may still expose the old position until its queued seek is executed.
+        boolean wasPlaying = mController.getPlayWhenReady();
+        long targetMs = Math.max(0, mController.getCurrentPosition() + deltaMs);
+        long durationMs = mController.getDuration();
         boolean seekToEnd = durationMs > 0 && targetMs >= durationMs;
         mController.seekTo(seekToEnd ? durationMs : targetMs);
-        if (!seekToEnd) mController.play();
+        // A delayed seek can run after the user has pressed pause. Preserve the
+        // state from before the seek instead of reviving playback underneath
+        // that explicit pause.
+        if (!seekToEnd && wasPlaying) mController.play();
         return seekToEnd;
     }
 
@@ -292,6 +299,12 @@ public abstract class PlaybackActivity extends BaseActivity implements MediaCont
         getSeekView().getTimeBar().addListener(new TimeBar.OnScrubListener() {
             @Override
             public void onScrubStart(@NonNull TimeBar timeBar, long position) {
+                // Keep the user's play intent while buffering.  isPlaying() is
+                // false during a normal rebuffer, so using it here would make a
+                // scrub silently leave a still-playing item paused once data
+                // arrives.  playWhenReady is also the state used by seekTo(),
+                // and goes false immediately when the user presses Pause.
+                wasPlayingBeforeScrub = mController != null && mController.getPlayWhenReady();
                 PlaybackActivity.this.setScrubbing(true);
             }
 
@@ -312,7 +325,11 @@ public abstract class PlaybackActivity extends BaseActivity implements MediaCont
     }
 
     protected void onScrubStop(boolean canceled) {
-        if (!canceled && mController != null && mController.isCommandAvailable(Player.COMMAND_PLAY_PAUSE)) mController.play();
+        // A pause received during the gesture takes precedence over the state
+        // captured at its start. Seeking must not revive that paused playback.
+        if (!canceled && wasPlayingBeforeScrub && mController != null && mController.getPlayWhenReady()
+                && mController.isCommandAvailable(Player.COMMAND_PLAY_PAUSE)) mController.play();
+        wasPlayingBeforeScrub = false;
         setScrubbing(false);
     }
 

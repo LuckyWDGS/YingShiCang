@@ -1,6 +1,7 @@
 package com.fongmi.android.tv.player;
 
 import android.net.Uri;
+import android.os.Build;
 import android.text.TextUtils;
 
 import androidx.annotation.NonNull;
@@ -32,9 +33,11 @@ import com.fongmi.android.tv.player.effect.PlayerEffectManager;
 import com.fongmi.android.tv.player.effect.audio.AudioEffectBands;
 import com.fongmi.android.tv.player.engine.PlayerEngine;
 import com.fongmi.android.tv.player.engine.PlayerEngineFactory;
+import com.fongmi.android.tv.player.engine.SoftwareHevcFallback;
 import com.fongmi.android.tv.player.media.PlaySpec;
 import com.fongmi.android.tv.player.parse.ParseJob;
 import com.fongmi.android.tv.player.track.TrackUtil;
+import com.fongmi.android.tv.player.mpv.MpvPlayerEngine;
 import com.fongmi.android.tv.setting.DanmakuSetting;
 import com.fongmi.android.tv.setting.PlayerSetting;
 import com.fongmi.android.tv.setting.PreloadSetting;
@@ -42,6 +45,7 @@ import com.fongmi.android.tv.setting.SpeedSetting;
 import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.ResUtil;
 import com.fongmi.android.tv.utils.Util;
+import com.fongmi.android.tv.utils.UrlUtil;
 import com.google.common.net.HttpHeaders;
 
 import java.util.HashMap;
@@ -66,20 +70,23 @@ public class PlayerManager implements ParseCallback {
 
     private DanmakuConfig danmakuConfig;
     private long pendingStartPositionMs;
+    /** Timeout used by the current prepare, including an engine fallback. */
+    private long playbackTimeoutMs;
     private boolean danmakuEnabled;
     private boolean initTrack;
     private int retry;
     private int decode;
+    /** The current PlaySpec that has already had one ephemeral MPV fallback. */
+    private PlaySpec softwareHevcFallbackSpec;
+    private final SoftwareHevcFallback.ManualSelectionPolicy<PlaySpec> fallbackSelection =
+            new SoftwareHevcFallback.ManualSelectionPolicy<>();
 
     public PlayerManager(Callback callback) {
-        health.setQualityAction(() -> {
-            if (player != null && App.activity() instanceof androidx.fragment.app.FragmentActivity host)
-                com.fongmi.android.tv.ui.dialog.TrackDialog.create().player(this).type(C.TRACK_TYPE_VIDEO).show(host);
-        });
         this.callback = callback;
         this.decode = PlayerEngine.HARD;
         this.runnable = this::onPlayTimeout;
         this.pendingStartPositionMs = C.TIME_UNSET;
+        this.playbackTimeoutMs = Constant.TIMEOUT_PLAY;
         this.engine = PlayerEngineFactory.create(decode, listener);
         this.effects = new PlayerEffectManager(() -> engine);
         this.danmakuConfig = DanmakuSetting.getConfig();
@@ -88,7 +95,12 @@ public class PlayerManager implements ParseCallback {
     }
 
     public void release() {
+        // Parse callbacks are posted back to the main thread.  Cancel the job
+        // before releasing the engine so a late URL/error callback cannot call
+        // setMediaItem() after player/engine have been nulled out.
+        stopParse();
         health.finish();
+        fallbackSelection.clear();
         App.removeCallbacks(runnable);
         if (player != null) player.removeListener(listener);
         if (engine != null) engine.release();
@@ -282,6 +294,11 @@ public class PlayerManager implements ParseCallback {
     }
 
     public void setEngine(int targetEngine) {
+        // A manual engine choice starts a new preference-owned decision.  The
+        // automatic fallback itself never calls this method, so it cannot write
+        // the user's persistent engine setting.
+        fallbackSelection.onManualSelection(spec);
+        softwareHevcFallbackSpec = null;
         PlayerSetting.putEngine(targetEngine);
         if (isEmpty() || PlayerEngineFactory.matches(engine, spec)) return;
         PlaybackSnapshot snapshot = PlaybackSnapshot.capture(player);
@@ -410,8 +427,13 @@ public class PlayerManager implements ParseCallback {
     }
 
     public void stop() {
+        // A stop can be requested while the prepare timeout is still queued.
+        // Remove it before stopping the engine so a stale timeout cannot report
+        // an error for a player that was deliberately stopped (or for the next
+        // item that is prepared immediately afterwards).
+        App.removeCallbacks(runnable);
         health.finish();
-        engine.stop();
+        if (engine != null) engine.stop();
         stopParse();
     }
 
@@ -459,7 +481,10 @@ public class PlayerManager implements ParseCallback {
     }
 
     public void clear() {
+        App.removeCallbacks(runnable);
         spec = null;
+        softwareHevcFallbackSpec = null;
+        fallbackSelection.clear();
         observedSpec = null;
         resourceObservation = null;
     }
@@ -525,17 +550,41 @@ public class PlayerManager implements ParseCallback {
     }
 
     private void onPlayTimeout() {
-        if (currentMediaMatchesSpec()) observeResource(false);
+        // The timeout runnable is shared by successive preparations.  A parse
+        // or navigation request can replace spec before the old runnable is
+        // dequeued; in that case the old player must not surface a timeout for
+        // the new request.
+        if (!currentMediaMatchesSpec()) return;
+        observeResource(false);
         callback.onError(ResUtil.getString(R.string.error_play_timeout));
         stop();
     }
 
     private void ensureEngine(PlaySpec spec) {
+        // Keep the temporary fallback across subtitle/format restarts of the
+        // same resource even when the persisted preference remains EXO.
+        if (softwareHevcFallbackSpec == spec && engine != null && engine.getType() == PlayerEngine.Type.MPV) return;
         if (PlayerEngineFactory.matches(engine, spec)) return;
         PlayerEngine old = engine;
-        player.removeListener(listener);
-        engine = PlayerEngineFactory.create(decode, spec, listener);
-        setPlayer(engine.getPlayer());
+        Player oldPlayer = player;
+        // Engine construction can touch native MPV state.  Availability is
+        // probed before this method, but a concurrent native unload or a bad
+        // device driver can still make the constructor throw.  Keep the
+        // current engine usable in that case instead of leaving it detached
+        // from callbacks (or crashing the service).
+        oldPlayer.removeListener(listener);
+        PlayerEngine replacement;
+        try {
+            replacement = PlayerEngineFactory.create(decode, spec, listener);
+        } catch (Throwable error) {
+            oldPlayer.addListener(listener);
+            DiagnosticLog.write(App.get(), "playback_engine_create_failed",
+                    "target=" + (PlayerSetting.isMpv() ? "mpv" : "exo")
+                            + " error=" + error.getClass().getSimpleName());
+            return;
+        }
+        engine = replacement;
+        setPlayer(replacement.getPlayer());
         old.release();
     }
 
@@ -551,8 +600,72 @@ public class PlayerManager implements ParseCallback {
     }
 
     public void start(PlaySpec spec, long timeout, long startPositionMs) {
+        if (this.spec != spec) softwareHevcFallbackSpec = null;
         this.spec = spec;
+        fallbackSelection.onPlaybackStarted(spec);
         setMediaItem(timeout, startPositionMs);
+    }
+
+    private boolean trySoftwareHevcFallback() {
+        if (spec == null || engine == null || engine.getType() != PlayerEngine.Type.EXO) return false;
+        // A previous player's READY event can arrive while a new quality is
+        // still parsing. Its decoder observation belongs to that old media.
+        if (!currentMediaMatchesSpec() || TextUtils.isEmpty(spec.getUrl())
+                || spec.getUrl().trim().isEmpty() || !fallbackSelection.allows(spec)) return false;
+        if (softwareHevcFallbackSpec == spec || !engine.isSoftware4kHevc()) return false;
+        // Check the host ABI before probing/loading the optional native MPV
+        // runtime.  On x86/Houdini the ARM binary can appear loadable but is
+        // unsafe for the shader path; avoid touching it at all on that host.
+        if (!SoftwareHevcFallback.isArmRuntime(Build.SUPPORTED_ABIS)) return false;
+        if (!SoftwareHevcFallback.isAllowed(MpvPlayerEngine.isAvailable(), spec.getDrm() != null,
+                UrlUtil.scheme(spec.getUrl()))) return false;
+
+        // Mark before creating the replacement.  A failed replacement must not
+        // loop back into Exo on the next READY callback.
+        softwareHevcFallbackSpec = spec;
+        PlayerEngine oldEngine = engine;
+        Player playerBeforeSwap = player;
+        PlaybackSnapshot snapshot = PlaybackSnapshot.capture(playerBeforeSwap);
+        PlayerEngine replacement;
+        try {
+            replacement = PlayerEngineFactory.create(decode, PlayerEngine.Type.MPV, listener);
+        } catch (Throwable ignored) {
+            // A construction failure leaves the original Exo session alive;
+            // allow a later READY/error cycle to retry once MPV becomes usable.
+            softwareHevcFallbackSpec = null;
+            DiagnosticLog.write(App.get(), "playback_engine_fallback", "target=mpv result=create_failed");
+            return false;
+        }
+
+        playerBeforeSwap.removeListener(listener);
+        // The fallback starts a fresh session on the replacement engine. Do not
+        // carry Exo's preload request or one-time track initialization state
+        // into that session.
+        pendingPreload = null;
+        initTrack = false;
+        engine = replacement;
+        setPlayer(replacement.getPlayer());
+        try {
+            replacement.start(spec, snapshot.positionMs());
+            snapshot.restore(player);
+            oldEngine.release();
+            notifyDanmakuSourceChanged();
+            App.post(runnable, playbackTimeoutMs);
+            callback.onPrepare();
+            DiagnosticLog.write(App.get(), "playback_engine_fallback", "from=exo to=mpv reason=software_hevc_4k result=switched");
+            return true;
+        } catch (Throwable ignored) {
+            replacement.release();
+            engine = oldEngine;
+            player = playerBeforeSwap;
+            playerBeforeSwap.addListener(listener);
+            setPlayer(playerBeforeSwap);
+            // Do not permanently blacklist the resource when MPV failed before
+            // it produced a usable player.  The next explicit retry may succeed.
+            softwareHevcFallbackSpec = null;
+            DiagnosticLog.write(App.get(), "playback_engine_fallback", "target=mpv result=start_failed");
+            return false;
+        }
     }
 
     public void parse(String key, Result result, boolean useParse, MediaMetadata metadata) {
@@ -562,8 +675,14 @@ public class PlayerManager implements ParseCallback {
     public void parse(String key, Result result, boolean useParse, MediaMetadata metadata, long startPositionMs) {
         stopParse();
         pendingStartPositionMs = startPositionMs;
-        spec = PlaySpec.fromParse(result, key, metadata);
-        PlaySpec requested = spec;
+        PlaySpec requested = PlaySpec.fromParse(result, key, metadata);
+        // A parse request always owns a new PlaySpec.  Drop the previous
+        // temporary HEVC fallback marker here as well as in start(), otherwise
+        // a long lived manager could retain an old media graph until the next
+        // successful parsed URL arrives.
+        if (spec != requested) softwareHevcFallbackSpec = null;
+        spec = requested;
+        fallbackSelection.onPlaybackStarted(spec);
         parseJob = ParseJob.create(new ParseCallback() {
             @Override public void onParseSuccess(Map<String, String> headers, String url, String from) {
                 if (spec == requested) PlayerManager.this.onParseSuccess(headers, url, from);
@@ -581,7 +700,18 @@ public class PlayerManager implements ParseCallback {
     }
 
     private void setMediaItem(long timeout, long startPositionMs) {
-        if (spec == null || spec.getUrl() == null) return;
+        if (spec == null || spec.getUrl() == null || spec.getUrl().trim().isEmpty()) {
+            // A parse-backed PlaySpec intentionally has no URL until the parse
+            // callback arrives.  Do not arm a timeout or leave a timeout from a
+            // previous item alive while it is waiting.
+            App.removeCallbacks(runnable);
+            return;
+        }
+        // App.post() de-duplicates this exact runnable, but removing it here
+        // makes the ownership explicit and also covers a previous preparation
+        // that was stopped before this method was reached.
+        App.removeCallbacks(runnable);
+        playbackTimeoutMs = timeout;
         health.start(spec);
         ensureEngine(spec.checkUa());
         pendingPreload = null;
@@ -641,6 +771,10 @@ public class PlayerManager implements ParseCallback {
 
     @Override
     public void onParseSuccess(Map<String, String> headers, String url, String from) {
+        if (TextUtils.isEmpty(url) || UrlUtil.scheme(url).isEmpty()) {
+            onParseError();
+            return;
+        }
         if (!TextUtils.isEmpty(from)) Notify.show(ResUtil.getString(R.string.parse_from, from));
         if (headers != null) headers.remove(HttpHeaders.RANGE);
         if (spec != null) spec.setHeaders(headers);
@@ -651,6 +785,7 @@ public class PlayerManager implements ParseCallback {
 
     @Override
     public void onParseError() {
+        App.removeCallbacks(runnable);
         pendingStartPositionMs = C.TIME_UNSET;
         observeResource(false);
         callback.onError(ResUtil.getString(R.string.error_play_parse));
@@ -703,27 +838,43 @@ public class PlayerManager implements ParseCallback {
 
     private final Player.Listener listener = new Player.Listener() {
 
-        @Override public void onPlayWhenReadyChanged(boolean ready, int reason) { health.playWhenReady(ready); }
+        @Override public void onPlayWhenReadyChanged(boolean ready, int reason) {
+            if (currentMediaMatchesSpec()) health.playWhenReady(ready);
+        }
         @Override public void onPositionDiscontinuity(@NonNull Player.PositionInfo oldPosition, @NonNull Player.PositionInfo newPosition, int reason) {
-            if (reason == Player.DISCONTINUITY_REASON_SEEK) health.seek();
+            if (reason == Player.DISCONTINUITY_REASON_SEEK && currentMediaMatchesSpec()) health.seek();
         }
 
         @Override
         public void onPlaybackStateChanged(int state) {
+            // A replaced player's callbacks can arrive after parse/start has
+            // installed a different PlaySpec. Ignore the complete state event
+            // so stale READY/BUFFERING/ENDED transitions cannot contaminate
+            // health timing or consume the replacement timeout/preload.
+            if (!currentMediaMatchesSpec()) return;
             health.state(state);
             DiagnosticLog.write(App.get(), "playback_state", String.valueOf(state));
-            if (state == Player.STATE_READY || state == Player.STATE_ENDED) App.removeCallbacks(runnable);
-            if (state == Player.STATE_READY) startPreloadIfReady();
-            if (state == Player.STATE_READY && currentMediaMatchesSpec()) observeResource(true);
+            // Only the current media may consume its prepare timeout. A stale
+            // READY/ENDED callback otherwise removes the timeout just armed for
+            // the replacement request and leaves it without failure recovery.
+            if ((state == Player.STATE_READY || state == Player.STATE_ENDED)
+                    && currentMediaMatchesSpec()) App.removeCallbacks(runnable);
+            if (state == Player.STATE_READY && trySoftwareHevcFallback()) return;
+            if (state == Player.STATE_READY) {
+                startPreloadIfReady();
+                observeResource(true);
+            }
         }
 
         @Override
         public void onVideoSizeChanged(@NonNull VideoSize size) {
+            if (!currentMediaMatchesSpec()) return;
             videoSize = size;
         }
 
         @Override
         public void onTracksChanged(@NonNull Tracks tracks) {
+            if (!currentMediaMatchesSpec()) return;
             if (tracks.isEmpty() || initTrack) return;
             setTrack(Track.find(getKey()));
             callback.onTracksChanged();
@@ -732,17 +883,23 @@ public class PlayerManager implements ParseCallback {
 
         @Override
         public void onMediaChaptersChanged(@NonNull List<MediaChapter> chapters) {
-            callback.onMediaOptionsChanged();
+            if (currentMediaMatchesSpec()) callback.onMediaOptionsChanged();
         }
 
         @Override
         public void onMediaEditionsChanged(@NonNull List<MediaEdition> editions) {
-            callback.onMediaOptionsChanged();
+            if (currentMediaMatchesSpec()) callback.onMediaOptionsChanged();
         }
 
         @Override
         public void onPlayerError(@NonNull PlaybackException e) {
-            if (spec == null) return;
+            // Exo can dispatch an error from a media item that was replaced
+            // while its asynchronous prepare/error callback was in flight.
+            // Once the current item's tag no longer points at this PlaySpec,
+            // the event belongs to the superseded request and must not trigger
+            // decode retries, format changes, or an error for the new item.
+            if (spec == null || engine == null || !currentMediaMatchesSpec()
+                    || player.getPlayerError() != e) return;
             health.error(e.getErrorCodeName());
             DiagnosticLog.write(App.get(), "playback_error", e.getErrorCodeName() + " engine=" + engine.getClass().getSimpleName());
             PlayerEngine.ErrorAction action = engine.handleError(e);

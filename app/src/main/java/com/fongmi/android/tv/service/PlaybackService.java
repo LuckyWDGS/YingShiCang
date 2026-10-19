@@ -27,6 +27,7 @@ import androidx.media3.ui.danmaku.DanmakuConfig;
 
 import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.BuildConfig;
+import com.fongmi.android.tv.Constant;
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.bean.Result;
 import com.fongmi.android.tv.browse.BrowseTree;
@@ -448,6 +449,19 @@ public class PlaybackService extends MediaLibraryService implements MediaLibrary
             @Override
             public void seekToNextMediaItem() {
                 dispatchNext();
+            }
+
+            @Override
+            public void seekBack() {
+                long target = Math.max(0, getCurrentPosition() - Constant.INTERVAL_SEEK);
+                seekTo(target);
+            }
+
+            @Override
+            public void seekForward() {
+                long duration = getDuration();
+                long target = getCurrentPosition() + Constant.INTERVAL_SEEK;
+                seekTo(duration > 0 ? Math.min(duration, target) : target);
             }
 
             @Override

@@ -8,6 +8,7 @@ import org.junit.Test;
 
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InterruptedIOException;
 import java.io.InputStreamReader;
 import java.net.InetAddress;
 import java.net.ServerSocket;
@@ -89,6 +90,21 @@ public class SearchRequestScopeTest {
             assertThrows(IOException.class, () -> scope.execute(fixture.request()));
             assertEquals(2, deadlines.size());
             assertTrue("Extension and main search each received a fresh full timeout", deadlines.get(1) <= deadlines.get(0) - 70);
+        }
+    }
+
+    @Test public void interruptedCallerFailsBeforeOpeningAnotherHttpCall() throws Exception {
+        try (var fixture = new Fixture(1, 0); var scope = new SearchRequestScope(new OkHttpClient(), 3000)) {
+            Thread.currentThread().interrupt();
+            try {
+                scope.execute(fixture.request());
+                fail("Interrupted search started an HTTP call");
+            } catch (InterruptedIOException expected) {
+                assertEquals("Search cancelled", expected.getMessage());
+                assertEquals(0, fixture.requests.get());
+            } finally {
+                Thread.interrupted();
+            }
         }
     }
 }

@@ -104,6 +104,7 @@ public class OkHttp {
     public static String string(String url) {
         if (!url.startsWith("http")) return "";
         try (Response res = newCall(url).execute()) {
+            if (!res.isSuccessful() || res.body() == null) return "";
             return res.body().string();
         } catch (Exception e) {
             e.printStackTrace();
@@ -114,6 +115,7 @@ public class OkHttp {
     public static String string(String url, Map<String, String> headers) {
         if (!url.startsWith("http")) return "";
         try (Response res = newCall(url, headers).execute()) {
+            if (!res.isSuccessful() || res.body() == null) return "";
             return res.body().string();
         } catch (Exception e) {
             e.printStackTrace();

@@ -26,6 +26,10 @@ public class PlayerSetting {
     private static final int MAX_BACKGROUND = 2;
 
     public static int getEngine() {
+        // Exo/Media3 is the evidence-backed default: on the LDPlayer HEVC
+        // matrix it reached the first frame faster, used less memory, and
+        // completed without decoder/output errors.  A saved preference remains
+        // authoritative, so users can still select MPV for compatibility.
         return Math.clamp(Prefers.getInt("player_engine", ENGINE_EXO), ENGINE_EXO, ENGINE_MPV);
     }
 

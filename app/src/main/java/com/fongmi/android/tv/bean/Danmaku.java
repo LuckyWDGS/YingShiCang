@@ -1,13 +1,12 @@
 package com.fongmi.android.tv.bean;
 
 import android.net.Uri;
-import android.text.TextUtils;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
-import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.utils.UrlUtil;
+import com.google.gson.Gson;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.reflect.TypeToken;
 
@@ -16,6 +15,8 @@ import java.util.Collections;
 import java.util.List;
 
 public class Danmaku {
+
+    private static final Gson GSON = new Gson();
 
     @SerializedName("name")
     private String name;
@@ -26,7 +27,7 @@ public class Danmaku {
 
     public static List<Danmaku> arrayFrom(String str) {
         Type listType = TypeToken.getParameterized(List.class, Danmaku.class).getType();
-        List<Danmaku> items = App.gson().fromJson(str, listType);
+        List<Danmaku> items = GSON.fromJson(str, listType);
         return items == null ? Collections.emptyList() : items;
     }
 
@@ -42,11 +43,11 @@ public class Danmaku {
     }
 
     public String getName() {
-        return TextUtils.isEmpty(name) ? getUrl() : name;
+        return name == null || name.isEmpty() ? getUrl() : name;
     }
 
     public String getUrl() {
-        return TextUtils.isEmpty(url) ? "" : url;
+        return url == null ? "" : url;
     }
 
     public boolean isSelected() {
@@ -80,6 +81,6 @@ public class Danmaku {
     @NonNull
     @Override
     public String toString() {
-        return App.gson().toJson(this);
+        return GSON.toJson(this);
     }
 }

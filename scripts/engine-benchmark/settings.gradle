@@ -1,0 +1,14 @@
+pluginManagement {
+    def props = new Properties()
+    file('../../local.properties').withInputStream { props.load(it) }
+    includeBuild((System.getenv('MEDIA3_DIR') ?: props.getProperty('media3.dir')) + '/build-logic-settings')
+    repositories { gradlePluginPortal(); mavenCentral(); google() }
+}
+plugins { id 'gradlebuild.media3-settings-logic' }
+dependencyResolutionManagement {
+    repositories { mavenCentral(); google() }
+}
+def props = new Properties()
+file('../../local.properties').withInputStream { props.load(it) }
+includeMedia3.execute(file(System.getenv('MEDIA3_DIR') ?: props.getProperty('media3.dir')))
+rootProject.name = 'EngineBenchmark'

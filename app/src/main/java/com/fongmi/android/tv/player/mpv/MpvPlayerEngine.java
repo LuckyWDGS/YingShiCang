@@ -18,6 +18,7 @@ public class MpvPlayerEngine implements PlayerEngine, Player.Listener {
     private final MpvErrorMessageProvider provider;
     private final MpvPlayerEffect effect;
     private final MpvPlayer player;
+    private final MpvHlsRecovery hlsRecovery = new MpvHlsRecovery();
     private PlaySpec spec;
 
     public MpvPlayerEngine(int decode, Player.Listener listener) {
@@ -85,6 +86,7 @@ public class MpvPlayerEngine implements PlayerEngine, Player.Listener {
     @Override
     public void start(PlaySpec spec, long startPositionMs) {
         this.spec = spec;
+        hlsRecovery.reset();
         startInternal(startPositionMs);
     }
 
@@ -120,7 +122,7 @@ public class MpvPlayerEngine implements PlayerEngine, Player.Listener {
     }
 
     private ErrorAction retryHls() {
-        if (spec == null || MimeTypes.APPLICATION_M3U8.equals(spec.getFormat())) return ErrorAction.FATAL;
+        if (spec == null || !hlsRecovery.allow(spec.getFormat(), spec.getUrl())) return ErrorAction.FATAL;
         spec.setFormat(MimeTypes.APPLICATION_M3U8);
         startInternal(player.getCurrentPosition());
         return ErrorAction.RECOVERED;

@@ -119,9 +119,11 @@ public class SubtitleApi {
     }
 
     private static String read(Response response) throws IOException {
-        String text = response.body().string();
         if (!response.isSuccessful()) throw new IOException("HTTP " + response.code() + " " + response.message());
-        if (TextUtils.isEmpty(text)) throw new IOException(ResUtil.getString(R.string.error_empty));
+        okhttp3.ResponseBody body = response.body();
+        if (body == null) throw new IOException(ResUtil.getString(R.string.error_empty));
+        String text = body.string();
+        if (TextUtils.isEmpty(text) || text.trim().isEmpty()) throw new IOException(ResUtil.getString(R.string.error_empty));
         return text;
     }
 

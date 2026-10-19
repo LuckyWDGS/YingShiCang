@@ -25,6 +25,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.Future;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 import java.util.function.Consumer;
@@ -47,9 +51,17 @@ public final class AiDramaFilterCompatibility {
     private static final String GUARD = "com.github.catvod.spider.BaseSpiderGuard";
     private static final Pattern ROUTER = Pattern.compile("(?:window\\.)?_ROUTER_DATA\\s*=\\s*");
     private static final int MAX_BODY = 4 * 1024 * 1024;
-    private static final Map<String, Catalog> CACHE = new LinkedHashMap<>();
-    private record Category(String id, String slug, int rpc, Map<String, String> choices) {}
-    private record Catalog(HttpUrl base, Map<String, Category> categories) {}
+    private static final long CACHE_TTL = TimeUnit.MINUTES.toNanos(30);
+    private static final String NATIVE_TOPIC = "native:";
+    private static final Map<String, CachedCatalog> CACHE = new LinkedHashMap<>();
+    // An uninterruptible provider cannot create more metadata threads on retries.
+    private static final ThreadPoolExecutor TOPIC_WORKER = new ThreadPoolExecutor(1, 1, 0, TimeUnit.SECONDS,
+            new ArrayBlockingQueue<>(1), runnable -> { Thread thread = new Thread(runnable, "ai-topic-metadata"); thread.setDaemon(true); return thread; },
+            new ThreadPoolExecutor.AbortPolicy());
+    private record Category(String id, String slug, int rpc, Map<String, String> choices,
+                            Map<String, String> nativeChoices) {}
+    private record Catalog(HttpUrl base, Map<String, Category> categories, boolean complete) {}
+    private record CachedCatalog(Catalog catalog, long created) {}
 
     private AiDramaFilterCompatibility() {}
 
@@ -166,12 +178,23 @@ public final class AiDramaFilterCompatibility {
     }
 
     public static boolean supportsLatest(Spider spider) {
-        try { latestHelper(spider); return true; }
-        catch (ReflectiveOperationException | RuntimeException | LinkageError unavailable) { return false; }
+        try {
+            return PythonPluginCompatibility.withRuntimeGate(() -> {
+                try { latestHelper(spider); return true; }
+                catch (ReflectiveOperationException | RuntimeException | LinkageError unavailable) { return false; }
+            });
+        } catch (Exception unavailable) { return false; }
     }
 
     /** Only genuine comic/ai types are provisional; the old generic topic declaration is unverified. */
     public static String nativeClasses(Spider spider, String raw) throws IOException {
+        try {
+            return PythonPluginCompatibility.withRuntimeGate(() -> nativeClassesInternal(spider, raw));
+        } catch (IOException error) { throw error; }
+        catch (Exception error) { throw new IOException("AI source native runtime unavailable", error); }
+    }
+
+    private static String nativeClassesInternal(Spider spider, String raw) throws IOException {
         if (audited(spider) == null) throw new IOException("AI source native runtime unavailable");
         JsonObject home = object(raw); JsonArray clean = new JsonArray();
         JsonObject filters = new JsonObject();
@@ -202,10 +225,20 @@ public final class AiDramaFilterCompatibility {
     }
 
     public static String classes(Site site, Spider spider, String raw, OkHttpClient client, Consumer<Call> calls) throws IOException {
+        // Keep the process-wide Chaquopy gate around each Python operation,
+        // rather than around the whole method.  Catalog discovery performs
+        // independent HTTP requests and may run concurrently for multiple
+        // sources; holding the interpreter lock while those requests wait
+        // needlessly serializes all AI sources.
+        return classesInternal(site, spider, raw, client, calls);
+    }
+
+    private static String classesInternal(Site site, Spider spider, String raw, OkHttpClient client, Consumer<Call> calls) throws IOException {
         Spider primary = audited(spider);
         if (primary == null) return raw;
         JsonObject home = object(raw);
-        Catalog catalog = catalog(site, primary, client, calls);
+        HttpUrl base = guardedOrigin(primary);
+        Catalog catalog = catalog(site, primary, base, client, calls, true);
         JsonArray types = array(home, "class"), clean = new JsonArray();
         JsonObject filters = new JsonObject();
         boolean latest = supportsLatest(primary);
@@ -220,18 +253,32 @@ public final class AiDramaFilterCompatibility {
             JsonArray options = new JsonArray();
             options.add(option("全部", ""));
             category.choices.forEach((key, label) -> options.add(option(label, key)));
+            // The comic endpoint honors source-declared numeric categories. The
+            // AI-series endpoint ignores them, so it must retain only web topics.
+            var labels = new java.util.HashSet<>(category.choices.values());
+            category.nativeChoices.forEach((key, label) -> {
+                if (labels.add(label)) options.add(option(label, NATIVE_TOPIC + key));
+            });
             group.add("value", options); JsonArray groups = new JsonArray(); groups.add(group);
             if (latest) groups.add(sortGroup());
             filters.add(id, groups);
         }
         if (clean.isEmpty()) throw new IOException("AI source native categories unavailable");
         home.add("class", clean); home.add("filters", filters);
+        home.addProperty("__ai_topics_partial", !catalog.complete);
         return home.toString();
     }
 
     /** null retains the original API for ordinary/default pages and all unrelated plugins. */
     public static String page(Site site, Spider spider, String id, int page, Map<String, String> extend,
                               OkHttpClient client, Consumer<Call> calls) throws IOException {
+        // See classes(): the native Python calls below acquire the shared gate
+        // individually, while ordinary web-topic HTTP calls remain concurrent.
+        return pageInternal(site, spider, id, page, extend, client, calls);
+    }
+
+    private static String pageInternal(Site site, Spider spider, String id, int page, Map<String, String> extend,
+                                       OkHttpClient client, Consumer<Call> calls) throws IOException {
         Spider primary = audited(spider);
         if (primary == null) return null;
         String topic = extend.getOrDefault("topic", "");
@@ -247,14 +294,28 @@ public final class AiDramaFilterCompatibility {
         if (page < 1 || !("comic".equals(id) || "ai".equals(id))
                 || !extend.keySet().stream().allMatch(key -> "topic".equals(key) || AiDramaCatalog.SORT.equals(key)))
             throw new IOException("AI source filter declaration unavailable");
-        Catalog catalog = catalog(site, primary, client, calls);
+        HttpUrl base = guardedOrigin(primary);
+        Catalog catalog = catalog(site, primary, base, client, calls, false);
         Category category = catalog.categories.get(id);
+        if (topic.startsWith(NATIVE_TOPIC)) {
+            String nativeTopic = topic.substring(NATIVE_TOPIC.length());
+            if (!"comic".equals(id) || category == null || !category.nativeChoices.containsKey(nativeTopic))
+                throw new IOException("AI source native filter option unavailable");
+            return AiDramaNativeTopics.pageResult(guardedNativeTopicResponse(primary, nativeTopic, page), page, nativeTopic).toString();
+        }
         if (category == null || !category.choices.containsKey(topic)) throw new IOException("AI source filter option unavailable");
         JsonObject data = route(execute(routeUrl(catalog.base, category.slug, topic, page), client, calls), category.slug, category.rpc, topic, page);
         return pageResult(data, page).toString();
     }
 
     public static String nativeLatest(Spider spider, String id, int page) throws IOException {
+        try {
+            return PythonPluginCompatibility.withRuntimeGate(() -> nativeLatestInternal(spider, id, page));
+        } catch (IOException error) { throw error; }
+        catch (Exception error) { throw new IOException("AI source latest helper unavailable", error); }
+    }
+
+    private static String nativeLatestInternal(Spider spider, String id, int page) throws IOException {
         if (page < 1 || !("comic".equals(id) || "ai".equals(id))) throw new IOException("AI source latest category unavailable");
         if (Thread.currentThread().isInterrupted()) throw new java.io.InterruptedIOException("AI source request cancelled");
         try {
@@ -319,25 +380,111 @@ public final class AiDramaFilterCompatibility {
         return result;
     }
 
-    private static Catalog catalog(Site site, Spider primary, OkHttpClient client, Consumer<Call> calls) throws IOException {
-        HttpUrl base = origin(primary);
+    /** Reuse the bound provider's transport and signing, without changing its globals. */
+    private static JsonObject nativeTopicResponse(Spider spider, String topic, int page) throws IOException {
+        if (Thread.currentThread().isInterrupted()) throw new java.io.InterruptedIOException("AI source request cancelled");
+        try {
+            NativeHelper nativeHelper = latestHelper(spider);
+            List<String> constants = flattenConstants(nativeHelper.helper.get("__code__").get("co_consts"));
+            if (!nativeTopicShape(constants)) throw new ReflectiveOperationException();
+            PyObject api = nativeHelper.globals.callAttr("get", "_api_post");
+            if (api == null || api.get("__globals__") == null
+                    || api.get("__globals__").id() != nativeHelper.globals.id()) throw new ReflectiveOperationException();
+            PyObject code = api.get("__code__");
+            if (code == null || code.get("co_argcount").toInt() != 3
+                    || !nativeApiShape(code.get("co_varnames").asList().stream().limit(3).map(Object::toString).toList(),
+                    code.get("co_names").asList().stream().map(Object::toString).toList())) throw new ReflectiveOperationException();
+            JsonObject config = new JsonObject();
+            config.addProperty("device_id", nativeHelper.instance.get("device_id").toString());
+            config.addProperty("install_id", nativeHelper.instance.get("install_id").toString());
+            if (text(config, "device_id").isEmpty() || text(config, "install_id").isEmpty()) throw new ReflectiveOperationException();
+            JsonObject body = AiDramaNativeTopics.request("comic", page, topic);
+            PyObject response = api.call("/reading/distribution/category/landpage/v",
+                    nativeHelper.json.callAttr("loads", body.toString()), nativeHelper.json.callAttr("loads", config.toString()));
+            if (Thread.currentThread().isInterrupted()) throw new java.io.InterruptedIOException("AI source request cancelled");
+            return object(nativeHelper.json.callAttr("dumps", response).toString());
+        } catch (java.io.InterruptedIOException cancelled) { throw cancelled; }
+        catch (ReflectiveOperationException | RuntimeException | LinkageError unavailable) {
+            throw new IOException("AI source native topic helper unavailable");
+        }
+    }
+
+    static boolean nativeTopicShape(List<String> constants) {
+        return constants.containsAll(List.of("/reading/distribution/category/landpage/v", "select_items",
+                "category_dim_theme", "need_selector_panel", "filter_ids", "req_scene", "only_content", "client_req_type"));
+    }
+
+    static boolean nativeApiShape(List<String> arguments, List<String> names) {
+        return arguments.equals(List.of("path", "body", "config"))
+                && names.containsAll(List.of("_device_config", "API_HOST", "_core_sixgod", "json", "dumps", "requests", "post", "_json_response"));
+    }
+
+    private static HttpUrl guardedOrigin(Spider primary) throws IOException {
+        try {
+            return PythonPluginCompatibility.withRuntimeGate(() -> origin(primary));
+        } catch (IOException error) { throw error; }
+        catch (Exception error) { throw new IOException("AI source web origin unavailable", error); }
+    }
+
+    private static JsonObject guardedNativeTopicResponse(Spider spider, String topic, int page) throws IOException {
+        try {
+            return PythonPluginCompatibility.withRuntimeGate(() -> nativeTopicResponse(spider, topic, page));
+        } catch (IOException error) { throw error; }
+        catch (Exception error) { throw new IOException("AI source native topic helper unavailable", error); }
+    }
+
+    private static Catalog catalog(Site site, Spider primary, HttpUrl base, OkHttpClient client, Consumer<Call> calls,
+                                   boolean refreshExpired) throws IOException {
         long revision = VodConfig.getDiscoveryRevision();
         String signature = signature(site, base, revision);
-        synchronized (CACHE) { Catalog cached = CACHE.get(signature); if (cached != null) return cached; }
+        synchronized (CACHE) {
+            CachedCatalog cached = CACHE.get(signature);
+            if (cached != null && (!refreshExpired || System.nanoTime() - cached.created < CACHE_TTL)) return cached.catalog;
+            CACHE.remove(signature);
+        }
         List<HttpUrl> routes = List.of(routeUrl(base, "comic-drama", "", 1), routeUrl(base, "ai-drama", "", 1));
-        List<String> pages = fetchConcurrent(routes, client, calls);
+        List<String> pages;
         Map<String, Category> categories = new LinkedHashMap<>();
+        Map<String, String> nativeChoices = Map.of(); boolean complete = false;
+        Future<Map<String, String>> nativeMetadata = null;
+        long nativeDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(4);
+        try {
+            try {
+                nativeMetadata = TOPIC_WORKER.submit(() -> {
+                    try {
+                        return PythonPluginCompatibility.withRuntimeGate(
+                                () -> AiDramaNativeTopics.choices(nativeTopicResponse(primary, "", 1)));
+                    } catch (IOException error) { throw error; }
+                    catch (Exception error) { throw new IOException("AI source native topic helper unavailable", error); }
+                });
+            }
+            catch (RuntimeException unavailable) { /* The bounded worker may still be cancelling its previous request. */ }
+            pages = fetchConcurrent(routes, client, calls);
+            if (nativeMetadata != null) {
+                try {
+                    nativeChoices = nativeMetadata.get(Math.max(1, nativeDeadline - System.nanoTime()), TimeUnit.NANOSECONDS);
+                    complete = AiDramaNativeTopics.complete(nativeChoices);
+                } catch (InterruptedException cancelled) {
+                    Thread.currentThread().interrupt(); throw new java.io.InterruptedIOException("AI source request cancelled");
+                } catch (java.util.concurrent.ExecutionException | java.util.concurrent.TimeoutException | RuntimeException unavailable) {
+                    // A failed native lane must not remove the independently valid web topics.
+                }
+            }
+        } finally {
+            if (nativeMetadata != null) nativeMetadata.cancel(true);
+            TOPIC_WORKER.purge();
+        }
         for (int index = 0; index < 2; index++) {
             String id = index == 0 ? "comic" : "ai";
             String slug = index == 0 ? "comic-drama" : "ai-drama"; int rpc = index == 0 ? 3 : 4;
             JsonObject data = route(pages.get(index), slug, rpc, "", 1);
             Map<String, String> choices = choices(data);
-            categories.put(id, new Category(id, slug, rpc, java.util.Collections.unmodifiableMap(choices)));
+            categories.put(id, new Category(id, slug, rpc, java.util.Collections.unmodifiableMap(choices), "comic".equals(id) ? nativeChoices : Map.of()));
         }
-        Catalog catalog = new Catalog(base, java.util.Collections.unmodifiableMap(categories));
+        Catalog catalog = new Catalog(base, java.util.Collections.unmodifiableMap(categories), complete);
         synchronized (CACHE) {
-            if (revision == VodConfig.getDiscoveryRevision()) {
-                CACHE.put(signature, catalog);
+            if (complete && revision == VodConfig.getDiscoveryRevision()) {
+                CACHE.put(signature, new CachedCatalog(catalog, System.nanoTime()));
                 while (CACHE.size() > 32) CACHE.remove(CACHE.keySet().iterator().next());
             }
         }

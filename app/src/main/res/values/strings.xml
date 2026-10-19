@@ -9,7 +9,7 @@
     <string name="live_line">Line <xliff:g name="name">%s</xliff:g></string>
 
     <!-- Detail -->
-    <string name="detail_title"><xliff:g name="name">%s</xliff:g> : <xliff:g name="name">%s</xliff:g></string>
+    <string name="detail_title">%1$s : %2$s</string>
     <string name="detail_site">Site: <xliff:g name="name">%s</xliff:g></string>
     <string name="detail_year">Year: <xliff:g name="name">%s</xliff:g></string>
     <string name="detail_area">Area: <xliff:g name="name">%s</xliff:g></string>
@@ -403,8 +403,8 @@
     </string-array>
 
     <string-array name="select_engine">
-        <item>Exo / Media3 · 推荐</item>
-        <item>MPV · 兼容模式</item>
+        <item>Exo / Media3 · Recommended (stability first)</item>
+        <item>MPV · Compatibility (hardware first)</item>
     </string-array>
 
     <string-array name="select_render">

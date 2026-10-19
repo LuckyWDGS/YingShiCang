@@ -31,7 +31,11 @@
   private java.nio.ByteBuffer growOutputBuffer(androidx.media3.decoder.SimpleDecoderOutputBuffer, int, int);
 }
 
+# MPV's native bridge reflects the stream callback interfaces by their exact
+# binary names (MPVLib$Stream and MPVLib$StreamFactory). Keeping only the
+# outer class lets R8 remove those nested types and crashes MPV on first load.
 -keep class is.xyz.mpv.MPVLib { *; }
+-keep class is.xyz.mpv.MPVLib$* { *; }
 
 -keep class androidx.media3.decoder.VideoDecoderOutputBuffer { *; }
 -keep class androidx.media3.decoder.DecoderInputBuffer { *; }

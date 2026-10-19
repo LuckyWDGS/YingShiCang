@@ -20,10 +20,14 @@ public final class ApkVerifier {
         PackageInfo incoming = pm.getPackageArchiveInfo(apk.getAbsolutePath(), flags);
         PackageInfo installed = pm.getPackageInfo(BuildConfig.APPLICATION_ID, flags);
         if (incoming == null || !BuildConfig.APPLICATION_ID.equals(incoming.packageName)
-                || incoming.versionCode != manifest.versionCode || incoming.versionCode <= BuildConfig.VERSION_CODE)
+                || incoming.versionCode != manifest.versionCode || incoming.versionCode <= BuildConfig.VERSION_CODE
+                || !Objects.equals(incoming.versionName, manifest.versionName))
             throw new IOException("安装包身份或版本与清单不符");
-        Signature[] actual = Build.VERSION.SDK_INT >= 28 ? incoming.signingInfo.getApkContentsSigners() : incoming.signatures;
-        Signature[] expected = Build.VERSION.SDK_INT >= 28 ? installed.signingInfo.getApkContentsSigners() : installed.signatures;
+        if (Build.VERSION.SDK_INT >= 24 && incoming.applicationInfo != null
+                && incoming.applicationInfo.minSdkVersion > Build.VERSION.SDK_INT)
+            throw new IOException("安装包需要更高 Android 版本");
+        Signature[] actual = Build.VERSION.SDK_INT >= 28 ? incoming.signingInfo == null ? null : incoming.signingInfo.getApkContentsSigners() : incoming.signatures;
+        Signature[] expected = Build.VERSION.SDK_INT >= 28 ? installed.signingInfo == null ? null : installed.signingInfo.getApkContentsSigners() : installed.signatures;
         if (actual == null || expected == null || actual.length == 0 || !new HashSet<>(Arrays.asList(actual)).equals(new HashSet<>(Arrays.asList(expected))))
             throw new IOException("安装包签名不同，拒绝安装");
     }

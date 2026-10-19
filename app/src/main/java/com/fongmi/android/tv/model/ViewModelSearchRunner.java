@@ -17,7 +17,10 @@ import java.util.stream.Collectors;
 
 /** Bounded parallel dispatch: a few slow sources must not occupy the entire first wave. */
 final class ViewModelSearchRunner {
-    private static final int MAX_RETRIES = 2;
+    // One bounded retry is enough for an intermittent transport failure. Parser,
+    // schema and authentication failures are deterministic and only add latency
+    // when retried, which was the main cause of the long tail on real sources.
+    private static final int MAX_RETRIES = 1;
     private static final long RETRY_DELAY_MS = 700;
     private final com.google.common.util.concurrent.ListeningExecutorService workers;
     private final com.google.common.util.concurrent.ListeningExecutorService crawlerWorkers;
@@ -127,10 +130,16 @@ final class ViewModelSearchRunner {
         if (error != null && job.submitted != null) job.submitted.cancel(true);
         if(epoch.get()!=current)return;
         if(revision != VodConfig.getDiscoveryRevision()) { stop(); return; }
-        jobs.remove(job);
+        // A timeout callback and the underlying task completion can race.  The
+        // timeout closes/cancels the task, but an uninterruptible crawler may
+        // still return and invoke the original future callback afterwards.
+        // Process each job exactly once or the aggregate counters and lane
+        // permits drift (for example, reporting 2/1 or dispatching too many
+        // sources), which makes a search appear stuck or finish prematurely.
+        if (!jobs.remove(job)) return;
         if (job.crawler) activeCrawlers--; else activeHttp--;
         Task.purgeSearchTasks();
-        if (error != null && job.attempt.retries < MAX_RETRIES) {
+        if (isTransientFailure(error) && job.attempt.retries < MAX_RETRIES) {
             try {
                 // Release the lane during backoff. Fresh sources retain priority and
                 // each retry gets a new cancellable task with its own source deadline.
@@ -162,6 +171,74 @@ final class ViewModelSearchRunner {
             }
         }
         report(); dispatch(current,factory,results);
+    }
+
+    private static boolean isTransientFailure(Throwable error) {
+        // A transport wrapper can retain a lower-level cancellation/deadline
+        // cause (for example an SSLException around SearchRequestScope's
+        // InterruptedIOException). Check the complete chain first so that a
+        // transient-looking outer exception never revives an explicitly
+        // stopped search.
+        Throwable cause = error;
+        for (int depth = 0; cause != null && depth < 8; depth++, cause = cause.getCause()) {
+            if (cause instanceof java.util.concurrent.CancellationException
+                    || cause instanceof InterruptedException
+                    || isExplicitSearchStop(cause)) return false;
+        }
+        Throwable current = error;
+        for (int depth = 0; current != null && depth < 8; depth++, current = current.getCause()) {
+            if (current instanceof java.io.InterruptedIOException
+                    || current instanceof java.util.concurrent.TimeoutException) {
+                String message = current.getMessage();
+                // Keep genuine timeout-shaped transport failures retryable,
+                // while unknown/empty timeout messages remain terminal.
+                if (message != null && message.toLowerCase(java.util.Locale.ROOT).contains("timeout")) return true;
+                if (current instanceof java.net.SocketTimeoutException) return true;
+                continue;
+            }
+            if (current instanceof java.net.SocketException
+                    || current instanceof java.net.SocketTimeoutException
+                    || current instanceof java.io.EOFException
+                    // DNS lookups and TLS handshakes happen before an HTTP
+                    // response exists. OkHttp surfaces those as IOException
+                    // subclasses that are otherwise indistinguishable from a
+                    // deterministic source/parser failure, so allow the
+                    // single bounded retry for these transient transports too.
+                    || current instanceof java.net.UnknownHostException
+                    ) return true;
+            if (current instanceof javax.net.ssl.SSLException && isRetryableTlsFailure(current)) return true;
+        }
+        return false;
+    }
+
+    private static boolean isRetryableTlsFailure(Throwable error) {
+        // A peer closing a handshake or resetting the TLS protocol is commonly
+        // transient on public source hosts. Certificate, hostname and trust
+        // failures are deterministic and should finish immediately instead of
+        // adding another full source deadline.
+        for (Throwable current = error; current != null; current = current.getCause()) {
+            if (current instanceof java.util.concurrent.CancellationException
+                    || current instanceof InterruptedException) return false;
+            if (current instanceof java.security.cert.CertificateException
+                    || current instanceof javax.net.ssl.SSLPeerUnverifiedException
+                    || current instanceof java.security.cert.CertPathValidatorException) return false;
+            String message = current.getMessage();
+            if (message == null) continue;
+            String lower = message.toLowerCase(java.util.Locale.ROOT);
+            if (lower.contains("certificate") || lower.contains("hostname")
+                    || lower.contains("peer not authenticated") || lower.contains("trust anchor")
+                    || lower.contains("pkix") || lower.contains("unable to find valid certification path")
+                    || lower.contains("certificate_unknown") || lower.contains("bad_certificate")
+                    || lower.contains("pin")) return false;
+        }
+        return true;
+    }
+
+    private static boolean isExplicitSearchStop(Throwable error) {
+        String message = error.getMessage();
+        if (message == null) return false;
+        String lower = message.toLowerCase(java.util.Locale.ROOT);
+        return lower.contains("deadline") || lower.contains("cancel") || message.contains("取消");
     }
     private synchronized void retry(int current, Function<Site, Callable<Result>> factory,
                                     Consumer<Result> results, Attempt previous) {

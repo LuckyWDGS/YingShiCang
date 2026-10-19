@@ -1,0 +1,18 @@
+diff --git a/source/CMakeLists.txt b/source/CMakeLists.txt
+index 316bdc4..510a1f4 100644
+--- a/source/CMakeLists.txt
++++ b/source/CMakeLists.txt
+@@ -63,7 +63,12 @@ elseif("${UAVS3D_TARGET_CPU}" MATCHES "armv7")
+   # Add NEON support for ARMv7
+   # Use hard float ABI to match the musleabihf toolchain
+   # Use a specific CPU that supports NEON and hard float
+-  set(ARMV7_FLAGS "-mcpu=cortex-a9 -mfpu=neon -mfloat-abi=hard")
++  if(ANDROID)
++    # Android armeabi-v7a uses the softfp calling convention even with NEON.
++    set(ARMV7_FLAGS "-mfpu=neon -mfloat-abi=softfp")
++  else()
++    set(ARMV7_FLAGS "-mcpu=cortex-a9 -mfpu=neon -mfloat-abi=hard")
++  endif()
+   
+   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${ARMV7_FLAGS}")
+   set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} ${ARMV7_FLAGS}")

@@ -26,11 +26,15 @@ import com.github.catvod.utils.Util;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.WeakHashMap;
 import java.util.concurrent.Callable;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 
 import okhttp3.Call;
 import okhttp3.Response;
@@ -38,6 +42,124 @@ import okhttp3.OkHttpClient;
 import java.util.function.Consumer;
 
 public class SiteApi {
+
+    /*
+     * A few bundled crawler jars contain native Go helpers (notably their
+     * danmaku search implementation).  Those helpers share one Go runtime per
+     * class loader and are not safe when two Spider instances from the same jar
+     * enter it concurrently.  Aggregate search deliberately runs crawlers in
+     * parallel, so serialize only calls that belong to the same plugin loader;
+     * unrelated jars and normal HTTP sources keep their existing parallelism.
+     */
+    /*
+     * Keep the gate weak.  A configuration refresh replaces DexClassLoader
+     * instances; a strong key here would retain every old loader (and its
+     * complete plugin dex/native graph) for the lifetime of the process.
+     */
+    private static final Map<ClassLoader, Semaphore> CRAWLER_GATES =
+            Collections.synchronizedMap(new WeakHashMap<>());
+
+    /*
+     * A search can contain dozens of type-3 sources.  Creating/initializing
+     * all of their spiders at once is both wasteful and unsafe for third-party
+     * native helpers on low-memory TV devices.  Keep the executor lane
+     * independent so HTTP sources can still make progress, but bound the
+     * crawler initialization and the single-process Python bridge separately.
+     */
+    private static final Semaphore CRAWLER_INIT_GATE = new Semaphore(4, true);
+
+    private static Semaphore crawlerGate(Spider spider) {
+        ClassLoader loader = spider.getClass().getClassLoader();
+        ClassLoader key = loader == null ? SiteApi.class.getClassLoader() : loader;
+        synchronized (CRAWLER_GATES) {
+            return CRAWLER_GATES.computeIfAbsent(key, ignored -> new Semaphore(1, true));
+        }
+    }
+
+    /** The only bundled crawler with a shared native runtime that was audited as non-reentrant. */
+    private static boolean isAppSx(Spider spider) {
+        if (spider == null) return false;
+        String name = spider.getClass().getName();
+        return "com.github.catvod.spider.AppSx".equals(name)
+                || "com.github.catvod.spider.AppSxGuard".equals(name);
+    }
+
+    private static boolean usesPythonBridge(Spider spider) {
+        String name = spider.getClass().getName();
+        return name.startsWith("com.fongmi.chaquo.")
+                || com.fongmi.android.tv.api.compat.PythonPluginCompatibility.requiresRuntime(spider);
+    }
+
+    private static <T> T withPermit(Semaphore gate, Callable<T> operation) throws Exception {
+        gate.acquire();
+        try { return operation.call(); }
+        finally { gate.release(); }
+    }
+
+    private static <T> T withPermit(Semaphore gate, SearchRequestScope scope, Callable<T> operation) throws Exception {
+        boolean acquired = false;
+        try {
+            while (!acquired) {
+                scope.checkCancellation();
+                long wait = Math.min(50, scope.remainingMillis());
+                acquired = gate.tryAcquire(wait, TimeUnit.MILLISECONDS);
+            }
+            scope.checkCancellation();
+            return operation.call();
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            java.io.InterruptedIOException cancelled = new java.io.InterruptedIOException("Search cancelled");
+            cancelled.initCause(interrupted);
+            throw cancelled;
+        } finally {
+            if (acquired) gate.release();
+        }
+    }
+
+    private static Spider crawler(Site site) throws Exception {
+        return withPermit(CRAWLER_INIT_GATE, site::spider);
+    }
+
+    private static Spider recentCrawler(Site site) throws Exception {
+        return withPermit(CRAWLER_INIT_GATE, () -> site.recent().spider());
+    }
+
+    private static Spider searchSpider(Site site, SearchRequestScope scope) throws Exception {
+        return withPermit(CRAWLER_INIT_GATE, scope, site::spider);
+    }
+
+    private static <T> T crawlerCall(Spider spider, Callable<T> operation) throws Exception {
+        return crawlerCall(spider, null, operation);
+    }
+
+    private static <T> T crawlerCall(Spider spider, SearchRequestScope scope, Callable<T> operation) throws Exception {
+        // Chaquopy exposes one Python interpreter to the whole process.  A
+        // class-loader gate alone cannot protect Python-backed spiders because
+        // they may be loaded by different JARs, so serialize all bridge calls.
+        if (usesPythonBridge(spider)) {
+            try {
+                // Compatibility helpers may call the same Python bridge
+                // outside this method; share their process-wide gate.
+                return scope == null
+                        ? com.fongmi.android.tv.api.compat.PythonPluginCompatibility.withRuntimeGate(operation)
+                        : com.fongmi.android.tv.api.compat.PythonPluginCompatibility.withRuntimeGate(scope, operation);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                java.io.InterruptedIOException cancelled = new java.io.InterruptedIOException("Search cancelled");
+                cancelled.initCause(interrupted);
+                throw cancelled;
+            }
+        }
+
+        // A few bundled crawler jars contain native Go helpers (notably their
+        // danmaku search implementation).  Those helpers share one Go runtime
+        // per class loader and are not safe when two instances from the same
+        // jar enter it concurrently.  Serialize only that known unsafe
+        // implementation; unrelated jars keep their parallelism.
+        if (!isAppSx(spider)) return operation.call();
+        Semaphore gate = crawlerGate(spider);
+        return scope == null ? withPermit(gate, operation) : withPermit(gate, scope, operation);
+    }
 
     private static boolean directMedia(String url) {
         String scheme = android.net.Uri.parse(url).getScheme();
@@ -51,21 +173,26 @@ public class SiteApi {
     public static String call(@NonNull Site site, @NonNull ArrayMap<String, String> params) throws IOException {
         // Discovery can expose non-home type-4 sources whose extension has never
         // passed through homeContent(). Resolve it without changing the origin Site.
-        OkHttpClient resolvedClient = null;
+        OkHttpClient resolvedClient = sourceClient(site.getTimeout());
         if (site.getType() == 4 && site.getExt().startsWith("http")) {
-            resolvedClient = OkHttp.client().newBuilder().callTimeout(
-                    Math.min(20000, Math.max(5000, site.getTimeout())), java.util.concurrent.TimeUnit.MILLISECONDS).build();
+            resolvedClient = sourceClient(Math.min(20000, Math.max(5000, site.getTimeout())));
             site = App.gson().fromJson(App.gson().toJson(site), Site.class);
             discoveryExtension(site, resolvedClient, call -> {});
         }
         if (!site.getExt().isEmpty()) params.put("extend", site.getExt());
-        Call call = site.getExt().length() <= 1000 ? OkHttp.newCall(site.getApi(), site.getHeader(), params) : OkHttp.newCall(site.getApi(), site.getHeader(), OkHttp.toBody(params));
-        if (resolvedClient != null) call = resolvedClient.newCall(call.request());
+        Call prototype = site.getExt().length() <= 1000 ? OkHttp.newCall(site.getApi(), site.getHeader(), params) : OkHttp.newCall(site.getApi(), site.getHeader(), OkHttp.toBody(params));
+        Call call = resolvedClient.newCall(prototype.request());
         try (Response response = call.execute()) {
             if (!response.isSuccessful()) throw new IOException("HTTP " + response.code());
             if (response.body() == null) throw new IOException("Empty source response");
-            return response.body().string();
+            String body = response.body().string();
+            if (body.trim().isEmpty()) throw new IOException("Empty source response");
+            return body;
         }
+    }
+
+    static OkHttpClient sourceClient(long timeoutMillis) {
+        return OkHttp.client().newBuilder().callTimeout(Math.max(1, timeoutMillis), TimeUnit.MILLISECONDS).build();
     }
 
     private static boolean isSpider(@NonNull Site site) {
@@ -73,7 +200,7 @@ public class SiteApi {
     }
 
     private static <T> T spiderCall(Spider spider, long budgetMillis, Callable<T> operation) throws Exception {
-        return WoggAddressCompatibility.call(spider, budgetMillis, () -> {}, operation);
+        return crawlerCall(spider, () -> WoggAddressCompatibility.call(spider, budgetMillis, () -> {}, operation));
     }
 
     private static long discoveryBudget(Site site) {
@@ -92,14 +219,18 @@ public class SiteApi {
         try (Response response = call.execute()) {
             if (!response.isSuccessful() || response.body() == null) throw new IOException("Source extension unavailable");
             String body = response.body().string();
-            if (body.isEmpty()) throw new IOException("Source extension unavailable");
+            if (body.trim().isEmpty()) throw new IOException("Source extension unavailable");
             privateCopy.setExt(body);
         }
     }
 
     public static Result discoveryClasses(Site site, OkHttpClient client, Consumer<Call> calls) throws Exception {
         if (isSpider(site)) {
-            Spider spider = site.spider();
+            // Search is the only aggregate path which initializes many third
+            // party spiders at once.  Keep initialization bounded so a slow
+            // config cannot create dozens of Dex/Python/native runtimes in
+            // parallel on a TV device.
+            Spider spider = crawler(site);
             String home = com.fongmi.android.tv.api.compat.AiDramaFilterCompatibility.classes(site, spider,
                     spiderCall(spider, discoveryBudget(site), () -> spider.homeContent(true)), client, calls);
             Result result = discoveryResult(home, 3, "class");
@@ -117,7 +248,7 @@ public class SiteApi {
     /** Audited AI static types only: this does not wait for web topic metadata or consume recommendations. */
     public static Result discoveryNativeAiClasses(Site site) throws Exception {
         if (!isSpider(site)) throw new IOException("AI source native runtime unavailable");
-        Spider spider = site.spider();
+        Spider spider = crawler(site);
         Result result = discoveryResult(com.fongmi.android.tv.api.compat.AiDramaFilterCompatibility.nativeClasses(
                 spider, spiderCall(spider, discoveryBudget(site), () -> spider.homeContent(true))), 3, "class");
         setDiscoveryTypes(site, result);
@@ -128,7 +259,7 @@ public class SiteApi {
     public static Result discoveryPage(Site site, String tid, int page, Map<String, String> extend,
                                        OkHttpClient client, Consumer<Call> calls) throws Exception {
         if (isSpider(site)) {
-            Spider spider = site.spider();
+            Spider spider = crawler(site);
             String compatible = com.fongmi.android.tv.api.compat.AiDramaFilterCompatibility.page(site, spider, tid, page, extend, client, calls);
             return discoveryResult(compatible != null ? compatible
                     : spiderCall(spider, discoveryBudget(site),
@@ -230,7 +361,7 @@ public class SiteApi {
     @NonNull
     public static Result homeContent(@NonNull Site site) throws Exception {
         if (isSpider(site)) {
-            Spider spider = site.recent().spider();
+            Spider spider = recentCrawler(site);
             boolean crash = Prefers.getBoolean("crash");
             String home = crash ? "" : spiderCall(spider, Constant.TIMEOUT_VOD, () -> spider.homeContent(true));
             String video = crash ? "" : spiderCall(spider, Constant.TIMEOUT_VOD, spider::homeVideoContent);
@@ -245,14 +376,15 @@ public class SiteApi {
         } else if (site.getType() == 4) {
             ArrayMap<String, String> params = new ArrayMap<>();
             params.put("filter", "true");
-            String homeContent = call(site.fetchExt(), params);
+            String homeContent = call(site, params);
             SpiderDebug.log("home", homeContent);
             Result result = Result.fromJson(homeContent);
             setTypes(site, result);
             return result;
         } else {
-            try (Response response = OkHttp.newCall(site.getApi(), site.getHeader()).execute()) {
-                String homeContent = response.body().string();
+            Call prototype = OkHttp.newCall(site.getApi(), site.getHeader());
+            try (Response response = sourceClient(site.getTimeout()).newCall(prototype.request()).execute()) {
+                String homeContent = readRequiredBody(response, "Source unavailable", "Empty source response");
                 SpiderDebug.log("home", homeContent);
                 Result result = Result.fromType(site.getType(), homeContent);
                 fetchPic(site, result);
@@ -267,7 +399,7 @@ public class SiteApi {
         SpiderDebug.log("category", "key=%s,tid=%s,page=%s,filter=%s,extend=%s", key, tid, page, filter, extend);
         Site site = VodConfig.get().getSite(key);
         if (isSpider(site)) {
-            Spider spider = site.recent().spider();
+            Spider spider = recentCrawler(site);
             String categoryContent = spiderCall(spider, Constant.TIMEOUT_VOD,
                     () -> spider.categoryContent(tid, page, filter, extend));
             SpiderDebug.log("category", categoryContent);
@@ -299,7 +431,7 @@ public class SiteApi {
             Source.get().parse(vod.setFlags());
             return Result.vod(vod);
         } else if (isSpider(site)) {
-            Spider spider = site.recent().spider();
+            Spider spider = recentCrawler(site);
             String detailContent = spiderCall(spider, Constant.TIMEOUT_VOD,
                     () -> spider.detailContent(Arrays.asList(id)));
             SpiderDebug.log("detail", detailContent);
@@ -346,7 +478,7 @@ public class SiteApi {
             result.setFlag(flag);
             return result;
         } else if (site.getType() == 3) {
-            Spider spider = site.recent().spider();
+            Spider spider = recentCrawler(site);
             String playerContent = spiderCall(spider, Constant.TIMEOUT_VOD,
                     () -> spider.playerContent(flag, id, VodConfig.get().getFlags()));
             SpiderDebug.log("player", playerContent);
@@ -432,11 +564,12 @@ public class SiteApi {
         SpiderDebug.log("search", "site=%s,keyword=%s,quick=%s,page=%s", site.getName(), keyword, quick, page);
         boolean hasPage = !page.equals("1");
         if (isSpider(site)) {
-            Spider spider = site.spider();
+            Spider spider = searchSpider(site, scope);
             // Only the verified base implementation has no optional pagination.
             if (hasPage && SpiderSearchCapability.hasDefaultPagination(spider)) return Result.empty();
-            String searchContent = WoggAddressCompatibility.call(spider, scope::remainingMillis, scope::checkCancellation,
-                    () -> hasPage ? spider.searchContent(keyword, quick, page) : spider.searchContent(keyword, quick));
+            String searchContent = crawlerCall(spider, scope, () -> WoggAddressCompatibility.call(spider,
+                    scope::remainingMillis, scope::checkCancellation,
+                    () -> hasPage ? spider.searchContent(keyword, quick, page) : spider.searchContent(keyword, quick)));
             scope.checkCancellation();
             if (!quick && com.fongmi.android.tv.api.compat.SixVSearchCompatibility.emptyFirstPage(searchContent, page)
                     && com.fongmi.android.tv.api.compat.SixVSearchCompatibility.supports(spider, site.getExt())) {
@@ -488,13 +621,21 @@ public class SiteApi {
                 : OkHttp.newCall(site.getApi(), site.getHeader(), OkHttp.toBody(params))).request();
     }
 
-    private static Result fetchSearchPic(Site site, Result result, SearchRequestScope scope) throws Exception {
-        if (site.getType() > 2 || result.getList().isEmpty() || !result.getVod().getPic().isEmpty()) return result;
+    static Result fetchSearchPic(Site site, Result result, SearchRequestScope scope) throws Exception {
+        Vod first = result.getList().isEmpty() ? null : result.getList().get(0);
+        if (site.getType() > 2 || first == null || !first.getPic().isEmpty()) return result;
         ArrayList<String> ids = new ArrayList<>();
         boolean empty = site.getCategories().isEmpty();
-        for (Vod item : result.getList()) if (empty || site.getCategories().contains(item.getTypeName())) ids.add(item.getId());
-        if (ids.isEmpty()) return result.clear();
-        if (!empty) result.setList(result.getList().stream().filter(item -> ids.contains(item.getId())).toList());
+        for (Vod item : result.getList()) {
+            if (item == null || (!empty && !site.getCategories().contains(item.getTypeName()))) continue;
+            String id = item.getId();
+            if (!id.isEmpty()) ids.add(id);
+        }
+        // Poster lookup is optional. A stale category declaration or id-less hit
+        // must never erase valid search results when there is nothing to query.
+        if (ids.isEmpty()) return result;
+        if (!empty) result.setList(result.getList().stream()
+                .filter(item -> item != null && ids.contains(item.getId())).toList());
         // Leave time for delivering the already valid hits before the overall source deadline.
         long optionalBudget;
         try { optionalBudget = Math.min(2000, scope.remainingMillis() - 250); }
@@ -512,27 +653,65 @@ public class SiteApi {
         Site site = VodConfig.get().getSite(key);
         SpiderDebug.log("action", "key=%s,action=%s", key, action);
         if (site.getType() == 3) {
-            Spider spider = site.recent().spider();
+            Spider spider = recentCrawler(site);
             return Result.fromJson(spiderCall(spider, Constant.TIMEOUT_VOD, () -> spider.action(action)));
         }
-        if (site.getType() == 4) return Result.fromJson(OkHttp.string(action));
+        if (site.getType() == 4) {
+            if (!action.startsWith("http")) return Result.empty();
+            okhttp3.Request request = new okhttp3.Request.Builder().url(action).build();
+            try (Response response = sourceClient(site.getTimeout()).newCall(request).execute()) {
+                return Result.fromJson(readRequiredBody(response, "Source unavailable", "Empty source response"));
+            }
+        }
         return Result.empty();
     }
 
     @NonNull
     public static Result fetchPic(@NonNull Site site, @NonNull Result result) throws Exception {
-        if (site.getType() > 2 || result.getList().isEmpty() || !result.getVod().getPic().isEmpty()) return result;
+        Vod first = result.getList().isEmpty() ? null : result.getList().get(0);
+        if (site.getType() > 2 || first == null || !first.getPic().isEmpty()) return result;
         ArrayList<String> ids = new ArrayList<>();
         boolean empty = site.getCategories().isEmpty();
-        for (Vod item : result.getList()) if (empty || site.getCategories().contains(item.getTypeName())) ids.add(item.getId());
-        if (ids.isEmpty()) return result.clear();
+        for (Vod item : result.getList()) {
+            if (item == null || (!empty && !site.getCategories().contains(item.getTypeName()))) continue;
+            String id = item.getId();
+            if (!id.isEmpty()) ids.add(id);
+        }
+        // A missing/stale category declaration or an id-less home row must not
+        // erase a perfectly usable home feed just because poster enrichment has
+        // nothing it can query.
+        if (ids.isEmpty()) return result;
         ArrayMap<String, String> params = new ArrayMap<>();
         params.put("ac", ac(site.getType()));
-        params.put("ids", TextUtils.join(",", ids));
-        try (Response response = OkHttp.newCall(site.getApi(), site.getHeader(), params).execute()) {
-            result.setList(Result.fromType(site.getType(), response.body().string()).getList());
-            return result;
-        }
+        params.put("ids", String.join(",", ids));
+        // Poster lookup is an optional enrichment of an otherwise usable home
+        // response.  A source frequently serves its home feed and detail
+        // endpoint through different backends, so a 404, timeout or empty
+        // response here must not make the whole home page fail.  Merge only
+        // valid poster rows and retain the original identities/order when the
+        // enrichment is unavailable or malformed.
+        return SearchPosterEnrichment.apply(result, () -> {
+            Call prototype = OkHttp.newCall(site.getApi(), site.getHeader(), params);
+            // Detail lookup only fills missing posters; cap it so a slow or
+            // unreachable endpoint cannot hold the entire home page hostage.
+            long enrichmentTimeout = Math.max(1, Math.min(2000, site.getTimeout()));
+            try (Response response = sourceClient(enrichmentTimeout).newCall(prototype.request()).execute()) {
+                return Result.fromType(site.getType(),
+                        readRequiredBody(response, "Source unavailable", "Empty source response"));
+            }
+        });
+    }
+
+    /**
+     * Reads an HTTP source response only after checking its transport and body.
+     * Empty responses are unavailable data, rather than an empty successful feed.
+     */
+    static String readRequiredBody(Response response, String unavailableMessage, String emptyMessage) throws IOException {
+        if (!response.isSuccessful()) throw new IOException(unavailableMessage);
+        if (response.body() == null) throw new IOException(emptyMessage);
+        String body = response.body().string();
+        if (body.trim().isEmpty()) throw new IOException(emptyMessage);
+        return body;
     }
 
     private static void setTypes(@NonNull Site site, @NonNull Result result) {

@@ -16,10 +16,18 @@ public final class MediaProbe {
     private final OkHttpClient client = new OkHttpClient.Builder().connectTimeout(8, TimeUnit.SECONDS)
             .readTimeout(8, TimeUnit.SECONDS).callTimeout(8, TimeUnit.SECONDS)
             .followRedirects(true).followSslRedirects(false).build();
-    public void cancel() { canceled = true; if (call != null) call.cancel(); }
+    public void cancel() {
+        canceled = true;
+        Call current = call;
+        if (current != null) current.cancel();
+    }
     public Result run(String source, Map<String, String> headers) throws IOException {
-        HttpUrl original = HttpUrl.parse(source);
+        if (source == null || source.trim().isEmpty()) throw new IOException("媒体地址为空");
+        HttpUrl original = HttpUrl.parse(source.trim());
         if (original == null) throw new IOException("仅支持 HTTP/HTTPS 媒体地址");
+        if (!"http".equalsIgnoreCase(original.scheme()) && !"https".equalsIgnoreCase(original.scheme()))
+            throw new IOException("仅支持 HTTP/HTTPS 媒体地址");
+        Map<String, String> safeHeaders = headers == null ? Map.of() : headers;
         HttpUrl url = original;
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
         String kind = "MP4／媒体直链";
@@ -30,7 +38,10 @@ public final class MediaProbe {
             Request.Builder request = new Request.Builder().url(url).header("Accept-Encoding", "identity");
             // Do not forward account cookies to a different origin while resolving manifests.
             if (url.host().equals(original.host()) && url.port() == original.port() && url.scheme().equals(original.scheme())) {
-                for (Map.Entry<String, String> h : headers.entrySet()) request.header(h.getKey(), h.getValue());
+                for (Map.Entry<String, String> h : safeHeaders.entrySet()) {
+                    if (h.getKey() == null || h.getValue() == null || h.getKey().isBlank()) continue;
+                    request.header(h.getKey(), h.getValue());
+                }
             }
             request.header("Range", "bytes=0-7999999");
             call = client.newCall(request.build());
@@ -54,6 +65,7 @@ public final class MediaProbe {
                     byte[] buffer = new byte[4096]; int n;
                     while ((n = in.read(buffer)) != -1) {
                         if (canceled) throw new InterruptedIOException("已取消");
+                        if (System.nanoTime() > deadline) throw new IOException("测试超时");
                         spent += n;
                         if (manifest.size() + n > 262144 || spent > 1_000_000) throw new IOException("播放列表超过测试上限");
                         manifest.write(buffer, 0, n);

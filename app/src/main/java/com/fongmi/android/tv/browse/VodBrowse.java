@@ -21,13 +21,17 @@ import com.fongmi.android.tv.setting.Setting;
 import com.fongmi.android.tv.utils.Task;
 import com.github.catvod.utils.Trans;
 import com.google.common.collect.ImmutableList;
+import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.LockSupport;
 import java.util.stream.IntStream;
 
 class VodBrowse {
@@ -70,7 +74,21 @@ class VodBrowse {
         String keyword = searchKey(query);
         if (TextUtils.isEmpty(keyword)) return ImmutableList.of();
         List<Site> sites = VodConfig.get().getSites().stream().filter(Site::isSearchable).toList();
-        List<ListenableFuture<List<MediaItem>>> futures = sites.stream().map(site -> Task.largeExecutor().submit(() -> searchSite(site, keyword))).toList();
+        // Search is an aggregate operation and may contain every configured
+        // source.  Keep it on the bounded HTTP/crawler lanes instead of the
+        // general-purpose large executor (which has an unbounded queue).  A
+        // rejected source is represented as a failed future so healthy
+        // sources still contribute results and the aggregate deadline remains
+        // authoritative.
+        List<ListenableFuture<List<MediaItem>>> futures = new ArrayList<>();
+        for (Site site : sites) {
+            try {
+                futures.add(Task.searchExecutor(site.getType() == 3)
+                        .submit(() -> searchSite(site, keyword)));
+            } catch (RejectedExecutionException rejected) {
+                futures.add(Futures.immediateFailedFuture(rejected));
+            }
+        }
         List<MediaItem> items = collectResults(futures);
         items.sort((a, b) -> matchScore(b, keyword) - matchScore(a, keyword));
         ImmutableList<MediaItem> results = ImmutableList.copyOf(items.subList(0, Math.min(items.size(), SEARCH_LIMIT)));
@@ -81,18 +99,58 @@ class VodBrowse {
 
     private static List<MediaItem> searchSite(@NonNull Site site, @NonNull String keyword) throws Exception {
         Result result = SiteApi.searchContent(site, keyword, false, "1");
-        return result.getList().stream().map(vod -> BrowseTree.playable(searchId(site.getKey(), vod.getId()), vod.getName(), vod.getRemarks(), vod.getPic())).toList();
+        // A malformed provider row must not abort the whole aggregate search.
+        // Keep only cards that have the identity required to resolve details;
+        // the UI search path applies the same ResourceHealth guard.
+        return result.getList().stream()
+                .filter(vod -> vod != null && !TextUtils.isEmpty(vod.getId()) && !TextUtils.isEmpty(vod.getName()))
+                .filter(vod -> !vod.isFolder() && !vod.isAction())
+                .map(vod -> BrowseTree.playable(searchId(site.getKey(), vod.getId()), vod.getName(), vod.getRemarks(), vod.getPic()))
+                .toList();
     }
 
-    private static List<MediaItem> collectResults(@NonNull List<ListenableFuture<List<MediaItem>>> futures) {
+    /**
+     * Collects whichever source finishes first while enforcing one deadline for
+     * the whole aggregate search. A source that blocks must not consume a fresh
+     * timeout for every later source, and completed results must not wait behind
+     * an earlier source in configuration order.
+     */
+    static List<MediaItem> collectResults(@NonNull List<ListenableFuture<List<MediaItem>>> futures) {
+        return collectResults(futures, TimeUnit.SECONDS.toMillis(SEARCH_TIMEOUT));
+    }
+
+    static List<MediaItem> collectResults(@NonNull List<ListenableFuture<List<MediaItem>>> futures, long timeoutMillis) {
         List<MediaItem> items = new ArrayList<>();
-        for (ListenableFuture<List<MediaItem>> future : futures) {
-            try {
-                List<MediaItem> result = future.get(SEARCH_TIMEOUT, TimeUnit.SECONDS);
-                if (result != null) items.addAll(result);
-                if (items.size() >= SEARCH_LIMIT) break;
-            } catch (Exception ignored) {
+        List<ListenableFuture<List<MediaItem>>> pending = new ArrayList<>(futures);
+        long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(Math.max(1, timeoutMillis));
+        try {
+            while (!pending.isEmpty() && !Thread.currentThread().isInterrupted()) {
+                long remaining = deadline - System.nanoTime();
+                if (remaining <= 0) break;
+                boolean progressed = false;
+                for (Iterator<ListenableFuture<List<MediaItem>>> iterator = pending.iterator(); iterator.hasNext();) {
+                    ListenableFuture<List<MediaItem>> future = iterator.next();
+                    if (!future.isDone()) continue;
+                    iterator.remove();
+                    progressed = true;
+                    try {
+                        List<MediaItem> result = future.get();
+                        if (result != null) items.addAll(result);
+                        if (items.size() >= SEARCH_LIMIT) return items;
+                    } catch (Exception ignored) {
+                        // A failed source must not suppress results from healthy sources.
+                    }
+                }
+                if (!progressed) {
+                    // Avoid a tight loop while still observing completions promptly.
+                    LockSupport.parkNanos(Math.min(remaining, TimeUnit.MILLISECONDS.toNanos(20)));
+                }
             }
+        } finally {
+            // Timeout, interruption, and the result limit all invalidate the
+            // aggregate request; release queued/running source work immediately.
+            pending.forEach(future -> future.cancel(true));
+            Task.purgeSearchTasks();
         }
         return items;
     }
@@ -335,6 +393,7 @@ class VodBrowse {
     }
 
     private static int matchScore(@NonNull MediaItem item, @NonNull String keyword) {
+        if (item == null) return 0;
         CharSequence title = item.mediaMetadata.title;
         if (title == null) return 0;
         String name = Trans.t2s(title.toString());

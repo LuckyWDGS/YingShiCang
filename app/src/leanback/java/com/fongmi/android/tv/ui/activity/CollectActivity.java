@@ -16,6 +16,7 @@ import com.fongmi.android.tv.bean.Result;
 import com.fongmi.android.tv.bean.Site;
 import com.fongmi.android.tv.bean.Vod;
 import com.fongmi.android.tv.databinding.ActivityCollectBinding;
+import com.fongmi.android.tv.event.ConfigEvent;
 import com.fongmi.android.tv.model.SiteViewModel;
 import com.fongmi.android.tv.resource.ResourceHealth;
 import com.fongmi.android.tv.ui.base.BaseActivity;
@@ -24,6 +25,9 @@ import com.fongmi.android.tv.ui.presenter.DiscoveryPresenter;
 import com.fongmi.android.tv.ui.presenter.VodPresenter;
 import com.fongmi.android.tv.utils.ResUtil;
 import com.fongmi.android.tv.search.SearchResultRanker;
+import com.fongmi.android.tv.search.SearchSourceGate;
+import org.greenrobot.eventbus.Subscribe;
+import org.greenrobot.eventbus.ThreadMode;
 import java.util.*;
 
 public class CollectActivity extends BaseActivity implements VodPresenter.OnClickListener {
@@ -55,6 +59,7 @@ public class CollectActivity extends BaseActivity implements VodPresenter.OnClic
     private SearchResultRanker.Target target;
     private SearchResultRanker.Query queryRanker;
     private List<Site> eligible;
+    private final SearchSourceGate searchSources = new SearchSourceGate(() -> VodConfig.get().getSites());
 
     public static void start(Activity activity, String keyword) {
         start(activity, keyword, activity instanceof HomeActivity);
@@ -217,12 +222,20 @@ public class CollectActivity extends BaseActivity implements VodPresenter.OnClic
         String title = Objects.toString(getIntent().getStringExtra(EXTRA_TARGET_TITLE), "");
         target = title.isEmpty() ? null : SearchResultRanker.target(title, expectedYear());
         queryRanker = SearchResultRanker.query(keyword());
-        eligible = VodConfig.get().getSites().stream().filter(Site::isSearchable).toList();
         com.fongmi.android.tv.setting.Setting.putKeyword(saveKeyword());
+        searchSources.search(this::startSearch);
+    }
+    private void startSearch(List<Site> sites) {
+        eligible = sites;
+        searchComplete = false;
         binding.progress.setText("搜索(0/" + eligible.size() + ")");
         binding.results.setContentDescription(keyword() + "，影片列表");
         display(true); rebuildSources();
-        model.searchContent(eligible, keyword(), false);
+        if (!searchSources.isWaitingForConfig()) model.searchContent(eligible, keyword(), false);
+    }
+    @Subscribe(threadMode = ThreadMode.MAIN)
+    public void onConfigEvent(ConfigEvent event) {
+        if (event.isVod() && !isFinishing() && !isDestroyed()) searchSources.configReady();
     }
     private String saveKeyword() {
         List<String> history;
@@ -338,7 +351,8 @@ public class CollectActivity extends BaseActivity implements VodPresenter.OnClic
     private static String identity(Vod item) { return item.getSiteKey() + "\u0000" + item.getId(); }
     private void updateEmpty() {
         binding.empty.setVisibility(cards.size() == 0 ? android.view.View.VISIBLE : android.view.View.GONE);
-        if (eligible != null && eligible.isEmpty()) binding.empty.setText("没有启用的搜索源，请先选择搜索源");
+        if (searchSources.isWaitingForConfig()) binding.empty.setText("正在加载搜索源…");
+        else if (eligible != null && eligible.isEmpty()) binding.empty.setText("没有启用的搜索源，请先选择搜索源");
         else if (target != null && !selected.isEmpty() && emptyPageScans >= 3 && !exhausted.contains(selected))
             binding.empty.setText("此来源暂未找到匹配内容，可点击来源继续查找");
         else if (target != null && searchComplete) binding.empty.setText("未找到与所选影片匹配的内容，可切换来源继续查找");
@@ -356,6 +370,7 @@ public class CollectActivity extends BaseActivity implements VodPresenter.OnClic
     }
     @Override public boolean onLongClick(Vod item) { return false; }
     @Override protected void onBackInvoked() {
+        searchSources.cancel();
         cancelPage(); model.stopSearch();
         if (getIntent().getBooleanExtra(EXTRA_RETURN_HOME, false)) {
             // Reuse the original home, preserving its category/scroll and removing intermediate screens.
@@ -364,5 +379,5 @@ public class CollectActivity extends BaseActivity implements VodPresenter.OnClic
         }
         super.onBackInvoked();
     }
-    @Override protected void onDestroy() { cancelPage(); model.stopSearch(); super.onDestroy(); }
+    @Override protected void onDestroy() { searchSources.cancel(); cancelPage(); model.stopSearch(); super.onDestroy(); }
 }

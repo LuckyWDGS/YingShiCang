@@ -26,6 +26,7 @@ import androidx.media3.exoplayer.util.EventLogger;
 
 import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.BuildConfig;
+import com.fongmi.android.tv.Constant;
 import com.fongmi.android.tv.player.engine.PlayerEngine;
 import com.fongmi.android.tv.player.track.LangUtil;
 import com.fongmi.android.tv.setting.DecodeSetting;
@@ -39,7 +40,10 @@ import java.util.stream.Collectors;
 public class ExoUtil {
 
     public static ExoPlayer buildPlayer(Player.Listener listener, DefaultPreloadManager.Builder preloadManagerBuilder) {
-        ExoPlayer.Builder playerBuilder = new ExoPlayer.Builder(App.get()).setSkipSilenceEnabled(SpeedSetting.isSkipSilence());
+        ExoPlayer.Builder playerBuilder = new ExoPlayer.Builder(App.get())
+                .setSkipSilenceEnabled(SpeedSetting.isSkipSilence())
+                .setSeekBackIncrementMs(Constant.INTERVAL_SEEK)
+                .setSeekForwardIncrementMs(Constant.INTERVAL_SEEK);
         ExoPlayer player = preloadManagerBuilder.buildExoPlayer(playerBuilder);
         if (BuildConfig.DEBUG) player.addAnalyticsListener(new EventLogger());
         player.setAudioAttributes(AudioAttributes.DEFAULT, true);

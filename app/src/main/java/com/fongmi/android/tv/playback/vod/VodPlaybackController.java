@@ -358,12 +358,17 @@ public class VodPlaybackController {
 
     public void onTimeChanged(long time, long position, long duration) {
         History history = currentHistory();
+        normalizeSkipWindow(history, duration);
         historyPolicy.updateProgress(history, time, position, duration);
-        if (history != null && history.getEnding() > 0 && history.getEnding() + position >= duration) nextEpisode(false);
+        if (history != null && VodSkipPolicy.shouldAdvance(position, duration, history.getOpening(), history.getEnding())) nextEpisode(false);
     }
 
     public long startPositionMs() {
-        return historyPolicy.startPositionMs(state.getHistory());
+        History history = state.getHistory();
+        if (history == null) return C.TIME_UNSET;
+        long duration = history.getDuration() > 0 ? history.getDuration() : host.getPlayerDuration();
+        normalizeSkipWindow(history, duration);
+        return VodSkipPolicy.startPosition(history.getPosition(), history.getOpening(), history.getEnding(), duration);
     }
 
     private History currentHistory() {
@@ -383,11 +388,31 @@ public class VodPlaybackController {
     }
 
     public void setOpening(long opening) {
-        if (state.getHistory() != null) state.getHistory().setOpening(opening);
+        History history = state.getHistory();
+        if (history == null) return;
+        VodSkipPolicy.Window window = VodSkipPolicy.normalize(opening, history.getEnding(), effectiveDuration(history));
+        history.setOpening(window.openingMs());
+        history.setEnding(window.endingMs());
     }
 
     public void setEnding(long ending) {
-        if (state.getHistory() != null) state.getHistory().setEnding(ending);
+        History history = state.getHistory();
+        if (history == null) return;
+        VodSkipPolicy.Window window = VodSkipPolicy.normalize(history.getOpening(), ending, effectiveDuration(history));
+        history.setOpening(window.openingMs());
+        history.setEnding(window.endingMs());
+    }
+
+    private void normalizeSkipWindow(History history, long duration) {
+        if (history == null || duration <= 0) return;
+        VodSkipPolicy.Window window = VodSkipPolicy.normalize(history.getOpening(), history.getEnding(), duration);
+        if (history.getOpening() != window.openingMs()) history.setOpening(window.openingMs());
+        if (history.getEnding() != window.endingMs()) history.setEnding(window.endingMs());
+    }
+
+    private long effectiveDuration(History history) {
+        long duration = host.getPlayerDuration();
+        return duration > 0 ? duration : history.getDuration();
     }
 
     public void setScale(int scale) {

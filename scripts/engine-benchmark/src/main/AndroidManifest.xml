@@ -1,0 +1,7 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <application android:label="Engine benchmark" android:theme="@android:style/Theme.Material.NoActionBar"
+        android:usesCleartextTraffic="true" android:allowBackup="false">
+        <activity android:name=".BenchmarkActivity" android:exported="true" android:screenOrientation="landscape"/>
+    </application>
+</manifest>

@@ -3,8 +3,18 @@
 -keep class com.fongmi.quickjs.method.** { *; }
 -keep class com.fongmi.android.tv.bean.** { *; }
 
+# MPV's JNI bridge resolves the nested callback and stream interfaces by their
+# binary names (for example MPVLib$Stream). Keeping only the outer class lets
+# R8 rename those interfaces and causes a release-only ClassNotFoundException
+# before the player can open a media item.
+-keep class is.xyz.mpv.MPVLib { *; }
+-keep class is.xyz.mpv.MPVLib$* { *; }
+-keepnames class is.xyz.mpv.MPVLib$*
+
 # Gson
 -keep class com.google.gson.** { *; }
+# Explicit custom update manifests are read by Gson reflection in release builds.
+-keep class com.fongmi.android.tv.maintenance.UpdateManifest { *; }
 
 # SimpleXML
 -keep interface org.simpleframework.xml.core.Label { public *; }

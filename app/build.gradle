@@ -19,9 +19,9 @@ android {
         applicationId "com.yingshicang.player"
         minSdk libs.versions.minSdk.get().toInteger()
         targetSdk libs.versions.targetSdk.get().toInteger()
-        // Discovery: translucent filters and compact category headers.
-        versionCode providers.gradleProperty('appVersionCode').getOrElse('59').toInteger()
-        versionName providers.gradleProperty('appVersionName').getOrElse('1.0.3')
+        // Publisher GitHub Releases: check, download, verify and install.
+        versionCode providers.gradleProperty('appVersionCode').getOrElse('66').toInteger()
+        versionName providers.gradleProperty('appVersionName').getOrElse('1.0.10')
         buildConfigField "String", "UPDATE_MANIFEST_URL", groovy.json.JsonOutput.toJson(providers.gradleProperty("updateManifestUrl").getOrElse(""))
         buildConfigField "String", "LOG_UPLOAD_URL", groovy.json.JsonOutput.toJson(providers.gradleProperty("logUploadUrl").getOrElse(""))
         javaCompileOptions {
@@ -106,16 +106,16 @@ dependencies {
     implementation project(':quickjs')
     implementation libs.appcompat
     implementation libs.lifecycle.service
-    implementation "androidx.media3:media3-common:1.11.0"
-    implementation "androidx.media3:media3-exoplayer:1.11.0"
-    implementation "androidx.media3:media3-exoplayer-dash:1.11.0"
-    implementation "androidx.media3:media3-exoplayer-hls:1.11.0"
-    implementation "androidx.media3:media3-datasource-okhttp:1.11.0"
-    implementation "androidx.media3:media3-session:1.11.0"
-    implementation "androidx.media3:media3-ui:1.11.0"
-    implementation "androidx.media3:media3-ui-danmaku:1.11.0"
-    implementation "androidx.media3:media3-effect:1.11.0"
-    implementation "androidx.media3:media3-mpvplayer:1.11.0"
+    implementation "androidx.media3:media3-common:1.11.1"
+    implementation "androidx.media3:media3-exoplayer:1.11.1"
+    implementation "androidx.media3:media3-exoplayer-dash:1.11.1"
+    implementation "androidx.media3:media3-exoplayer-hls:1.11.1"
+    implementation "androidx.media3:media3-datasource-okhttp:1.11.1"
+    implementation "androidx.media3:media3-session:1.11.1"
+    implementation "androidx.media3:media3-ui:1.11.1"
+    implementation "androidx.media3:media3-ui-danmaku:1.11.1"
+    implementation "androidx.media3:media3-effect:1.11.1"
+    implementation "androidx.media3:media3-mpvplayer:1.11.1"
     implementation libs.palette
     implementation libs.recyclerview
     implementation libs.room.runtime

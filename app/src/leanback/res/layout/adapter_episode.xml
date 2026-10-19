@@ -1,1 +1,60 @@
-<com.google.android.material.textview.MaterialTextView xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools" android:id="@+id/text" android:layout_width="match_parent" android:layout_height="36dp" android:background="@drawable/detail_episode" android:ellipsize="end" android:focusable="true" android:focusableInTouchMode="false" android:gravity="center" android:singleLine="true" android:textColor="@color/text" android:textSize="15sp" tools:text="20" />
+<!-- Keep a TV-safe focus target while allowing both metadata and title to
+     fit inside a single compact row. MaterialTextView's default minimum
+     height is cleared below; otherwise a two-line item makes every row
+     unnecessarily tall. The 28dp minimum keeps single-line episodes dense
+     while two-line file metadata remains readable and can grow naturally when
+     its original text metrics require more room. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:minHeight="28dp"
+    android:background="@drawable/detail_episode"
+    android:focusable="true"
+    android:focusableInTouchMode="false"
+    android:paddingStart="12dp"
+    android:paddingEnd="12dp"
+    android:paddingTop="1dp"
+    android:paddingBottom="1dp">
+
+    <androidx.appcompat.widget.LinearLayoutCompat
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_vertical"
+        android:gravity="center_vertical"
+        android:orientation="vertical">
+
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/size"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:focusable="false"
+            android:includeFontPadding="false"
+            android:marqueeRepeatLimit="2"
+            android:minHeight="0dp"
+            android:gravity="center_horizontal"
+            android:maxLines="1"
+            android:singleLine="true"
+            android:textColor="@color/tv_theme_text_secondary"
+            android:textSize="12sp"
+            tools:text="[5.38GB]" />
+
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/name"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:focusable="false"
+            android:includeFontPadding="false"
+            android:marqueeRepeatLimit="2"
+            android:minHeight="0dp"
+            android:gravity="center_horizontal"
+            android:maxLines="1"
+            android:singleLine="true"
+            android:textColor="@color/tv_theme_text"
+            android:textSize="16sp"
+            tools:text="01.mp4" />
+
+    </androidx.appcompat.widget.LinearLayoutCompat>
+</FrameLayout>

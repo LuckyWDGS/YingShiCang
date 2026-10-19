@@ -10,6 +10,30 @@ import java.util.Map;
 import static org.junit.Assert.*;
 
 public class AiDramaCatalogTest {
+    @Test public void finerComicTopicsRemainExclusiveWithLatestAndCannotLeakIntoAiType() {
+        var sort = new AiDramaCatalog.Group("sort", "排序", "", List.of(option("默认", ""), option("最新", "online_time")));
+        var comic = new AiDramaCatalog.Category("comic", "AI漫剧", List.of(
+                topic("", option("全部", ""), option("玄幻", "fantasy"), option("求生", "native:379")), sort));
+        var ai = new AiDramaCatalog.Category("ai", "AI短剧", List.of(
+                topic("", option("全部", ""), option("玄幻", "fantasy")), sort));
+        var catalog = new AiDramaCatalog(List.of(comic, ai));
+        var state = new AiDramaCatalog.State(catalog, "source");
+        assertTrue(state.select("sort", "online_time"));
+        assertTrue(state.select("topic", "native:379"));
+        assertEquals("", state.value("sort"));
+        var restored = new AiDramaCatalog.State(catalog, "source"); restored.restore(state.serialize());
+        assertEquals("native:379", restored.value("topic"));
+        assertTrue(restored.select(AiDramaCatalog.CATEGORY, "ai"));
+        assertEquals("", restored.value("topic"));
+        assertFalse(restored.select("topic", "native:379"));
+        assertTrue(state.select("sort", "online_time"));
+        assertEquals("", state.value("topic"));
+        assertTrue(state.select("topic", "native:379"));
+        var changed = new AiDramaCatalog.State(new AiDramaCatalog(List.of(
+                new AiDramaCatalog.Category("comic", "AI漫剧", ai.groups))), "source");
+        changed.restore(state.serialize());
+        assertEquals("", changed.value("topic"));
+    }
     private static AiDramaCatalog.Group topic(String initial, AiDramaCatalog.Option... options) {
         return new AiDramaCatalog.Group("topic", "题材", initial, List.of(options));
     }

@@ -6,7 +6,9 @@ import android.content.Intent;
 import android.os.Bundle;
 import android.text.TextUtils;
 import android.view.KeyEvent;
+import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewTreeObserver;
 
 import androidx.annotation.NonNull;
 import androidx.core.splashscreen.SplashScreen;
@@ -15,6 +17,7 @@ import androidx.leanback.widget.FocusHighlight;
 import androidx.leanback.widget.HorizontalGridView;
 import androidx.leanback.widget.ItemBridgeAdapter;
 import androidx.leanback.widget.ListRow;
+import androidx.leanback.widget.ListRowPresenter;
 import androidx.lifecycle.ViewModelProvider;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.recyclerview.widget.GridLayoutManager;
@@ -91,6 +94,7 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
 
     private ActivityHomeBinding mBinding;
     private ArrayObjectAdapter mHistoryAdapter;
+    private ListRow mHistoryRow;
     private ArrayObjectAdapter mAdapter;
     private HistoryPresenter mPresenter;
     private SiteViewModel mViewModel;
@@ -99,6 +103,11 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
     private HomeWeather mWeather;
     private com.fongmi.android.tv.ui.custom.HomeDiscovery discovery;
     private boolean mInitialFocus = true;
+    private boolean mResumed;
+    private boolean mHistorySizeDirty;
+    private String mHistoryReturnKey;
+    private int mHistoryFocusGeneration;
+    private ViewTreeObserver.OnPreDrawListener mHistoryFocusRestore;
 
     private Site getHome() {
         return VodConfig.get().getHome();
@@ -143,7 +152,7 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         initConfig();
         setTitle();
         setLogo();
-        discovery = new com.fongmi.android.tv.ui.custom.HomeDiscovery(this, mBinding, this::renderDiscovery, () -> getHistory(true));
+        discovery = new com.fongmi.android.tv.ui.custom.HomeDiscovery(this, mBinding, this::renderDiscovery, this::getHistory);
     }
 
     @Override
@@ -221,10 +230,13 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
 
     private void setAdapter() {
         mHistoryAdapter = new ArrayObjectAdapter(mPresenter = new HistoryPresenter(this));
-
+        mHistoryRow = new ListRow(mHistoryAdapter);
     }
 
     private void renderDiscovery(List<Vod> items) {
+        cancelHistoryFocus(true);
+        // A hidden history row must not leave another category in delete mode.
+        if (mPresenter.isDelete()) setHistoryDelete(false);
         int offset = 0;
         // Append pages without removing existing view holders: focus and scroll stay put.
         int existing = Math.max(0, mAdapter.size() - offset);
@@ -340,13 +352,99 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
     }
 
     private void getHistory(boolean renew) {
-        if (discovery != null && !discovery.isHistory()) return;
-        mAdapter.clear();
-        mAdapter.add(R.string.home_history);
-        mHistoryAdapter = new ArrayObjectAdapter(mPresenter = new HistoryPresenter(this));
+        mHistorySizeDirty |= renew;
+        if (discovery != null && !discovery.isHistory()) {
+            cancelHistoryFocus(true);
+            return;
+        }
+        String focusedKey = mHistoryReturnKey != null ? mHistoryReturnKey : getFocusedHistoryKey();
+        boolean showingHistory = mAdapter.size() > 0 && Integer.valueOf(R.string.home_history).equals(mAdapter.get(0));
+        // Only a size-setting change needs new card dimensions. Ordinary progress
+        // events retain the row, presenter and horizontal scroll/focus ownership.
+        if (mHistorySizeDirty) {
+            boolean delete = mPresenter.isDelete();
+            setAdapter();
+            mPresenter.setDelete(delete);
+            mHistorySizeDirty = false;
+            showingHistory = false;
+        }
+        if (!showingHistory) {
+            mAdapter.clear();
+            mAdapter.add(R.string.home_history);
+        }
         List<History> items = History.get();
-        if (!items.isEmpty()) mAdapter.add(new ListRow(mHistoryAdapter));
         mHistoryAdapter.setItems(items, new BaseDiffCallback<History>());
+        if (!items.isEmpty() && mAdapter.indexOf(mHistoryRow) < 0) mAdapter.add(mHistoryRow);
+        else if (items.isEmpty()) {
+            mAdapter.remove(mHistoryRow);
+            mPresenter.setDelete(false);
+        }
+        if (mResumed && focusedKey != null) restoreHistoryFocus(focusedKey);
+    }
+
+    private HorizontalGridView getHistoryGrid() {
+        int position = mAdapter.indexOf(mHistoryRow);
+        RecyclerView.ViewHolder holder = position < 0 ? null : mBinding.recycler.findViewHolderForAdapterPosition(position);
+        if (!(holder instanceof ItemBridgeAdapter.ViewHolder bridge) || !(bridge.getPresenter() instanceof ListRowPresenter presenter)) return null;
+        return ((ListRowPresenter.ViewHolder) presenter.getRowViewHolder(bridge.getViewHolder())).getGridView();
+    }
+
+    private String getFocusedHistoryKey() {
+        HorizontalGridView grid = getHistoryGrid();
+        if (grid == null || !grid.hasFocus()) return null;
+        RecyclerView.ViewHolder holder = grid.findContainingViewHolder(grid.findFocus());
+        return holder instanceof ItemBridgeAdapter.ViewHolder bridge && bridge.getItem() instanceof History item ? item.getKey() : null;
+    }
+
+    private int findHistoryPosition(String key) {
+        for (int i = 0; i < mHistoryAdapter.size(); i++) {
+            if (key.equals(((History) mHistoryAdapter.get(i)).getKey())) return i;
+        }
+        return RecyclerView.NO_POSITION;
+    }
+
+    private boolean canRestoreHistoryFocus(int generation) {
+        return mResumed && generation == mHistoryFocusGeneration && !isFinishing() && !isDestroyed()
+                && discovery != null && discovery.isHistory();
+    }
+
+    private void cancelHistoryFocus(boolean clearReturn) {
+        mHistoryFocusGeneration++;
+        if (mHistoryFocusRestore != null) {
+            mBinding.recycler.getViewTreeObserver().removeOnPreDrawListener(mHistoryFocusRestore);
+            mHistoryFocusRestore = null;
+        }
+        if (clearReturn) mHistoryReturnKey = null;
+    }
+
+    private void restoreHistoryFocus(String key) {
+        cancelHistoryFocus(false);
+        if (findHistoryPosition(key) == RecyclerView.NO_POSITION) {
+            mHistoryReturnKey = null;
+            return;
+        }
+        int generation = mHistoryFocusGeneration;
+        // Wait for the diff/outer row to be laid out, then select the watched
+        // identity at its new time-descending position, rather than its old index.
+        mHistoryFocusRestore = new ViewTreeObserver.OnPreDrawListener() {
+            @Override public boolean onPreDraw() {
+                mBinding.recycler.getViewTreeObserver().removeOnPreDrawListener(this);
+                if (mHistoryFocusRestore == this) mHistoryFocusRestore = null;
+                if (!canRestoreHistoryFocus(generation)) return true;
+                HorizontalGridView grid = getHistoryGrid();
+                int position = findHistoryPosition(key);
+                if (grid == null || position == RecyclerView.NO_POSITION) return true;
+                grid.setSelectedPosition(position, holder -> {
+                    if (!canRestoreHistoryFocus(generation) || !(holder instanceof ItemBridgeAdapter.ViewHolder bridge)
+                            || !(bridge.getItem() instanceof History item) || !key.equals(item.getKey())) return;
+                    holder.itemView.requestFocus();
+                    mHistoryReturnKey = null;
+                });
+                return true;
+            }
+        };
+        mBinding.recycler.getViewTreeObserver().addOnPreDrawListener(mHistoryFocusRestore);
+        mBinding.recycler.invalidate();
     }
 
     private void setHistoryDelete(boolean delete) {
@@ -370,6 +468,7 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
     }
 
     private void returnHome() {
+        cancelHistoryFocus(true);
         mBinding.recycler.stopScroll();
         if (discovery != null && !discovery.isHome()) discovery.home();
         mBinding.recycler.scrollToPosition(0);
@@ -496,6 +595,9 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
 
     @Override
     public void onItemClick(History item) {
+        // A return bookmark belongs only to a remotely focused history card.
+        // Background saves and clicks elsewhere must never pull focus off tabs.
+        if (!mBinding.recycler.isInTouchMode() && item.getKey().equals(getFocusedHistoryKey())) mHistoryReturnKey = item.getKey();
         VideoActivity.start(this, item.getSiteKey(), item.getVodId(), item.getVodName(), item.getVodPic());
     }
 
@@ -531,21 +633,32 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
 
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
+        if (KeyUtil.isActionDown(event)) cancelHistoryFocus(true);
         if (KeyUtil.isMenuKey(event)) showDialog();
         if (KeyUtil.isActionDown(event) && KeyUtil.isDownKey(event) && getCurrentFocus() == mBinding.title && mBinding.recycler.getChildCount() > 0) return mBinding.recycler.getChildAt(0).requestFocus();
         return super.dispatchKeyEvent(event);
     }
 
     @Override
+    public boolean dispatchTouchEvent(MotionEvent event) {
+        if (event.getActionMasked() == MotionEvent.ACTION_DOWN) cancelHistoryFocus(true);
+        return super.dispatchTouchEvent(event);
+    }
+
+    @Override
     protected void onResume() {
         super.onResume();
+        mResumed = true;
         mClock.start();
         mWeather.refresh();
         if (discovery != null) discovery.setActive(true);
+        if (mHistoryReturnKey != null) getHistory();
     }
 
     @Override
     protected void onPause() {
+        mResumed = false;
+        cancelHistoryFocus(false);
         super.onPause();
         mClock.stop();
         mWeather.stop();
@@ -554,14 +667,15 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
 
     @Override
     protected void onBackInvoked() {
+        cancelHistoryFocus(true);
         if (discovery != null && discovery.closeFilters()) {
             return;
         } else if (mBinding.progressLayout.isProgress()) {
             showContent();
         } else if (mPresenter.isDelete()) {
             setHistoryDelete(false);
-        } else if (discovery != null && discovery.isHistory()) {
-            discovery.home();
+        } else if (discovery != null && !discovery.isHome()) {
+            returnHome();
         } else if (mBinding.recycler.canScrollVertically(-1)) {
             returnHome();
         } else {
@@ -572,6 +686,7 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
 
     @Override
     protected void onDestroy() {
+        cancelHistoryFocus(true);
         if (discovery != null) discovery.cancel();
         DLNARendererService.stop(this);
         LiveConfig.get().clear();

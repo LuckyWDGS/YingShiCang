@@ -56,7 +56,12 @@ public class ViewModelSearchRunnerTest {
             }, result -> {}, status -> { if (status.startsWith("搜索完成 4/4")) done.countDown(); });
             assertTrue(httpStarted.await(1, TimeUnit.SECONDS));
             assertTrue("Rejected tasks left aggregate progress stuck", done.await(5, TimeUnit.SECONDS));
-            assertEquals(9, tasks.size());
+            // Queue rejection is deterministic and is counted once per source;
+            // only transport failures receive the bounded retry.
+            // Three crawler jobs are created once each. Rejected submissions are
+            // terminal and must not consume a retry slot or create a duplicate
+            // task while the bounded crawler queue is saturated.
+            assertEquals(3, tasks.size());
             for (BlockingSearch task : tasks) assertEquals("Rejected/timed-out resource was not closed once", 1, task.closed.get());
             assertTrue(crawlerPool.getQueue().size() <= 1);
         } finally { release.countDown(); runner.stop(); http.shutdownNow(); crawlers.shutdownNow(); timer.shutdownNow(); }
@@ -88,6 +93,45 @@ public class ViewModelSearchRunnerTest {
             runner.stop();
             assertEquals("Cancellation and timeout must close once", 1, slow.closed.get());
         } finally { slow.release.countDown(); runner.stop(); workers.shutdownNow(); timer.shutdownNow(); }
+    }
+
+    @Test public void runnerDeadlineIsTerminalInsteadOfAddingAnotherFullRetry() throws Exception {
+        var workers = MoreExecutors.listeningDecorator(Executors.newFixedThreadPool(1));
+        var timer = Executors.newSingleThreadScheduledExecutor();
+        var runner = new ViewModelSearchRunner(workers, timer, 60, 1);
+        AtomicInteger attempts = new AtomicInteger();
+        CountDownLatch done = new CountDownLatch(1);
+        try {
+            runner.start(java.util.List.of(new Site()), site -> {
+                attempts.incrementAndGet();
+                return new BlockingSearch();
+            }, result -> {}, status -> {
+                if (status.startsWith("搜索完成 1/1")) done.countDown();
+            });
+            assertTrue("An exhausted source deadline was retried instead of completing", done.await(500, TimeUnit.MILLISECONDS));
+            assertEquals("The runner deadline must not add a second full source attempt", 1, attempts.get());
+        } finally { runner.stop(); workers.shutdownNow(); timer.shutdownNow(); }
+    }
+
+    @Test public void explicitCancellationMessagesAreTerminalWithoutRetry() throws Exception {
+        var workers = MoreExecutors.listeningDecorator(Executors.newFixedThreadPool(2));
+        var timer = Executors.newSingleThreadScheduledExecutor();
+        var runner = new ViewModelSearchRunner(workers, timer, 2000, 2);
+        AtomicInteger attempts = new AtomicInteger();
+        CountDownLatch done = new CountDownLatch(1);
+        try {
+            runner.start(java.util.List.of(new Site(), new Site()), site -> {
+                int attempt = attempts.incrementAndGet();
+                return () -> {
+                    if (attempt == 1) throw new java.io.InterruptedIOException("Search cancelled");
+                    throw new java.util.concurrent.TimeoutException("用户取消");
+                };
+            }, value -> fail("An explicitly cancelled source must not publish a result"), status -> {
+                if (status.startsWith("搜索完成 2/2") && status.contains("2 个失败")) done.countDown();
+            });
+            assertTrue("Explicit cancellation failures were retried", done.await(2, TimeUnit.SECONDS));
+            assertEquals("Cancellation and user-stop messages must not consume retry budget", 2, attempts.get());
+        } finally { runner.stop(); workers.shutdownNow(); timer.shutdownNow(); }
     }
 
     @Test public void stopClosesActiveResourceBeforeReplacementSearchStarts() throws Exception {
@@ -139,7 +183,9 @@ public class ViewModelSearchRunnerTest {
                 finally { active.decrementAndGet(); }
             }, result -> {}, status -> { if (status.startsWith("搜索完成 67/67")) done.countDown(); });
             assertTrue(done.await(5, TimeUnit.SECONDS));
-            assertEquals(68, calls.get());
+            // The injected IllegalStateException is deterministic, so it must
+            // not trigger the transport retry budget.
+            assertEquals(67, calls.get());
             assertTrue(peak.get() <= 16);
         } finally { runner.stop(); workers.shutdownNow(); timer.shutdownNow(); }
     }
@@ -171,8 +217,8 @@ public class ViewModelSearchRunnerTest {
         class RetryTask implements Callable<com.fongmi.android.tv.bean.Result>, AutoCloseable {
             final int attempt = attempts.incrementAndGet();
             boolean ended;
-            @Override public com.fongmi.android.tv.bean.Result call() {
-                if (attempt == 1) throw new IllegalStateException("temporary");
+            @Override public com.fongmi.android.tv.bean.Result call() throws Exception {
+                if (attempt == 1) throw new java.net.SocketTimeoutException("temporary");
                 return result("recovered");
             }
             @Override public void close() { assertFalse(ended); ended = true; closed.incrementAndGet(); }
@@ -190,7 +236,35 @@ public class ViewModelSearchRunnerTest {
         } finally { runner.stop(); workers.shutdownNow(); timer.shutdownNow(); }
     }
 
-    @Test public void permanentFailureStopsAfterTwoRetriesAndCountsSourceOnce() throws Exception {
+    @Test public void dnsAndTlsTransportFailuresUseBoundedRetry() throws Exception {
+        var workers = MoreExecutors.listeningDecorator(Executors.newSingleThreadExecutor());
+        var timer = Executors.newSingleThreadScheduledExecutor();
+        var runner = new ViewModelSearchRunner(workers, timer, 2000, 1);
+        Site dns = new Site(), tls = new Site();
+        AtomicInteger dnsAttempts = new AtomicInteger(), tlsAttempts = new AtomicInteger();
+        CountDownLatch done = new CountDownLatch(1);
+        try {
+            runner.start(java.util.List.of(dns, tls), site -> {
+                if (site == dns) return () -> {
+                    if (dnsAttempts.incrementAndGet() == 1)
+                        throw new java.net.UnknownHostException("temporary DNS failure");
+                    return result("dns-recovered");
+                };
+                return () -> {
+                    if (tlsAttempts.incrementAndGet() == 1)
+                        throw new javax.net.ssl.SSLHandshakeException("temporary TLS handshake failure");
+                    return result("tls-recovered");
+                };
+            }, value -> {}, status -> {
+                if (status.startsWith("搜索完成 2/2") && status.contains("0 个失败")) done.countDown();
+            });
+            assertTrue("Transient DNS/TLS failures were not retried", done.await(4, TimeUnit.SECONDS));
+            assertEquals(2, dnsAttempts.get());
+            assertEquals(2, tlsAttempts.get());
+        } finally { runner.stop(); workers.shutdownNow(); timer.shutdownNow(); }
+    }
+
+    @Test public void deterministicTlsCertificateFailureDoesNotRetry() throws Exception {
         var workers = MoreExecutors.listeningDecorator(Executors.newSingleThreadExecutor());
         var timer = Executors.newSingleThreadScheduledExecutor();
         var runner = new ViewModelSearchRunner(workers, timer, 2000, 1);
@@ -198,12 +272,70 @@ public class ViewModelSearchRunnerTest {
         CountDownLatch done = new CountDownLatch(1);
         try {
             runner.start(java.util.List.of(new Site()), site -> () -> {
-                attempts.incrementAndGet(); throw new IllegalStateException("unavailable");
+                attempts.incrementAndGet();
+                throw new javax.net.ssl.SSLHandshakeException("certificate verify failed");
+            }, value -> fail("Certificate failure must not publish a result"), status -> {
+                if (status.startsWith("搜索完成 1/1") && status.contains("1 个失败")) done.countDown();
+            });
+            assertTrue("Deterministic certificate TLS failure was retried", done.await(2, TimeUnit.SECONDS));
+            assertEquals(1, attempts.get());
+        } finally { runner.stop(); workers.shutdownNow(); timer.shutdownNow(); }
+    }
+
+    @Test public void wrappedTlsCertificateFailureDoesNotRetry() throws Exception {
+        var workers = MoreExecutors.listeningDecorator(Executors.newSingleThreadExecutor());
+        var timer = Executors.newSingleThreadScheduledExecutor();
+        var runner = new ViewModelSearchRunner(workers, timer, 2000, 1);
+        AtomicInteger attempts = new AtomicInteger();
+        CountDownLatch done = new CountDownLatch(1);
+        try {
+            runner.start(java.util.List.of(new Site()), site -> () -> {
+                attempts.incrementAndGet();
+                var failure = new javax.net.ssl.SSLHandshakeException("handshake failed");
+                failure.initCause(new java.security.cert.CertificateException("PKIX path building failed"));
+                throw failure;
+            }, value -> fail("Wrapped certificate failure must not publish a result"), status -> {
+                if (status.startsWith("搜索完成 1/1") && status.contains("1 个失败")) done.countDown();
+            });
+            assertTrue(done.await(2, TimeUnit.SECONDS));
+            assertEquals(1, attempts.get());
+        } finally { runner.stop(); workers.shutdownNow(); timer.shutdownNow(); }
+    }
+
+    @Test public void wrappedSearchCancellationDoesNotRetryAsTlsFailure() throws Exception {
+        var workers = MoreExecutors.listeningDecorator(Executors.newSingleThreadExecutor());
+        var timer = Executors.newSingleThreadScheduledExecutor();
+        var runner = new ViewModelSearchRunner(workers, timer, 2000, 1);
+        AtomicInteger attempts = new AtomicInteger();
+        CountDownLatch done = new CountDownLatch(1);
+        try {
+            runner.start(java.util.List.of(new Site()), site -> () -> {
+                attempts.incrementAndGet();
+                var tls = new javax.net.ssl.SSLException("TLS wrapper");
+                tls.initCause(new java.io.InterruptedIOException("Search deadline exceeded"));
+                throw tls;
+            }, value -> fail("An explicitly stopped source must not publish a result"), status -> {
+                if (status.startsWith("搜索完成 1/1") && status.contains("1 个失败")) done.countDown();
+            });
+            assertTrue("Wrapped search cancellation was retried", done.await(2, TimeUnit.SECONDS));
+            assertEquals(1, attempts.get());
+        } finally { runner.stop(); workers.shutdownNow(); timer.shutdownNow(); }
+    }
+
+    @Test public void deterministicFailureDoesNotRetryAndCountsSourceOnce() throws Exception {
+        var workers = MoreExecutors.listeningDecorator(Executors.newSingleThreadExecutor());
+        var timer = Executors.newSingleThreadScheduledExecutor();
+        var runner = new ViewModelSearchRunner(workers, timer, 2000, 1);
+        AtomicInteger attempts = new AtomicInteger();
+        CountDownLatch done = new CountDownLatch(1);
+        try {
+            runner.start(java.util.List.of(new Site()), site -> () -> {
+                attempts.incrementAndGet(); throw new IllegalArgumentException("unavailable");
             }, value -> fail("Failed source published a result"), status -> {
                 if (status.startsWith("搜索完成 1/1") && status.contains("1 个失败")) done.countDown();
             });
             assertTrue(done.await(4, TimeUnit.SECONDS));
-            assertEquals(3, attempts.get());
+            assertEquals(1, attempts.get());
         } finally { runner.stop(); workers.shutdownNow(); timer.shutdownNow(); }
     }
 
@@ -212,15 +344,25 @@ public class ViewModelSearchRunnerTest {
         var timer = Executors.newSingleThreadScheduledExecutor();
         var runner = new ViewModelSearchRunner(workers, timer, 2000, 1);
         AtomicInteger attempts = new AtomicInteger(), oldReports = new AtomicInteger();
+        var backoffStatus = new java.util.concurrent.atomic.AtomicReference<String>();
         CountDownLatch waiting = new CountDownLatch(1), fresh = new CountDownLatch(1), barrier = new CountDownLatch(1);
         try {
             runner.start(java.util.List.of(new Site()), site -> () -> {
-                attempts.incrementAndGet(); throw new IllegalStateException("temporary");
-            }, value -> fail(), status -> { if (oldReports.incrementAndGet() == 2) waiting.countDown(); });
+                attempts.incrementAndGet(); throw new java.net.SocketTimeoutException("temporary");
+            }, value -> fail(), status -> {
+                if (oldReports.incrementAndGet() == 2) {
+                    backoffStatus.set(status);
+                    waiting.countDown();
+                }
+            });
             assertTrue(waiting.await(1, TimeUnit.SECONDS));
+            assertTrue("Old search completed instead of waiting for its scheduled retry",
+                    backoffStatus.get().startsWith("搜索中 0/1"));
             runner.start(java.util.List.of(new Site()), site -> () -> result("fresh"), value -> fresh.countDown(), status -> {});
             int previousReports = oldReports.get();
             assertTrue(fresh.await(1, TimeUnit.SECONDS));
+            // Cross the 700ms retry deadline on the same scheduler before checking
+            // that replacement cancelled both the retry and its progress updates.
             timer.schedule(barrier::countDown, 900, TimeUnit.MILLISECONDS);
             assertTrue(barrier.await(2, TimeUnit.SECONDS));
             assertEquals(1, attempts.get()); assertEquals(previousReports, oldReports.get());

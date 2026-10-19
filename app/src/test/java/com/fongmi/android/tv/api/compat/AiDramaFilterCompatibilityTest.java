@@ -28,6 +28,23 @@ import static org.junit.Assert.*;
 
 public class AiDramaFilterCompatibilityTest {
 
+    @Test public void nativeTopicTransportRequiresTheAuditedRequestFields() {
+        var fields = List.of("/reading/distribution/category/landpage/v", "select_items", "category_dim_theme",
+                "need_selector_panel", "filter_ids", "req_scene", "only_content", "client_req_type");
+        assertTrue(AiDramaFilterCompatibility.nativeTopicShape(fields));
+        for (String field : fields) {
+            var changed = new java.util.ArrayList<>(fields); changed.remove(field);
+            assertFalse(AiDramaFilterCompatibility.nativeTopicShape(changed));
+        }
+        var dependencies = List.of("_device_config", "API_HOST", "_core_sixgod", "json", "dumps", "requests", "post", "_json_response");
+        assertTrue(AiDramaFilterCompatibility.nativeApiShape(List.of("path", "body", "config"), dependencies));
+        assertFalse(AiDramaFilterCompatibility.nativeApiShape(List.of("body", "path", "config"), dependencies));
+        for (String dependency : dependencies) {
+            var changed = new java.util.ArrayList<>(dependencies); changed.remove(dependency);
+            assertFalse(AiDramaFilterCompatibility.nativeApiShape(List.of("path", "body", "config"), changed));
+        }
+    }
+
     @Test public void currentRenamedBridgeRetainsExactAiDjIdentityAndDefaultRoute() throws Exception {
         // Load the existing fixture with the current superclass name. Equal-length
         // class names preserve the constant-pool layout and avoid a second AiDj source.
@@ -277,5 +294,58 @@ public class AiDramaFilterCompatibilityTest {
                     HttpUrl.get("http://127.0.0.1:1/ai")), client, call -> { count.incrementAndGet(); call.cancel(); });
             fail();
         } catch (IOException expected) { assertEquals(2, count.get()); }
+    }
+
+    @Test public void pythonRuntimeGateSerializesBridgeOperationsAcrossThreads() throws Exception {
+        var entered = new CountDownLatch(1); var release = new CountDownLatch(1);
+        var secondEntered = new CountDownLatch(1); var active = new AtomicInteger(); var maximum = new AtomicInteger();
+        var failure = new AtomicReference<Throwable>();
+        Thread first = new Thread(() -> {
+            try {
+                PythonPluginCompatibility.withRuntimeGate(() -> {
+                    entered.countDown();
+                    int now = active.incrementAndGet(); maximum.accumulateAndGet(now, Math::max);
+                    try { release.await(2, TimeUnit.SECONDS); }
+                    finally { active.decrementAndGet(); }
+                    return null;
+                });
+            } catch (Throwable error) { failure.compareAndSet(null, error); }
+        });
+        Thread second = new Thread(() -> {
+            try {
+                PythonPluginCompatibility.withRuntimeGate(() -> {
+                    secondEntered.countDown();
+                    int now = active.incrementAndGet(); maximum.accumulateAndGet(now, Math::max);
+                    active.decrementAndGet(); return null;
+                });
+            } catch (Throwable error) { failure.compareAndSet(null, error); }
+        });
+        first.start(); assertTrue(entered.await(1, TimeUnit.SECONDS)); second.start();
+        assertFalse(secondEntered.await(100, TimeUnit.MILLISECONDS));
+        release.countDown(); first.join(1000); second.join(1000);
+        assertFalse(first.isAlive()); assertFalse(second.isAlive()); assertNull(failure.get());
+        assertEquals(1, maximum.get());
+    }
+
+    @Test public void cancelledSearchDoesNotWaitForPythonRuntimeGate() throws Exception {
+        var entered = new CountDownLatch(1); var release = new CountDownLatch(1);
+        var holderFailure = new AtomicReference<Throwable>();
+        Thread holder = new Thread(() -> {
+            try {
+                PythonPluginCompatibility.withRuntimeGate(() -> {
+                    entered.countDown(); release.await(2, TimeUnit.SECONDS); return null;
+                });
+            } catch (Throwable error) { holderFailure.set(error); }
+        });
+        holder.start(); assertTrue(entered.await(1, TimeUnit.SECONDS));
+        var scope = new com.fongmi.android.tv.api.SearchRequestScope(new OkHttpClient(), 5000);
+        var waiterFailure = new AtomicReference<Throwable>();
+        Thread waiter = new Thread(() -> {
+            try { PythonPluginCompatibility.withRuntimeGate(scope, () -> null); }
+            catch (Throwable error) { waiterFailure.set(error); }
+        });
+        waiter.start(); scope.close(); waiter.join(1000); release.countDown(); holder.join(1000);
+        assertFalse(waiter.isAlive()); assertFalse(holder.isAlive()); assertNull(holderFailure.get());
+        assertTrue(waiterFailure.get() instanceof java.io.InterruptedIOException);
     }
 }

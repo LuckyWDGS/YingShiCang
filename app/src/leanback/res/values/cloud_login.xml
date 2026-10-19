@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="cloud_login_success">#B9E7C5</color>
+    <color name="cloud_login_warning">#F2D49B</color>
+    <color name="cloud_login_error">#F2B4AE</color>
+    <color name="cloud_login_provider_one">#FFB870</color>
+    <color name="cloud_login_provider_two">#65B7FF</color>
+    <color name="cloud_login_provider_three">#B79AFF</color>
+    <color name="cloud_login_status_loading">#26313A</color>
+    <color name="cloud_login_status_ready">#214431</color>
+    <color name="cloud_login_status_scanned">#4A3B20</color>
+    <color name="cloud_login_status_error">#4A2928</color>
+
+    <string name="cloud_login_title">扫码登录，继续播放</string>
+    <string name="cloud_login_subtitle">任意扫码即可登录，成功后自动继续播放</string>
+    <string name="cloud_login_hint">3 个网盘同时准备</string>
+    <string name="cloud_login_scan_hint">打开对应 App 扫一扫</string>
+    <string name="cloud_login_scan_provider">打开%1$s扫一扫</string>
+    <string name="cloud_login_close">关闭</string>
+    <string name="cloud_login_retry">重新获取</string>
+    <string name="cloud_login_waiting">准备中…</string>
+    <string name="cloud_login_confirming">等待确认…</string>
+    <string name="cloud_login_active">二维码有效</string>
+    <string name="cloud_login_loading">正在获取二维码…</string>
+    <string name="cloud_login_ready">可直接扫码，成功后自动继续</string>
+    <string name="cloud_login_scanned">已扫码，请在手机上确认</string>
+    <string name="cloud_login_expired">二维码已失效，请重新获取</string>
+    <string name="cloud_login_error">获取失败，请重新获取</string>
+    <string name="cloud_login_retry_hint">按确认重新获取</string>
+    <string name="cloud_login_placeholder_loading">获取中</string>
+    <string name="cloud_login_placeholder_expired">二维码已失效</string>
+    <string name="cloud_login_placeholder_error">暂时无法获取</string>
+    <string name="cloud_login_provider_retry">重新获取%1$s二维码</string>
+    <string name="cloud_login_card_content">%1$s二维码，%2$s</string>
+    <string name="cloud_login_remote_hint">左右切换卡片　·　返回关闭</string>
+</resources>

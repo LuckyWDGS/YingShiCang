@@ -25,6 +25,7 @@ import com.fongmi.android.tv.bean.Sub;
 import com.fongmi.android.tv.databinding.ActivityCastBinding;
 import com.fongmi.android.tv.dlna.CastAction;
 import com.fongmi.android.tv.event.RefreshEvent;
+import com.fongmi.android.tv.playback.MediaSeekPolicy;
 import com.fongmi.android.tv.playback.PlaybackAction;
 import com.fongmi.android.tv.player.media.MediaItemFactory;
 import com.fongmi.android.tv.service.DLNARendererService;
@@ -148,6 +149,7 @@ public class CastActivity extends PlaybackActivity implements CustomKeyDownVod.L
     private void setAction(Intent intent) {
         mAction = intent.getParcelableExtra(CastAction.KEY_EXTRA);
         if (mAction == null) return;
+        cancelPendingSeek();
         mBinding.widget.title.setText(getName());
         mBinding.widget.title.setSelected(true);
         resetMedia();
@@ -155,6 +157,7 @@ public class CastActivity extends PlaybackActivity implements CustomKeyDownVod.L
     }
 
     private void resetMedia() {
+        cancelPendingSeek();
         hideError();
         hideControl();
         player().setSpeed(1.0f);
@@ -193,6 +196,7 @@ public class CastActivity extends PlaybackActivity implements CustomKeyDownVod.L
     }
 
     private void onReset() {
+        cancelPendingSeek();
         if (player().isEmpty()) return;
         position = player().getPosition();
         start();
@@ -278,6 +282,7 @@ public class CastActivity extends PlaybackActivity implements CustomKeyDownVod.L
     }
 
     private void setR1Callback() {
+        if (isScrubbing()) return;
         App.post(mR1, Constant.INTERVAL_HIDE);
     }
 
@@ -338,6 +343,7 @@ public class CastActivity extends PlaybackActivity implements CustomKeyDownVod.L
 
     @Override
     protected void onPrepare() {
+        cancelPendingSeek();
         setPosition();
         setPlaybackMode();
         consumePendingSeek();
@@ -355,6 +361,7 @@ public class CastActivity extends PlaybackActivity implements CustomKeyDownVod.L
 
     @Override
     protected void onError(String msg) {
+        cancelPendingSeek();
         if (mRenderer != null) mRenderer.notifyError();
         player().resetTrack();
         player().reset();
@@ -373,6 +380,7 @@ public class CastActivity extends PlaybackActivity implements CustomKeyDownVod.L
                 player().reset();
                 break;
             case Player.STATE_ENDED:
+                cancelPendingSeek();
                 checkEnded();
                 break;
         }
@@ -412,13 +420,31 @@ public class CastActivity extends PlaybackActivity implements CustomKeyDownVod.L
     public boolean dispatchKeyEvent(KeyEvent event) {
         if (KeyUtil.isMenuKey(event)) onToggle();
         if (isVisible(mBinding.control.getRoot())) setR1Callback();
+        if (handleMediaSeekKey(event)) return true;
         if (isGone(mBinding.control.getRoot()) && mKeyDown.hasEvent(event) && service() != null) return mKeyDown.onKeyDown(event);
         return super.dispatchKeyEvent(event);
     }
 
+    private boolean handleMediaSeekKey(KeyEvent event) {
+        int code = event.getKeyCode();
+        if (code != KeyEvent.KEYCODE_MEDIA_FAST_FORWARD && code != KeyEvent.KEYCODE_MEDIA_REWIND) return false;
+        // The native time bar owns the position while scrubbing. Consume the
+        // media key without applying a competing seek to the same controller.
+        if (!hasCastPlayback() || isScrubbing()) return true;
+        if (event.getAction() == KeyEvent.ACTION_UP) {
+            long intervalMs = MediaSeekPolicy.intervalMs(event.getEventTime() - event.getDownTime(), event.getRepeatCount());
+            // Keep Cast in the same 250 ms coalescing path as VOD DPAD/media
+            // keys. MediaController seek calls are queued by the service, so
+            // issuing each press directly can otherwise read the old position
+            // and collapse a rapid sequence into one jump.
+            mKeyDown.onMediaSeek(code == KeyEvent.KEYCODE_MEDIA_FAST_FORWARD ? intervalMs : -intervalMs);
+        }
+        return true;
+    }
+
     @Override
     public void onSeeking(long time) {
-        if (player().isEmpty()) return;
+        if (service() == null || player().isEmpty()) return;
         mBinding.widget.center.setVisibility(View.VISIBLE);
         mBinding.widget.duration.setText(player().getDurationTime());
         mBinding.widget.position.setText(player().getPositionTime(time));
@@ -428,9 +454,24 @@ public class CastActivity extends PlaybackActivity implements CustomKeyDownVod.L
 
     @Override
     public void onSeekEnd(long time) {
-        if (player().isEmpty()) return;
+        if (time == 0 || !hasCastPlayback() || isScrubbing()) {
+            mKeyDown.reset();
+            hideCenter();
+            return;
+        }
         mKeyDown.reset();
         seekTo(time);
+    }
+
+    @Override
+    protected void onScrubbingChanged(boolean scrubbing) {
+        if (scrubbing) {
+            cancelPendingSeek();
+            hideCenter();
+            App.removeCallbacks(mR1);
+        } else if (isVisible(mBinding.control.getRoot())) {
+            setR1Callback();
+        }
     }
 
     @Override
@@ -457,7 +498,11 @@ public class CastActivity extends PlaybackActivity implements CustomKeyDownVod.L
 
     @Override
     public void onKeyCenter() {
-        if (player().isPlaying()) onPaused();
+        if (controller() == null || service() == null) return;
+        mKeyDown.commitPendingSeek();
+        // Seeking can enter BUFFERING while playback is still requested. Use
+        // the controller's intent so Center also pauses that pending playback.
+        if (controller().getPlayWhenReady()) onPaused();
         else onPlay();
         hideControl();
     }
@@ -479,13 +524,26 @@ public class CastActivity extends PlaybackActivity implements CustomKeyDownVod.L
     }
 
     @Override
+    protected void onPause() {
+        // onStop can be delayed while another surface takes focus. Revoke the
+        // queued directional seek at the first lifecycle boundary instead.
+        cancelPendingSeek();
+        hideCenter();
+        super.onPause();
+    }
+
+    @Override
     protected void onStop() {
+        // A delayed directional seek belongs to the visible Cast page. Drop
+        // it when the activity is hidden so it cannot affect a later action.
+        cancelPendingSeek();
         super.onStop();
         if (PlayerSetting.isBackgroundOff()) mClock.stop();
     }
 
     @Override
     protected void onBackInvoked() {
+        cancelPendingSeek();
         if (isVisible(mBinding.control.getRoot())) {
             hideControl();
         } else if (isVisible(mBinding.widget.center)) {
@@ -504,9 +562,18 @@ public class CastActivity extends PlaybackActivity implements CustomKeyDownVod.L
 
     @Override
     protected void onDestroy() {
+        cancelPendingSeek();
         mClock.release();
         releaseRenderer();
         App.removeCallbacks(mR1, mR2);
         super.onDestroy();
+    }
+
+    private void cancelPendingSeek() {
+        if (mKeyDown != null) mKeyDown.cancelPendingSeek();
+    }
+
+    private boolean hasCastPlayback() {
+        return controller() != null && service() != null && !player().isEmpty();
     }
 }
