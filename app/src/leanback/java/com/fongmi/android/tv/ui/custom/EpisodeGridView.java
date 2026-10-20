@@ -23,8 +23,8 @@ public class EpisodeGridView extends RecyclerView {
         setLayoutManager(new GridLayoutManager(context, columnCount));
         setItemAnimator(null);
         // Keep a small visual separation without wasting a full card-height
-        // gap between rows. The slightly taller item layout still leaves a
-        // compact focus target for reliable D-pad operation.
+        // gap between rows. The taller item layout gives the two metadata
+        // lines room to breathe while preserving reliable D-pad operation.
         spacing = new GridSpacing(columnCount, 4);
         addItemDecoration(spacing);
     }

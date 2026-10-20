@@ -18,7 +18,6 @@
     <string name="detail_actor">Actor: <xliff:g name="name">%s</xliff:g></string>
     <string name="detail_content">Summary: <xliff:g name="name">%s</xliff:g></string>
     <string name="detail_desc">Summary</string>
-    <string name="detail_play_address">Playback URL: %1$s</string>
 
     <!-- Keep -->
     <string name="keep">Keep</string>

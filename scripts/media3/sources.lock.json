@@ -4,7 +4,7 @@
   "archiveRef": "1.11.1",
   "archiveSha256": "992e6e27c5d38c5a22d3ddb23be3f7d477e89c4a422a84441e7fb98371daae23",
   "fongmiRevision": "3c2cbe8ac742c2fe15eff52f03eeb3b1b648848d",
-  "patchSha256": "143b449981701f47c9b0ef74c47dd3fffdf77082f1eea08f1a44ec4c074aa1ca",
+  "patchSha256": "714f0d78ed364d4c633a393c5a2c1552b2be070ba5c2402178d34ad0289c671e",
   "files": {
     ".gitignore": "f1bf74f6d39f1f89279d715a8e0280a29bdd82ec11d89ca9a0198813c08bc3ab",
     "build.gradle.kts": "204d1a0880c99bcc10b2c00881c63582daee6c31c2a7bc89c973db3e85b20917",
@@ -58,7 +58,7 @@
     "libraries/decoder_ffmpeg/src/main/jni/ffvideo.cc": "1bc50b029da35f2e3145e01fc6474d5fbfa56c9b6ecd9845b751695a04b42ffe",
     "libraries/decoder_ffmpeg/src/main/jni/ffvideo_frame.cc": "7f8b878e482f47d9eb2581f62effde4cc5e2269b72030ce8339612c659a5a6a0",
     "libraries/decoder_ffmpeg/src/main/jni/ffvideo_frame.h": "8699f7a9c14535d2c0fc03c9bfb8d93e1f3c71ac9c08ba7209a5daa26c74dc18",
-    "libraries/decoder_ffmpeg/src/main/jni/ffvideo_gles.cc": "956ec542130ad5c930906fe9aad3ffd5a75c9f0cb74b29823da64928ab21d189",
+    "libraries/decoder_ffmpeg/src/main/jni/ffvideo_gles.cc": "ac9e811c7eb6d59bbda031d855a219c3059fcd35da5b402a3c28ee19793182bf",
     "libraries/decoder_ffmpeg/src/main/jni/ffvideo_libav.c": "be45aeb871d9c6c70e415f22eecceb407780f8eccd66fab3b2178520070ae2e7",
     "libraries/decoder_ffmpeg/src/main/jni/ffvideo_placebo.cc": "8cafe2b93b03ecdb82ae5edb5f61c5f64e991772fcda4a7d69c712dc3040318d",
     "libraries/decoder_ffmpeg/src/main/jni/ffvideo_placebo.h": "d04a8ee4304fc9e6a89115f3be064b910db0c40b6cbd95bcb5ea3e0bc697e35b",

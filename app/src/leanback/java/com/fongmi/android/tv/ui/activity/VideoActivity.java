@@ -494,8 +494,6 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
     @Override
     public void prepareSource(Vod item) {
         cancelPendingSeek();
-        mBinding.playAddress.setText("");
-        mBinding.playAddress.setVisibility(View.GONE);
         getIntent().putExtra("key", item.getSiteKey());
         getIntent().putExtra("id", item.getId());
         putPic(getIntent(), item.getPic());
@@ -530,9 +528,6 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
     @Override
     public void startPlayback(Result result, boolean useParse, long startPositionMs, MediaMetadata metadata) {
         cancelPendingSeek();
-        String address = result.getRealUrl();
-        mBinding.playAddress.setText(address.isEmpty() ? "" : getString(R.string.detail_play_address, address));
-        mBinding.playAddress.setVisibility(address.isEmpty() ? View.GONE : View.VISIBLE);
         startPlayer(getHistoryKey(), result, useParse, getSite().getTimeout(), startPositionMs, metadata);
         player().observeCurrentPlayback(mVod.playbackObservation());
     }

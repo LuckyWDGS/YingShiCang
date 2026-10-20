@@ -1,12 +1,12 @@
 <!-- Keep a TV-safe focus target while allowing both metadata and title to
-     fit inside a compact row. MaterialTextView's default minimum height is
-     cleared below; the 34dp minimum gives a little more breathing room for
-     D-pad focus without pushing the episode list back to a sparse layout. -->
+     fit inside a readable row. MaterialTextView's default minimum height is
+     cleared below; the 51dp minimum adds about 30 physical pixels on the
+     280dpi LDPlayer target so long file labels no longer look stacked. -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:minHeight="34dp"
+    android:minHeight="51dp"
     android:background="@drawable/detail_episode"
     android:focusable="true"
     android:focusableInTouchMode="false"

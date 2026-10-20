@@ -6940,7 +6940,7 @@ index 0000000..60ef65c
 +#endif  // MEDIA3_FFVIDEO_FRAME_H
 diff --git a/libraries/decoder_ffmpeg/src/main/jni/ffvideo_gles.cc b/libraries/decoder_ffmpeg/src/main/jni/ffvideo_gles.cc
 new file mode 100644
-index 0000000..0fb8655
+index 0000000..a07b2d1
 --- /dev/null
 +++ b/libraries/decoder_ffmpeg/src/main/jni/ffvideo_gles.cc
 @@ -0,0 +1,2738 @@
@@ -8349,13 +8349,13 @@ index 0000000..0fb8655
 +    }
 +    const int current_format = ANativeWindow_getFormat(native_window_);
 +    if (current_format != native_format) {
-+      // Preserve the SurfaceHolder buffer size selected by ExoPlayer while
-+      // switching to the EGL config's required pixel format.
-+      const int buffer_width = ANativeWindow_getWidth(native_window_);
-+      const int buffer_height = ANativeWindow_getHeight(native_window_);
-+      if (buffer_width <= 0 || buffer_height <= 0 ||
-+          ANativeWindow_setBuffersGeometry(native_window_, buffer_width,
-+                                           buffer_height, native_format) != 0) {
++      // Switch only the pixel format. A 0x0 size keeps the window's default
++      // buffer size, so it keeps following SurfaceView resizes (preview to
++      // fullscreen). Explicit dimensions would pin the old view size and
++      // SurfaceFlinger would stretch that small buffer across the screen,
++      // which made software-decoded 4K look blurry and jagged in fullscreen.
++      if (ANativeWindow_setBuffersGeometry(native_window_, 0, 0,
++                                           native_format) != 0) {
 +        LOGE("Failed to configure GLES native window geometry.");
 +        return false;
 +      }
