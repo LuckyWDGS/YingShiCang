@@ -721,11 +721,6 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
     }
 
     @Override
-    public void showEpisodeReady(Episode item) {
-        Notify.show(getString(R.string.play_ready, item.getName()));
-    }
-
-    @Override
     public void showNoNext(boolean reversed) {
         Notify.show(reversed ? R.string.error_play_prev : R.string.error_play_next);
     }

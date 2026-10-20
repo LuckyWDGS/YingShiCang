@@ -2,7 +2,6 @@ package com.fongmi.android.tv.ui.adapter;
 
 import android.text.TextUtils;
 import android.view.LayoutInflater;
-import android.view.MotionEvent;
 import android.view.ViewGroup;
 import android.widget.TextView;
 
@@ -84,7 +83,7 @@ public class EpisodeAdapter extends RecyclerView.Adapter<EpisodeAdapter.ViewHold
      *
      * <p>File-backed sources often put the size in {@code desc}.  That is not a
      * reason to force every item into two very wide columns: the title still has
-     * a marquee on focus/hover, and four columns expose twice as many episodes in
+     * a marquee while focused, and four columns expose twice as many episodes in
      * the same viewport.  Only genuinely long labels use three or two columns.</p>
      */
     public static int columnsFor(List<Episode> items) {
@@ -137,7 +136,8 @@ public class EpisodeAdapter extends RecyclerView.Adapter<EpisodeAdapter.ViewHold
         holder.binding.getRoot().setNextFocusDownId(position / columnCount == (mItems.size() - 1) / columnCount ? nextFocusDown : android.view.View.NO_ID);
         holder.binding.getRoot().setSelected(item.isSelected());
         holder.binding.getRoot().setOnClickListener(v -> mListener.onItemClick(item));
-        // Playing selection propagates to children; only focus/hover may scroll text.
+        // Playing selection propagates to the card background; only focus
+        // starts the child text marquee.
         holder.updateMarquee();
     }
 
@@ -167,38 +167,23 @@ public class EpisodeAdapter extends RecyclerView.Adapter<EpisodeAdapter.ViewHold
     public static class ViewHolder extends RecyclerView.ViewHolder {
 
         private final AdapterEpisodeBinding binding;
-        private boolean hovered;
-
         ViewHolder(@NonNull AdapterEpisodeBinding binding) {
             super(binding.getRoot());
             this.binding = binding;
             itemView.setOnFocusChangeListener((view, focused) -> updateMarquee());
-            itemView.setOnHoverListener((view, event) -> {
-                switch (event.getActionMasked()) {
-                    case MotionEvent.ACTION_HOVER_ENTER:
-                    case MotionEvent.ACTION_HOVER_MOVE:
-                        if (!hovered) {
-                            hovered = true;
-                            updateMarquee();
-                        }
-                        break;
-                    case MotionEvent.ACTION_HOVER_EXIT:
-                        hovered = false;
-                        updateMarquee();
-                        break;
-                }
-                return false;
-            });
         }
 
         private void updateMarquee() {
-            boolean active = itemView.hasFocus() || hovered;
+            // A playing episode is marked selected for the background state,
+            // but only the D-pad/touch focused card should consume attention
+            // with a marquee. This also prevents recycled, off-screen cards
+            // from continuing to scroll after focus moves away.
+            boolean active = itemView.hasFocus();
             setMarquee(binding.name, active);
             setMarquee(binding.size, active);
         }
 
         private void stopMarquee() {
-            hovered = false;
             setMarquee(binding.name, false);
             setMarquee(binding.size, false);
         }

@@ -17,6 +17,7 @@ import com.fongmi.android.tv.bean.Site;
 import com.fongmi.android.tv.bean.Vod;
 import com.fongmi.android.tv.db.AppDatabase;
 import com.fongmi.android.tv.playback.vod.VodHistoryPolicy;
+import com.fongmi.android.tv.resource.ResourceHealth;
 import com.fongmi.android.tv.setting.Setting;
 import com.fongmi.android.tv.utils.Task;
 import com.github.catvod.utils.Trans;
@@ -90,6 +91,10 @@ class VodBrowse {
             }
         }
         List<MediaItem> items = collectResults(futures);
+        // A previous detail/playback request may have proved a card invalid
+        // while its cached search page is still alive. Re-check health at the
+        // aggregate boundary so stale cards never leave this search call.
+        items.removeIf(item -> !isSearchResultAvailable(item));
         items.sort((a, b) -> matchScore(b, keyword) - matchScore(a, keyword));
         ImmutableList<MediaItem> results = ImmutableList.copyOf(items.subList(0, Math.min(items.size(), SEARCH_LIMIT)));
         searchCacheMap.put(keyword, results);
@@ -105,6 +110,7 @@ class VodBrowse {
         return result.getList().stream()
                 .filter(vod -> vod != null && !TextUtils.isEmpty(vod.getId()) && !TextUtils.isEmpty(vod.getName()))
                 .filter(vod -> !vod.isFolder() && !vod.isAction())
+                .filter(vod -> !ResourceHealth.isFiltered(VodConfig.getDiscoveryRevision(), site.getKey(), vod.getId()))
                 .map(vod -> BrowseTree.playable(searchId(site.getKey(), vod.getId()), vod.getName(), vod.getRemarks(), vod.getPic()))
                 .toList();
     }
@@ -157,7 +163,11 @@ class VodBrowse {
 
     @NonNull
     static ImmutableList<MediaItem> getSearchResult(@NonNull String query, int page, int pageSize) {
-        return BrowseTree.page(searchCacheMap.getOrDefault(searchKey(query), ImmutableList.of()), page, pageSize);
+        ImmutableList<MediaItem> cached = searchCacheMap.getOrDefault(searchKey(query), ImmutableList.of());
+        // Cached pages outlive short-lived health observations. Filter at
+        // read time so a failed card disappears without another network call.
+        List<MediaItem> healthy = cached.stream().filter(VodBrowse::isSearchResultAvailable).toList();
+        return BrowseTree.page(ImmutableList.copyOf(healthy), page, pageSize);
     }
 
     @Nullable
@@ -213,6 +223,7 @@ class VodBrowse {
     private static MediaItem resolveSearch(@NonNull String mediaId) throws Exception {
         SearchEntry search = SearchEntry.parse(mediaId);
         if (search == null) return null;
+        if (ResourceHealth.isFiltered(VodConfig.getDiscoveryRevision(), search.siteKey, search.vodId)) return null;
         String historyKey = historyKey(search.siteKey, search.vodId);
         History existing = History.find(historyKey);
         if (existing != null) return resolveWithHistory(historyKey, existing);
@@ -345,7 +356,8 @@ class VodBrowse {
 
     @Nullable
     private static MediaItem getSearchItem(@NonNull String mediaId) {
-        return searchItemMap.get(mediaId);
+        MediaItem item = searchItemMap.get(mediaId);
+        return item != null && isSearchResultAvailable(item) ? item : null;
     }
 
     @Nullable
@@ -448,6 +460,14 @@ class VodBrowse {
             if (sep < 0) return null;
             return new SearchEntry(body.substring(0, sep), body.substring(sep + 1));
         }
+    }
+
+    /** Package-visible for tests and all cached search-result readers. */
+    static boolean isSearchResultAvailable(@Nullable MediaItem item) {
+        if (item == null || item.mediaId == null || !item.mediaId.startsWith(VOD_SEARCH)) return true;
+        SearchEntry entry = SearchEntry.parse(item.mediaId);
+        return entry != null && !ResourceHealth.isFiltered(
+                VodConfig.getDiscoveryRevision(), entry.siteKey, entry.vodId);
     }
 
     private record EpEntry(String historyKey, String flagName, int index, String siteKey, String vodPic) {

@@ -30,5 +30,17 @@ __pycache__/
 /other/tools/
 *.log
 
+# Local Android/device QA artifacts kept outside the repository history
+/.gradle-user/
+/apkcheck-new/
+/tmp-release-audit*/
+/*.png
+/*.xml
+/*.txt
+/*.tar
+/*.dex
+/*.jar
+/*.py
+
 # Private hosting/signing setup notes remain local
 /docs/云效与密钥配置.md

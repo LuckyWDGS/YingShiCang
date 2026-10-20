@@ -187,7 +187,6 @@ public class VodPlaybackController {
         for (Flag flag : state.getFlags()) flag.toggle(flag == selected, item);
         historyPolicy.updateEpisode(state.getHistory(), state.getFlag(), item);
         host.renderEpisodeSelection(item);
-        if (host.isFullscreenForPlayback()) host.showEpisodeReady(item);
         playEpisode(item);
     }
 

@@ -23,8 +23,8 @@ public class EpisodeGridView extends RecyclerView {
         setLayoutManager(new GridLayoutManager(context, columnCount));
         setItemAnimator(null);
         // Keep a small visual separation without wasting a full card-height
-        // gap between rows. The compact item layout still leaves a 28dp focus
-        // target for reliable D-pad operation while showing more episodes.
+        // gap between rows. The slightly taller item layout still leaves a
+        // compact focus target for reliable D-pad operation.
         spacing = new GridSpacing(columnCount, 4);
         addItemDecoration(spacing);
     }

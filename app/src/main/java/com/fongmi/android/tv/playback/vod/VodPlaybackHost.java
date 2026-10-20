@@ -120,8 +120,6 @@ public interface VodPlaybackHost {
 
     void showSwitchSource(Vod item);
 
-    void showEpisodeReady(Episode item);
-
     void showNoNext(boolean reversed);
 
     void showNoPrev(boolean reversed);

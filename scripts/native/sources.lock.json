@@ -17,7 +17,7 @@
     },
     "ffmpeg": {
       "repository": "https://github.com/FongMi/FFmpeg.git",
-      "commit": "e6d1f51f9e11c2c7b291029ba9b2c914396b58ad"
+      "commit": "90b278f6b813f9b8157f7a82a6918b3ec781ed2e"
     },
     "libplacebo": {
       "repository": "https://github.com/FongMi/libplacebo.git",
@@ -38,7 +38,7 @@
     },
     "freetype2": {
       "repository": "https://gitlab.freedesktop.org/freetype/freetype.git",
-      "commit": "37515cf56ba3349656049edbed89ffc6f6466f2d"
+      "commit": "0eca44e6e819f9e156eee0de2cbbcffd3a59e47b"
     }
   }
 }

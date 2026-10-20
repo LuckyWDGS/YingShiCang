@@ -2,6 +2,9 @@ package com.fongmi.android.tv.browse;
 
 import androidx.media3.common.MediaItem;
 
+import com.fongmi.android.tv.api.config.VodConfig;
+import com.fongmi.android.tv.bean.Result;
+import com.fongmi.android.tv.resource.ResourceHealth;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.SettableFuture;
 
@@ -42,6 +45,23 @@ public class VodBrowseTest {
             assertTrue("interruption must be preserved", Thread.currentThread().isInterrupted());
         } finally {
             Thread.interrupted();
+        }
+    }
+
+    @Test
+    public void cachedSearchCardsHideResourcesMarkedInvalidAfterSearch() {
+        MediaItem item = new MediaItem.Builder()
+                .setMediaId(VodBrowse.VOD_SEARCH + "source-a|id-1")
+                .setMediaMetadata(new androidx.media3.common.MediaMetadata.Builder().setTitle("Title").build())
+                .build();
+        assertTrue(VodBrowse.isSearchResultAvailable(item));
+        ResourceHealth.recordDetail("source-a", "id-1", new Result() {
+            @Override public boolean hasMsg() { return false; }
+        }, VodConfig.getDiscoveryRevision());
+        try {
+            assertTrue(!VodBrowse.isSearchResultAvailable(item));
+        } finally {
+            ResourceHealth.clear();
         }
     }
 }

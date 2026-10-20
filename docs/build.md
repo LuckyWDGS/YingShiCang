@@ -30,25 +30,25 @@ python scripts/ui.py
 Debug 仅用于测试。Release 从 `YSC_KEYSTORE/YSC_KEY_ALIAS/YSC_STORE_PASSWORD/YSC_KEY_PASSWORD` 环境变量或 `ysc.*` 本地配置读取签名；配置缺失时不能将未签名包当正式版本发布。
 
 ```powershell
-.\gradlew.bat :app:assembleLeanbackRelease "-PappVersionCode=66" "-PappVersionName=1.0.10"
+.\gradlew.bat :app:assembleLeanbackRelease "-PappVersionCode=67" "-PappVersionName=1.0.11"
 ```
 
 应用默认从 [GitHub 最新正式 Release](https://github.com/LuckyWDGS/YingShiCang/releases/latest) 检查更新，使用 Release 正文作为更新说明。设置里的自定义更新地址留空即可；已有自定义地址仍沿用单包清单协议。
 
-以上命令对应当前本地源码 1.0.10 / code66；以后每次发版继续递增 `versionCode` 和 `versionName`，沿用相同正式签名。Gradle 构建不会生成 GitHub 聚合清单；将已签名的两个 TV APK 放进新的发布目录，再运行生成器：
+以上命令对应当前本地源码 1.0.11 / code67；以后每次发版继续递增 `versionCode` 和 `versionName`，沿用相同正式签名。Gradle 构建不会生成 GitHub 聚合清单；将已签名的两个 TV APK 放进新的发布目录，再运行生成器：
 
 ```powershell
-New-Item -ItemType Directory -Path Release/1.0.10
-Copy-Item -LiteralPath app/build/outputs/apk/leanback/release/leanback-arm64_v8a.apk -Destination Release/1.0.10/YingShiCang-1.0.10-tv-arm64-v8a.apk
-Copy-Item -LiteralPath app/build/outputs/apk/leanback/release/leanback-armeabi_v7a.apk -Destination Release/1.0.10/YingShiCang-1.0.10-tv-armeabi-v7a.apk
-python scripts/github_release_manifest.py --arm64 Release/1.0.10/YingShiCang-1.0.10-tv-arm64-v8a.apk --armv7 Release/1.0.10/YingShiCang-1.0.10-tv-armeabi-v7a.apk --output Release/1.0.10/release-manifest.json
+New-Item -ItemType Directory -Path Release/1.0.11
+Copy-Item -LiteralPath app/build/outputs/apk/leanback/release/leanback-arm64_v8a.apk -Destination Release/1.0.11/YingShiCang-1.0.11-tv-arm64-v8a.apk
+Copy-Item -LiteralPath app/build/outputs/apk/leanback/release/leanback-armeabi_v7a.apk -Destination Release/1.0.11/YingShiCang-1.0.11-tv-armeabi-v7a.apk
+python scripts/github_release_manifest.py --arm64 Release/1.0.11/YingShiCang-1.0.11-tv-arm64-v8a.apk --armv7 Release/1.0.11/YingShiCang-1.0.11-tv-armeabi-v7a.apk --output Release/1.0.11/release-manifest.json
 ```
 
 生成器需要 Python 3.10+、Java 和 Android SDK build-tools。默认从 `ANDROID_HOME` / `ANDROID_SDK_ROOT` 选择最新稳定 build-tools，从 `JAVA_HOME` / `PATH` 找 Java；可用 `--sdk` 或 `--aapt`、`--apksigner-jar`、`--java` 显式指定工具。它实际检查包名、两个 TV 架构、正式签名及非 debug、相同版本与最低系统要求，读取真实大小和 SHA-256，只生成本地清单。默认拒绝覆盖已有清单；仅重新生成尚未发布的本地清单时使用 `--overwrite`。APK 在生成清单后不得修改或改名。
 
 GitHub 发版流程：
 
-1. 新建草稿 Release，标签使用与 APK `versionName` 对应的 `v版本号`，例如 `v1.0.10`，不要添加 alpha 等后缀。Release 正文填写本版更新内容，App 直接使用正文显示更新说明。
+1. 新建草稿 Release，标签使用与 APK `versionName` 对应的 `v版本号`，例如 `v1.0.11`，不要添加 alpha 等后缀。Release 正文填写本版更新内容，App 直接使用正文显示更新说明。
 2. 上传上述两个 APK 和 **release-manifest.json**。不能只上传 APK，也不能上传旧单包格式的清单。清单读取附件的实际文件名，不要求固定 APK 名称。
 3. 等全部附件上传完成后，发布为正式版本，并标记 **Latest**。不要勾选预发布。已发布附件保持不变；修复安装包时递增版本重新发版。
 

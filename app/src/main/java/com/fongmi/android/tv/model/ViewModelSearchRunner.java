@@ -187,9 +187,27 @@ final class ViewModelSearchRunner {
         }
         Throwable current = error;
         for (int depth = 0; current != null && depth < 8; depth++, current = current.getCause()) {
+            // Guava's withTimeout and crawler tasks both surface a plain
+            // TimeoutException. It is a source deadline (or an explicit
+            // cancellation from the task) rather than a transport timeout;
+            // retrying it creates duplicate crawler work after the lane has
+            // already been released. SocketTimeoutException is the one
+            // transport-specific subtype that remains retryable below.
+            if (current instanceof java.util.concurrent.TimeoutException
+                    && !(current instanceof java.net.SocketTimeoutException)) return false;
             if (current instanceof java.io.InterruptedIOException
                     || current instanceof java.util.concurrent.TimeoutException) {
                 String message = current.getMessage();
+                // FluentFuture.withTimeout uses a TimeoutException whose
+                // message starts with "Timed out".  That is this runner's
+                // own source deadline, including the diagnostic suffix
+                // "timeout delayed by ..." when the scheduler was busy; it
+                // must complete the source instead of consuming a retry slot.
+                // A real transport timeout (for example SocketTimeoutException
+                // with "timeout") remains retryable below.
+                if (current instanceof java.util.concurrent.TimeoutException
+                        && message != null
+                        && message.toLowerCase(java.util.Locale.ROOT).startsWith("timed out")) return false;
                 // Keep genuine timeout-shaped transport failures retryable,
                 // while unknown/empty timeout messages remain terminal.
                 if (message != null && message.toLowerCase(java.util.Locale.ROOT).contains("timeout")) return true;

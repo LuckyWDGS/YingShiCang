@@ -40,7 +40,8 @@ public final class ResourceHealth {
     }
 
     public static boolean isSearchCard(Vod item) {
-        return item != null && !item.getId().isEmpty() && !item.getName().isEmpty()
+        return item != null && item.getId() != null && !item.getId().trim().isEmpty()
+                && item.getName() != null && !item.getName().trim().isEmpty()
                 && !item.isFolder() && !item.isAction();
     }
 
