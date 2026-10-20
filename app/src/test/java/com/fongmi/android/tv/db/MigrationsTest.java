@@ -23,12 +23,12 @@ import java.util.regex.Pattern;
 import static org.junit.Assert.*;
 
 /**
- * AppDatabase keeps fallbackToDestructiveMigration(true), so a version step without a migration silently wipes
- * sites, history, favorites and configs on upgrade. These guards fail the build instead.
+ * AppDatabase has no destructive fallback on upgrade, so a version step without a migration would make Room
+ * refuse to open the database (sites, history, favorites, configs) at startup. These guards fail the build instead.
  */
 public class MigrationsTest {
 
-    // Oldest version with a hand-written migration; upgrades from below it are destructive by design.
+    // Oldest version with a hand-written migration; every released build of this package already used a later schema.
     private static final int FIRST_MIGRATED_VERSION = 30;
 
     private static final Pattern SCHEMA_SQL = Pattern.compile("\"(tableName|createSql)\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"");
@@ -77,7 +77,7 @@ public class MigrationsTest {
         int version = FIRST_MIGRATED_VERSION;
         while (version < AppDatabase.VERSION) {
             Migration next = byStart.get(version);
-            assertNotNull("No registered migration from version " + version + " toward AppDatabase.VERSION " + AppDatabase.VERSION + "; fallbackToDestructiveMigration would wipe user data", next);
+            assertNotNull("No registered migration from version " + version + " toward AppDatabase.VERSION " + AppDatabase.VERSION + "; Room would fail to open the user database", next);
             version = next.endVersion;
         }
         assertEquals(AppDatabase.VERSION, version);
@@ -91,6 +91,7 @@ public class MigrationsTest {
         }
         String source = new String(Files.readAllBytes(moduleFile("src/main/java/com/fongmi/android/tv/db/AppDatabase.java").toPath()), StandardCharsets.UTF_8);
         assertTrue("AppDatabase must register Migrations.ALL", source.contains(".addMigrations(Migrations.ALL)"));
+        assertFalse("Upgrades must not fall back to wiping user data", source.matches("(?s).*\\.fallbackToDestructiveMigration\\(.*"));
     }
 
     @Test

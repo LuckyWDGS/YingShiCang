@@ -38,8 +38,9 @@ public abstract class AppDatabase extends RoomDatabase {
 
     private static AppDatabase create(Context context) {
         return Room.databaseBuilder(context, AppDatabase.class, NAME)
+                // No destructive fallback on upgrade: a missing migration must fail loudly instead of wiping sites/history/favorites.
                 .addMigrations(Migrations.ALL)
-                .fallbackToDestructiveMigration(true)
+                .fallbackToDestructiveMigrationOnDowngrade(true)
                 .allowMainThreadQueries().build();
     }
 
