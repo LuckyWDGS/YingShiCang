@@ -49,4 +49,7 @@ public class Migrations {
             database.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_Track_key_type` ON `Track` (`key`, `type`)");
         }
     };
+
+    // Registered by AppDatabase; MigrationsTest fails if a declared migration or a version step is missing here.
+    public static final Migration[] ALL = {MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34, MIGRATION_34_35};
 }
