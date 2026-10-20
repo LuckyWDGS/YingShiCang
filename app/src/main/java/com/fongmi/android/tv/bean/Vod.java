@@ -300,8 +300,18 @@ public class Vod implements Parcelable, Diffable<Vod> {
         return getName().isEmpty() ? View.GONE : View.VISIBLE;
     }
 
+    // Unrated listings (e.g. upcoming Douban titles) send a bare zero score; that is not a badge.
+    public String getRemarkLabel() {
+        return remarkLabel(getRemarks());
+    }
+
+    static String remarkLabel(String remarks) {
+        String value = remarks == null ? "" : remarks.trim();
+        return value.matches("0+(\\.0+)?\\s*分?") ? "" : value;
+    }
+
     public int getRemarkVisible() {
-        return getRemarks().isEmpty() ? View.GONE : View.VISIBLE;
+        return getRemarkLabel().isEmpty() ? View.GONE : View.VISIBLE;
     }
 
     public boolean isFolder() {
