@@ -195,12 +195,39 @@ public class OkProxySelectorTest {
     public void noRedirectClientReturnsRedirectResponse() throws Exception {
         try (ProxyServer server = new ProxyServer("HTTP/1.1 302 Found\r\nLocation: http://233.1.2.3/stream\r\n")) {
             addRule("ott.example.com", server.proxy());
-            OkHttpClient.Builder builder = client().newBuilder();
+            OkHttpClient.Builder builder = client().newBuilder().followRedirects(false).followSslRedirects(false);
             builder.interceptors().removeIf(item -> item instanceof ProxyRedirectInterceptor);
             try (Response response = builder.build().newCall(new Request.Builder().url("http://ott.example.com/live").build()).execute()) {
                 assertEquals(302, response.code());
             }
             assertEquals(List.of("GET http://ott.example.com/live HTTP/1.1"), server.requests());
+        }
+    }
+
+    @Test
+    public void followRedirectsFalseClientGetsRawLocation() throws Exception {
+        // Plugins derive a no-redirect client to read a 302 Location (cloud-drive download links).
+        try (ProxyServer server = new ProxyServer("HTTP/1.1 302 Found\r\nLocation: http://233.1.2.3/stream\r\n")) {
+            addRule("ott.example.com", server.proxy());
+            OkHttpClient client = client().newBuilder().followRedirects(false).build();
+            try (Response response = client.newCall(new Request.Builder().url("http://ott.example.com/live").build()).execute()) {
+                assertEquals(302, response.code());
+                assertEquals("http://233.1.2.3/stream", response.header("Location"));
+                assertNull(response.header(ProxyRedirectInterceptor.HIDDEN_LOCATION));
+            }
+            assertEquals(List.of("GET http://ott.example.com/live HTTP/1.1"), server.requests());
+        }
+    }
+
+    @Test
+    public void followedRedirectDoesNotLeakInternalHeader() throws Exception {
+        try (ProxyServer server = new ProxyServer("HTTP/1.1 302 Found\r\nLocation: http://233.1.2.3/stream\r\n", "HTTP/1.1 200 OK\r\n")) {
+            addRule("ott.example.com", server.proxy());
+            try (Response response = client().newCall(new Request.Builder().url("http://ott.example.com/live").build()).execute()) {
+                assertEquals(200, response.code());
+                assertNull(response.header(ProxyRedirectInterceptor.HIDDEN_LOCATION));
+                assertEquals("http://233.1.2.3/stream", response.priorResponse().header("Location"));
+            }
         }
     }
 
@@ -211,6 +238,7 @@ public class OkProxySelectorTest {
             OkHttpClient client = client().newBuilder().followSslRedirects(false).build();
             try (Response response = client.newCall(new Request.Builder().url("http://ott.example.com/live").build()).execute()) {
                 assertEquals(302, response.code());
+                assertEquals("https://233.1.2.3/stream", response.header("Location"));
             }
             assertEquals(List.of("GET http://ott.example.com/live HTTP/1.1"), server.requests());
         }
@@ -243,7 +271,7 @@ public class OkProxySelectorTest {
     }
 
     private OkHttpClient client() {
-        return new OkHttpClient.Builder().proxySelector(selector).proxyAuthenticator(new OkAuthenticator(selector)).addInterceptor(new ProxyRedirectInterceptor(selector)).followRedirects(false).connectTimeout(1, TimeUnit.SECONDS).build();
+        return new OkHttpClient.Builder().proxySelector(selector).proxyAuthenticator(new OkAuthenticator(selector)).addInterceptor(new ProxyRedirectInterceptor(selector)).addNetworkInterceptor(new ProxyRedirectInterceptor.HideLocation()).connectTimeout(1, TimeUnit.SECONDS).build();
     }
 
     private void addRule(String host, java.net.Proxy javaProxy) {

@@ -14,16 +14,41 @@ import okhttp3.ResponseBody;
 
 final class ProxyRedirectInterceptor implements Interceptor {
 
+    static final String HIDDEN_LOCATION = "X-Catvod-Redirect-Location";
+
     private final OkProxySelector selector;
 
     ProxyRedirectInterceptor(OkProxySelector selector) {
         this.selector = selector;
     }
 
+    /** Marks requests whose redirects this interceptor follows hop by hop. */
+    private enum ManualRedirect {INSTANCE}
+
+    /**
+     * Network interceptor that hides Location from OkHttp's own follow-up logic on requests this
+     * interceptor follows manually, so each hop still gets its own proxy policy. Requests from
+     * clients that turned redirects off are untouched and keep their raw 3xx Location.
+     */
+    static final class HideLocation implements Interceptor {
+        @NonNull
+        @Override
+        public Response intercept(@NonNull Chain chain) throws IOException {
+            Response response = chain.proceed(chain.request());
+            if (chain.request().tag(ManualRedirect.class) == null || !isRedirect(response.code())) return response;
+            String location = response.header("Location");
+            if (location == null) return response;
+            return response.newBuilder().removeHeader("Location").header(HIDDEN_LOCATION, location).build();
+        }
+    }
+
     @NonNull
     @Override
     public Response intercept(@NonNull Chain chain) throws IOException {
-        Request request = chain.request();
+        // Plugins build clients with followRedirects(false) to read a 302's Location (for example
+        // cloud-drive download links). Hand them the raw response instead of following it.
+        if (!chain.getFollowRedirects()) return chain.proceed(chain.request());
+        Request request = chain.request().newBuilder().tag(ManualRedirect.class, ManualRedirect.INSTANCE).build();
         OkProxySelector.Policy previousPolicy = null;
         Response previousResponse = null;
         int followUpCount = 0;
@@ -36,7 +61,7 @@ final class ProxyRedirectInterceptor implements Interceptor {
                 request = request.newBuilder().tag(OkProxySelector.Policy.class, policy).build();
                 routed = chain.withProxySelector(policy);
             }
-            Response response = routed.proceed(request);
+            Response response = restoreLocation(routed.proceed(request));
             for (Response prior = response.priorResponse(); prior != null; prior = prior.priorResponse()) followUpCount++;
             response = withPriorResponse(response, previousResponse);
             if (followUpCount > 20) {
@@ -55,6 +80,16 @@ final class ProxyRedirectInterceptor implements Interceptor {
         }
     }
 
+    private static Response restoreLocation(Response response) {
+        String location = response.header(HIDDEN_LOCATION);
+        if (location == null) return response;
+        return response.newBuilder().removeHeader(HIDDEN_LOCATION).header("Location", location).build();
+    }
+
+    private static boolean isRedirect(int code) {
+        return code == 300 || code == 301 || code == 302 || code == 303 || code == 307 || code == 308;
+    }
+
     private Response withPriorResponse(Response response, Response previous) {
         if (previous == null) return response;
         Response prior = response.priorResponse();
@@ -63,7 +98,7 @@ final class ProxyRedirectInterceptor implements Interceptor {
 
     private Request redirect(Response response, boolean followSslRedirects) {
         int code = response.code();
-        if (code != 300 && code != 301 && code != 302 && code != 303 && code != 307 && code != 308) return null;
+        if (!isRedirect(code)) return null;
         String location = response.header("Location");
         if (location == null) return null;
         HttpUrl source = response.request().url();
