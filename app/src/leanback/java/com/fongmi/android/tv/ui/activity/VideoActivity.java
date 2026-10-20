@@ -3,6 +3,7 @@ package com.fongmi.android.tv.ui.activity;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Intent;
+import android.graphics.Color;
 import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.os.Bundle;
@@ -840,6 +841,9 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
         mBinding.scroll.setVisibility(View.GONE);
         mBinding.video.requestFocus();
         mBinding.video.setForeground(null);
+        // Full screen is edge to edge: drop the preview's rounded clip and 1dp border.
+        mBinding.video.setClipToOutline(false);
+        mBinding.video.setBackgroundColor(Color.BLACK);
         mBinding.video.setLayoutParams(new RelativeLayout.LayoutParams(RelativeLayout.LayoutParams.MATCH_PARENT, RelativeLayout.LayoutParams.MATCH_PARENT));
         mBinding.flag.setSelectedPosition(mFlagAdapter.getPosition());
         mKeyDown.setFull(true);
@@ -849,6 +853,8 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
 
     private void exitFullscreen() {
         mBinding.video.setForeground(ResUtil.getDrawable(R.drawable.discovery_focus));
+        mBinding.video.setBackgroundResource(R.drawable.detail_preview);
+        mBinding.video.setClipToOutline(true);
         mBinding.video.setLayoutParams(mFrameParams);
         mBinding.detail.setVisibility(View.VISIBLE);
         mBinding.scroll.setVisibility(View.VISIBLE);
