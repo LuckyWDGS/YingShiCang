@@ -11,15 +11,19 @@ import java.util.concurrent.*;
 import static org.junit.Assert.*;
 
 public class LogUploadTest {
-    @Test public void realReceiptClearsOnlyUploadedSnapshot() throws Exception { check(true); }
-    @Test public void falseReceiptDoesNotClearAnyLogs() throws Exception { check(false); }
+    @Test public void realReceiptClearsOnlyUploadedSnapshot() throws Exception { check(true, ""); }
+    @Test public void falseReceiptDoesNotClearAnyLogs() throws Exception { check(false, ""); }
+    @Test public void deviceInfoIsSentAsHeader() throws Exception { assertEquals("eyJtb2RlbCI6IlRWIn0", check(true, "eyJtb2RlbCI6IlRWIn0")); }
+    @Test public void malformedDeviceInfoIsOmitted() throws Exception { assertNull(check(true, "bad value\r\nX-Evil: 1")); }
     private static String line(InputStream in) throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream(); int b;
         while ((b=in.read())!=-1 && b!=10) { if(b!=13)out.write(b); }
         return out.toString("UTF-8");
     }
-    private void check(boolean valid) throws Exception {
+    /** @return the X-Device-Info header the server received, or null when absent. */
+    private String check(boolean valid, String deviceInfo) throws Exception {
         RingLog ring=new RingLog(Files.createTempDirectory("upload-test").toFile(),4096);ring.append("before");
+        String[] received=new String[1];
         try (ServerSocket server=new ServerSocket(0,1,InetAddress.getByName("127.0.0.1"))) {
             CompletableFuture<Void> served=new CompletableFuture<>();
             Thread worker=new Thread(()->{
@@ -27,6 +31,7 @@ public class LogUploadTest {
                     socket.setSoTimeout(10000);InputStream in=new BufferedInputStream(socket.getInputStream());line(in);
                     Map<String,String> headers=new TreeMap<>(String.CASE_INSENSITIVE_ORDER);String header;
                     while(!(header=line(in)).isEmpty()) { int colon=header.indexOf(':');headers.put(header.substring(0,colon),header.substring(colon+1).trim()); }
+                    received[0]=headers.get("X-Device-Info");
                     int length=Integer.parseInt(headers.get("Content-Length"));
                     for(int i=0;i<length;i++)if(in.read()<0)throw new EOFException();
                     ring.append("during");
@@ -39,11 +44,12 @@ public class LogUploadTest {
                 }catch(Throwable e){served.completeExceptionally(e);}
             });worker.setDaemon(true);worker.start();
             String url="http://127.0.0.1:"+server.getLocalPort()+"/logs";
-            if(valid)assertTrue(new LogUploader().upload(ring,url).contains("test-report"));
-            else assertThrows(IOException.class,()->new LogUploader().upload(ring,url));
+            if(valid)assertTrue(new LogUploader().upload(ring,url,deviceInfo).contains("test-report"));
+            else assertThrows(IOException.class,()->new LogUploader().upload(ring,url,deviceInfo));
             served.get(10,TimeUnit.SECONDS);
             ByteArrayOutputStream out=new ByteArrayOutputStream();ring.stream(ring.snapshot(),out);
             assertEquals(valid?"during\n":"before\nduring\n",out.toString("UTF-8"));
         }
+        return received[0];
     }
 }

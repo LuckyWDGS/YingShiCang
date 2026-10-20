@@ -26,7 +26,7 @@ public final class DiagnosticLog {
         Thread.UncaughtExceptionHandler previous = Thread.getDefaultUncaughtExceptionHandler();
         Thread.setDefaultUncaughtExceptionHandler((thread, error) -> {
             // Bounded emergency write; preserve the platform/upstream crash handler.
-            append("uncaught", error.getClass().getName() + " " + error.getMessage());
+            append("uncaught", crashSummary(error));
             if (previous != null) previous.uncaughtException(thread, error);
             else Process.killProcess(Process.myPid());
         });
@@ -38,6 +38,22 @@ public final class DiagnosticLog {
             } catch (Exception ignored) {}
         });
     }
+    /** Exception, top frames and a short cause chain, bounded so a crash cannot flood the log. */
+    static String crashSummary(Throwable error) {
+        StringBuilder text = new StringBuilder();
+        Throwable current = error;
+        for (int depth = 0; current != null && depth < 3; depth++, current = current.getCause()) {
+            if (depth > 0) text.append(" | caused by ");
+            text.append(current.getClass().getName()).append(": ").append(current.getMessage());
+            StackTraceElement[] frames = current.getStackTrace();
+            int count = Math.min(frames.length, depth == 0 ? 12 : 4);
+            for (int i = 0; i < count; i++) text.append(" at ").append(frames[i]);
+            if (frames.length > count) text.append(" ...").append(frames.length - count).append(" more");
+            if (current.getCause() == current) break;
+        }
+        return text.toString();
+    }
+
     public static void write(Context context, String event, String detail) {
         String safeEvent = LogSanitizer.clean(event);
         String safeDetail = LogSanitizer.clean(detail);

@@ -17,7 +17,7 @@ import java.util.concurrent.Future;
 /** Shared D-pad and touch accessible diagnostics using actual device state. */
 public class MaintenanceActivity extends AppCompatActivity {
     private LinearLayout content;
-    private TextView result, usage;
+    private TextView result, usage, uploadStatus;
     private EditText updateUrl, uploadUrl, mediaUrl;
     private Future<?> task;
     private MediaProbe probe;
@@ -32,9 +32,15 @@ public class MaintenanceActivity extends AppCompatActivity {
         content = new LinearLayout(this); content.setOrientation(LinearLayout.VERTICAL);
         int padding = dp(24); content.setPadding(padding,padding,padding,padding); scroll.addView(content);
         setContentView(scroll);
-        label("诊断与维护", 28);
+        label("日志上传与诊断", 28);
         label("影视仓+ " + BuildConfig.VERSION_NAME + " · " + BuildConfig.FLAVOR, 15);
         usage = label("", 16); refreshUsage();
+        label("日志上传", 22);
+        label("遇到问题时上传诊断日志和设备信息（型号、系统、解码能力），不含账号、播放地址或片名。",14);
+        uploadUrl = input("HTTPS 日志接收接口", ServiceSettings.logsUrl());
+        button("上传日志", v -> startUpload());
+        button("保存日志服务地址", v -> save(false));
+        uploadStatus = label("仅在服务器确认保存后清除该批日志，上传期间的新日志保留；未配置服务时不会上传。",14);
         label("播放诊断", 22);
         Switch quality = new Switch(this);
         quality.setText("最高画质优先（默认开启，关闭后自动适应网速）");
@@ -57,11 +63,6 @@ public class MaintenanceActivity extends AppCompatActivity {
         updateUrl = input("可选：自定义 HTTPS 更新清单（留空使用 GitHub）", ServiceSettings.customManifestUrl());
         button("保存更新地址", v -> save(true));
         button("检查更新", v -> Updater.create().force().start(this));
-        label("日志上传", 22);
-        uploadUrl = input("HTTPS 日志接收接口", ServiceSettings.logsUrl());
-        button("保存日志服务地址", v -> save(false));
-        button("上传日志", v -> startUpload());
-        label("仅在服务器确认保存后清除该批日志，上传期间的新日志保留；未配置服务时不会上传。",14);
         button("取消当前测速／上传", v -> { cancel(); show("操作已取消；未确认的日志保留"); });
         result = label("就绪",16);
         button("返回", v -> finish());
@@ -86,14 +87,19 @@ public class MaintenanceActivity extends AppCompatActivity {
     private void show(String message) {
         if (!isFinishing() && !isDestroyed()) { result.setText(message); refreshUsage(); }
     }
+    private void showUpload(String message) {
+        show(message);
+        if (!isFinishing() && !isDestroyed()) uploadStatus.setText(message);
+    }
     private void refreshUsage() { usage.setText(String.format(Locale.ROOT,"日志占用 %.3f MB / 10 MB · 满后自动淘汰最旧记录",DiagnosticLog.size(this)/1_000_000.0)); }
     private void save(boolean update) {
         String value = (update ? updateUrl : uploadUrl).getText().toString().trim();
         try {
             if (!value.isEmpty()) MaintenanceHttp.validate(value);
             if (update) ServiceSettings.manifestUrl(value); else ServiceSettings.logsUrl(value);
-            show(value.isEmpty() ? (update ? "已恢复 GitHub Releases 更新" : "已清除服务地址") : "已保存服务地址");
-        } catch (Exception error) { show(error.getMessage()); }
+            String message = value.isEmpty() ? (update ? "已恢复 GitHub Releases 更新" : "已清除服务地址") : "已保存服务地址";
+            if (update) show(message); else showUpload(message);
+        } catch (Exception error) { if (update) show(error.getMessage()); else showUpload(error.getMessage()); }
     }
     private void cancel() {
         operation++;
@@ -115,11 +121,12 @@ public class MaintenanceActivity extends AppCompatActivity {
     }
     private void startUpload() {
         String endpoint = ServiceSettings.logsUrl();
-        if (endpoint.isEmpty()) { show("尚未配置日志接收服务。Codeup 源码地址不是上传接口。"); return; }
-        cancel(); int token = operation; uploader = new LogUploader(); LogUploader current = uploader; show("正在上传日志，等待服务器保存回执…");
+        if (endpoint.isEmpty()) { showUpload("此版本未内置日志服务地址；请填写开发者提供的 HTTPS 接收接口后再上传。"); return; }
+        cancel(); int token = operation; uploader = new LogUploader(); LogUploader current = uploader; showUpload("正在上传日志，等待服务器保存回执…");
+        android.content.Context app = getApplicationContext();
         task = MaintenanceTasks.submit(() -> {
-            try { String receipt=current.upload(DiagnosticLog.store(),endpoint); App.post(() -> { if(token==operation)show(receipt); }); }
-            catch(Exception e) { App.post(() -> { if(token==operation)show("未完成上传／清理："+e.getMessage()); }); }
+            try { String receipt=current.upload(DiagnosticLog.store(),endpoint,DeviceReport.encode(app)); App.post(() -> { if(token==operation)showUpload(receipt); }); }
+            catch(Exception e) { App.post(() -> { if(token==operation)showUpload("未完成上传／清理："+e.getMessage()); }); }
         });
     }
     @Override protected void onDestroy() { cancel(); super.onDestroy(); }

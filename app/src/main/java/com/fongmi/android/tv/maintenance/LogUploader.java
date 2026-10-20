@@ -16,6 +16,11 @@ public final class LogUploader {
     private static final class Receipt { String batchId, reportId, sha256; long bytes; boolean persisted; }
 
     public String upload(RingLog store, String endpoint) throws IOException {
+        return upload(store, endpoint, "");
+    }
+
+    /** @param deviceInfo base64url device facts for X-Device-Info, or empty to omit the header. */
+    public String upload(RingLog store, String endpoint, String deviceInfo) throws IOException {
         if (!BUSY.compareAndSet(false, true)) throw new IOException("已有日志上传正在进行");
         try {
             HttpUrl url = MaintenanceHttp.validate(endpoint);
@@ -37,9 +42,11 @@ public final class LogUploader {
                 @Override public boolean isOneShot() { return true; }
                 @Override public void writeTo(BufferedSink sink) throws IOException { store.stream(batch, sink.outputStream()); }
             };
-            call = MaintenanceHttp.CLIENT.newCall(new Request.Builder().url(url).post(body)
+            Request.Builder request = new Request.Builder().url(url).post(body)
                     .header("X-Batch-Id", batch.id()).header("X-Content-SHA256", digest.toString())
-                    .header("X-App-Version", BuildConfig.VERSION_NAME).build());
+                    .header("X-App-Version", BuildConfig.VERSION_NAME);
+            if (deviceInfo != null && deviceInfo.matches("[A-Za-z0-9_-]{1,8000}")) request.header("X-Device-Info", deviceInfo);
+            call = MaintenanceHttp.CLIENT.newCall(request.build());
             if (canceled) { call.cancel(); throw new InterruptedIOException("已取消"); }
             Receipt receipt;
             try (Response response = call.execute()) {
@@ -50,7 +57,7 @@ public final class LogUploader {
                     || receipt.reportId == null || !receipt.reportId.matches("[a-zA-Z0-9-]{1,80}"))
                 throw new IOException("上传尚未确认保存，日志已保留");
             store.acknowledge(batch, receipt.batchId);
-            return "上传成功，已清理该批日志。报告：" + receipt.reportId;
+            return "上传成功，已清理该批日志。\n请把报告编号发给开发者：" + receipt.reportId;
         } finally { BUSY.set(false); call = null; }
     }
 }
