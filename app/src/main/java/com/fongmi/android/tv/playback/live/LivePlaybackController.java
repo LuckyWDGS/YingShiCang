@@ -21,6 +21,8 @@ public class LivePlaybackController {
     private final LivePlaybackHost host;
     private final LiveDataSource dataSource;
     private final LivePlaybackState state;
+    // Lines tried automatically since the last channel selection, manual switch or successful start.
+    private int failedLines;
 
     public LivePlaybackController(LivePlaybackHost host, LiveDataSource dataSource, LivePlaybackState state) {
         this.host = host;
@@ -42,6 +44,7 @@ public class LivePlaybackController {
         if (channel == null) return;
         LivePlayRequest activeRequest = state.getActiveRequest();
         boolean restore = activeRequest != null && activeRequest.matches(channel);
+        if (!restore) failedLines = 0;
         state.setChannel(channel);
         host.renderChannelSelection(channel);
         if (restore) restorePlaybackIfNeeded();
@@ -90,6 +93,10 @@ public class LivePlaybackController {
     public void playbackError(String msg) {
         host.resetPlaybackForError(msg);
         fallbackAfterError();
+    }
+
+    public void playbackReady() {
+        failedLines = 0;
     }
 
     public void playbackEnded() {
@@ -141,10 +148,12 @@ public class LivePlaybackController {
     }
 
     public void prevLine() {
+        failedLines = 0;
         switchLine(false, true);
     }
 
     public void nextLine(boolean show) {
+        failedLines = 0;
         switchLine(true, show);
     }
 
@@ -190,10 +199,12 @@ public class LivePlaybackController {
         return ((position % size) + size) % size;
     }
 
+    // Walk every line once, wrapping past the last, so a channel left on a dead line can still recover line 1.
     private void fallbackAfterError() {
         Channel channel = state.getChannel();
-        if (!LiveSetting.isChange() || channel == null || channel.isLast()) return;
-        nextLine(true);
+        if (!LiveSetting.isChange() || channel == null || channel.isOnly() || channel.getUrls().isEmpty()) return;
+        if (++failedLines >= channel.getUrls().size()) return;
+        switchLine(true, true);
     }
 
     private void playNextProgram() {
