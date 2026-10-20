@@ -11,6 +11,8 @@
 
 ## Current behavior to preserve
 
+- 2026-10-20 local fixes: Room keeps only fallbackToDestructiveMigrationOnDowngrade (MigrationsTest rejects an upgrade destructive fallback). DLNA GetTransportInfo reads a main-thread speed cache, never the player. Live automatic line fallback tries every line once per selection, wrapping past the last (reset on ready/manual/new channel); TV left/right seek only for a finite VOD-style item, otherwise switch lines. Player.Live keeps the last frame for 1.5s, then covers it until the next channel draws (immediately on error). Exo/MPV error text is localized (HTTP status when known); diagnostics keep raw code names. TV full-screen video is edge to edge (no preview rounded clip/border); preview styling returns on exit.
+
 - Local v65 source-status follow-up supersedes the v60 partial-source retry row only: when source discovery has usable cards, hide the partial-failure message, Retry button and entire row while retaining bounded background retries and failed raw cursors. A paused scan with more healthy pages keeps a separate Continue action. Empty-list failures and unrelated AI metadata errors retain their recovery UI.
 
 - Local v65 additionally silences only the exact Bilibili guest notice `哔哩游客模式，可前往【哔哔】主页扫码登录解锁高分辨率` through the existing audited plugin Handler. Keep ad-count filtering, artifact/loader/callback gates, ordinary errors and `哔哩登陆模式`; do not use substring/global Toast interception or change login/playback behavior. Current loaded Bili short-table text and actual ordinary/repeating show callbacks are verified; this is not a complete guest-provider business-flow reproduction.
