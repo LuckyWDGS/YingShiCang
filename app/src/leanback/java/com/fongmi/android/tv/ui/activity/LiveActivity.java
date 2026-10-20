@@ -93,6 +93,8 @@ public class LiveActivity extends PlaybackActivity implements GroupAdapter.OnCli
     private Runnable mR1;
     private Runnable mR2;
     private Runnable mR3;
+    // Player.Live keeps the last frame for seamless zapping; hide it if the next channel has not drawn soon.
+    private final Runnable mHideStaleFrame = () -> getPlayerView().setKeepContentOnPlayerReset(false);
     private Runnable mR4;
     private List<Group> mHides;
     private Group mGroup;
@@ -496,6 +498,8 @@ public class LiveActivity extends PlaybackActivity implements GroupAdapter.OnCli
                 showProgress();
                 break;
             case Player.STATE_READY:
+                mLive.playbackReady();
+                App.removeCallbacks(mHideStaleFrame);
                 hideProgress();
                 player().reset();
                 break;
@@ -769,6 +773,9 @@ public class LiveActivity extends PlaybackActivity implements GroupAdapter.OnCli
     @Override
     public void stopPlaybackForRefresh() {
         stopPlayer();
+        getPlayerView().setKeepContentOnPlayerReset(true);
+        App.removeCallbacks(mHideStaleFrame);
+        App.post(mHideStaleFrame, 1500);
     }
 
     @Override
@@ -778,6 +785,8 @@ public class LiveActivity extends PlaybackActivity implements GroupAdapter.OnCli
 
     @Override
     public void resetPlaybackForError(String msg) {
+        App.removeCallbacks(mHideStaleFrame);
+        getPlayerView().setKeepContentOnPlayerReset(false);
         PlaybackReset.afterError(player());
         showError(msg);
     }
@@ -973,7 +982,7 @@ public class LiveActivity extends PlaybackActivity implements GroupAdapter.OnCli
 
     @Override
     public void onSeeking(long time) {
-        if (player().isLive()) return;
+        if (!canSeek()) return;
         mBinding.widget.center.setVisibility(View.VISIBLE);
         mBinding.widget.duration.setText(player().getDurationTime());
         mBinding.widget.position.setText(player().getPositionTime(time));
@@ -995,14 +1004,19 @@ public class LiveActivity extends PlaybackActivity implements GroupAdapter.OnCli
 
     @Override
     public void onKeyLeft(long time) {
-        if (player().isLive()) prevLine();
-        else App.post(() -> seek(time), 250);
+        if (canSeek()) App.post(() -> seek(time), 250);
+        else prevLine();
     }
 
     @Override
     public void onKeyRight(long time) {
-        if (player().isLive()) nextLine(true);
-        else App.post(() -> seek(time), 250);
+        if (canSeek()) App.post(() -> seek(time), 250);
+        else nextLine(true);
+    }
+
+    // Only a loaded, finite item (catchup or a VOD-style channel) can seek; loading, failed or live streams switch lines.
+    private boolean canSeek() {
+        return player().isVod() && player().getDuration() > 0;
     }
 
     @Override
@@ -1058,7 +1072,7 @@ public class LiveActivity extends PlaybackActivity implements GroupAdapter.OnCli
     protected void onDestroy() {
         mClock.release();
         Source.get().exit();
-        App.removeCallbacks(mR0, mR1, mR2, mR3, mR4);
+        App.removeCallbacks(mR0, mR1, mR2, mR3, mR4, mHideStaleFrame);
         super.onDestroy();
     }
 }

@@ -93,6 +93,8 @@ public class LiveActivity extends PlaybackActivity implements CustomKeyDown.List
     private Runnable mR1;
     private Runnable mR2;
     private Runnable mR3;
+    // Player.Live keeps the last frame for seamless zapping; hide it if the next channel has not drawn soon.
+    private final Runnable mHideStaleFrame = () -> getPlayerView().setKeepContentOnPlayerReset(false);
     private List<Group> mHides;
     private Group mGroup;
     private Channel mChannel;
@@ -718,6 +720,9 @@ public class LiveActivity extends PlaybackActivity implements CustomKeyDown.List
     @Override
     public void stopPlaybackForRefresh() {
         stopPlayer();
+        getPlayerView().setKeepContentOnPlayerReset(true);
+        App.removeCallbacks(mHideStaleFrame);
+        App.post(mHideStaleFrame, 1500);
     }
 
     @Override
@@ -727,6 +732,8 @@ public class LiveActivity extends PlaybackActivity implements CustomKeyDown.List
 
     @Override
     public void resetPlaybackForError(String msg) {
+        App.removeCallbacks(mHideStaleFrame);
+        getPlayerView().setKeepContentOnPlayerReset(false);
         PlaybackReset.afterError(player());
         showError(msg);
     }
@@ -849,6 +856,8 @@ public class LiveActivity extends PlaybackActivity implements CustomKeyDown.List
                 showProgress();
                 break;
             case Player.STATE_READY:
+                mLive.playbackReady();
+                App.removeCallbacks(mHideStaleFrame);
                 hideProgress();
                 checkControl();
                 player().reset();
@@ -1130,7 +1139,7 @@ public class LiveActivity extends PlaybackActivity implements CustomKeyDown.List
     @Override
     protected void onDestroy() {
         Source.get().exit();
-        App.removeCallbacks(mR1, mR2, mR3);
+        App.removeCallbacks(mR1, mR2, mR3, mHideStaleFrame);
         super.onDestroy();
     }
 }
