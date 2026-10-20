@@ -47,6 +47,18 @@ android {
         viewBinding = true
     }
 
+    // App strings exist only for default/zh-rCN/zh-rTW; drop the ~86 library locales.
+    androidResources {
+        localeFilters += ["zh-rCN", "zh-rTW", "en"]
+    }
+
+    // bcprov (via smbj) Picnic LowMC tables (~1.2MB); Picnic signatures are unused.
+    packaging {
+        resources {
+            excludes += ["org/bouncycastle/pqc/legacy/picnic/*.properties"]
+        }
+    }
+
     signingConfigs {
         release {
             def keyFile = System.getenv('YSC_KEYSTORE') ?: localProps.getProperty('ysc.storeFile')
