@@ -355,7 +355,20 @@
     <string name="error_play_drm">This device does not support the required DRM scheme</string>
     <string name="error_play_url">Unable to load url</string>
     <string name="error_play_flag">No flag data</string>
-    <string name="error_play_timeout">Timed out</string><string name="error_audio_effect_unsupported">Audio settings are unavailable for the current playback mode</string>
+    <string name="error_play_timeout">Timed out</string>
+    <string name="error_play_network">Network connection failed</string>
+    <string name="error_play_http">Server returned an error (HTTP %1$d)</string>
+    <string name="error_play_http_unknown">Server returned an error</string>
+    <string name="error_play_content_type">The server did not return a playable video</string>
+    <string name="error_play_io">Failed to read video data</string>
+    <string name="error_play_malformed">The video data is corrupted or incomplete</string>
+    <string name="error_play_unsupported">This video format is not supported</string>
+    <string name="error_play_decode">Video decoding failed</string>
+    <string name="error_play_exceeds">This video exceeds the device decoding capability</string>
+    <string name="error_play_reclaimed">The decoder was reclaimed by the system</string>
+    <string name="error_play_audio">Audio output failed</string>
+    <string name="error_play_drm_failed">DRM authorization failed</string>
+    <string name="error_play_unknown">Playback failed (%1$s)</string><string name="error_audio_effect_unsupported">Audio settings are unavailable for the current playback mode</string>
     <string name="error_audio_effect_tunnel">Audio settings are unavailable in tunnel mode</string>
     <string name="error_audio_effect_passthrough">Audio settings are unavailable for passthrough audio</string>
     <string name="error_audio_effect_apply">Unable to apply audio settings</string>
