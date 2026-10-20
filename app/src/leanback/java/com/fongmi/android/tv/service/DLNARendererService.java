@@ -10,6 +10,7 @@ import android.os.IBinder;
 
 import androidx.core.app.NotificationCompat;
 import androidx.media3.common.C;
+import androidx.media3.common.PlaybackParameters;
 import androidx.media3.common.Player;
 
 import com.fongmi.android.tv.App;
@@ -219,7 +220,7 @@ public class DLNARendererService extends AndroidUpnpServiceImpl implements Servi
         if (avTransportImpl == null || player == null || !isDlnaActive) return;
         int state = player.getPlaybackState();
         if (state == Player.STATE_IDLE) return;
-        avTransportImpl.updatePositionCache(player.getPosition(), getDuration());
+        avTransportImpl.updatePositionCache(player.getPosition(), getDuration(), player.getSpeed());
         RenderState renderState = switch (state) {
             case Player.STATE_BUFFERING -> RenderState.PREPARING;
             case Player.STATE_READY -> player.isPlaying() ? RenderState.PLAYING : RenderState.PAUSED;
@@ -232,7 +233,7 @@ public class DLNARendererService extends AndroidUpnpServiceImpl implements Servi
     private final Runnable positionUpdater = new Runnable() {
         @Override
         public void run() {
-            if (player != null && avTransportImpl != null && player.isPlaying()) avTransportImpl.updatePositionCache(player.getPosition(), getDuration());
+            if (player != null && avTransportImpl != null && player.isPlaying()) avTransportImpl.updatePositionCache(player.getPosition(), getDuration(), player.getSpeed());
             if (player != null) App.post(this, 1000);
         }
     };
@@ -250,6 +251,11 @@ public class DLNARendererService extends AndroidUpnpServiceImpl implements Servi
 
         @Override
         public void onIsPlayingChanged(boolean isPlaying) {
+            notifyState();
+        }
+
+        @Override
+        public void onPlaybackParametersChanged(PlaybackParameters parameters) {
             notifyState();
         }
     };

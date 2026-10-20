@@ -51,6 +51,7 @@ public class DLNAAvTransportImpl extends AbstractAVTransportService {
     private volatile long pendingSeekMs = -1;
     private volatile long cachedPosition = -1;
     private volatile long cachedDuration = -1;
+    private volatile float cachedSpeed = 1f;
 
     public DLNAAvTransportImpl(Context context) {
         this.context = context;
@@ -72,14 +73,17 @@ public class DLNAAvTransportImpl extends AbstractAVTransportService {
         pendingSeekMs = -1;
         cachedPosition = -1;
         cachedDuration = -1;
+        cachedSpeed = 1f;
         currentMetaData = "";
         currentPlayMode = PlayMode.NORMAL;
         fireStateChange(RenderState.IDLE);
     }
 
-    public void updatePositionCache(long position, long duration) {
+    // Called on the main thread; UPnP actions run on jUPnP threads and must not touch the player directly.
+    public void updatePositionCache(long position, long duration, float speed) {
         cachedPosition = position;
         cachedDuration = duration;
+        cachedSpeed = speed;
     }
 
     public long consumePendingSeekMs() {
@@ -129,7 +133,7 @@ public class DLNAAvTransportImpl extends AbstractAVTransportService {
 
     @Override
     public TransportInfo getTransportInfo(UnsignedIntegerFourBytes instanceId) {
-        String speed = (player != null && dlnaActive) ? String.valueOf(player.getSpeed()) : "1";
+        String speed = (player != null && dlnaActive) ? String.valueOf(cachedSpeed) : "1";
         return new TransportInfo(currentState, TransportStatus.OK, speed);
     }
 
