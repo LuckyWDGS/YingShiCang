@@ -44,3 +44,8 @@ __pycache__/
 
 # Private hosting/signing setup notes remain local
 /docs/云效与密钥配置.md
+
+# Dated design/QA reports stay local; only build and deployment guides are published
+/docs/*
+!/docs/build.md
+!/docs/日志上传-阿里云OSS部署.md
