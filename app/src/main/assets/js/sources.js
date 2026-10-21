@@ -124,7 +124,7 @@ $("sourceForm").addEventListener("submit", async event => {
   try {
     const data = await request("/api/sources", { url });
     connection(true);
-    message(data.message || "已保存，请在电视「线路」中选择启用");
+    message(data.message || "已保存，电视正在切换到该线路");
     if ($("sourceUrl").value === input) $("sourceUrl").value = "";
     await refresh();
   } catch (error) {

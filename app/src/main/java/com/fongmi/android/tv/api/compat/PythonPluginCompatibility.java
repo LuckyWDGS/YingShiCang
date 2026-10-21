@@ -66,7 +66,9 @@ public final class PythonPluginCompatibility {
                 String declaring = spider.getClass().getMethod("init", Context.class, String.class)
                         .getDeclaringClass().getName();
                 if ("com.github.catvod.spider.AiDj".equals(declaring)
-                        || "com.github.catvod.spider.merge.oE".equals(declaring)) return true;
+                        || "com.github.catvod.spider.merge.oE".equals(declaring)
+                        || "com.github.catvod.spider.AiDj".equals(spider.getClass().getName())
+                        && AiDramaFilterCompatibility.isBridge(spider.getClass(), declaring)) return true;
                 if (!TRANSPARENT_GUARD.equals(declaring)) return false;
                 spider = delegate(spider);
             } catch (Throwable error) {

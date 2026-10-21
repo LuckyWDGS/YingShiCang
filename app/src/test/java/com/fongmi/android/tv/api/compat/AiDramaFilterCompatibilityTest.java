@@ -45,27 +45,50 @@ public class AiDramaFilterCompatibilityTest {
         }
     }
 
-    @Test public void currentRenamedBridgeRetainsExactAiDjIdentityAndDefaultRoute() throws Exception {
-        // Load the existing fixture with the current superclass name. Equal-length
-        // class names preserve the constant-pool layout and avoid a second AiDj source.
-        byte[] bytes;
-        try (var in = AiDj.class.getResourceAsStream("AiDj.class")) { bytes = in.readAllBytes(); }
-        var encoding = java.nio.charset.StandardCharsets.ISO_8859_1;
-        String oldName = "com/github/catvod/spider/merge/oE", newName = "com/github/catvod/spider/merge/YU";
-        String fixture = new String(bytes, encoding);
-        assertTrue(fixture.contains(oldName));
-        byte[] current = fixture.replace(oldName, newName).getBytes(encoding);
-        class ProviderLoader extends ClassLoader {
-            ProviderLoader() { super(AiDj.class.getClassLoader()); }
-            Class<?> provider() { return defineClass(AiDj.class.getName(), current, 0, current.length); }
+    @Test public void renamedBridgesRetainExactAiDjIdentityAndDefaultRoute() throws Exception {
+        // The provider re-obfuscates its bridge on every release (YU in October, AD after 1.1.0).
+        // Equal-length class names preserve the constant-pool layout and avoid a second AiDj source.
+        for (String renamed : new String[]{"YU", "AD"}) {
+            byte[] bytes;
+            try (var in = AiDj.class.getResourceAsStream("AiDj.class")) { bytes = in.readAllBytes(); }
+            var encoding = java.nio.charset.StandardCharsets.ISO_8859_1;
+            String oldName = "com/github/catvod/spider/merge/oE", newName = "com/github/catvod/spider/merge/" + renamed;
+            String fixture = new String(bytes, encoding);
+            assertTrue(fixture.contains(oldName));
+            byte[] current = fixture.replace(oldName, newName).getBytes(encoding);
+            byte[] bridge;
+            try (var in = com.github.catvod.spider.merge.YU.class.getResourceAsStream("YU.class")) { bridge = in.readAllBytes(); }
+            byte[] renamedBridge = new String(bridge, encoding).replace("com/github/catvod/spider/merge/YU", newName).getBytes(encoding);
+            class ProviderLoader extends ClassLoader {
+                ProviderLoader() { super(AiDj.class.getClassLoader()); }
+                @Override protected Class<?> findClass(String name) throws ClassNotFoundException {
+                    if (name.equals(newName.replace('/', '.'))) return defineClass(name, renamedBridge, 0, renamedBridge.length);
+                    return super.findClass(name);
+                }
+                @Override protected Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
+                    if (name.equals(newName.replace('/', '.'))) {
+                        Class<?> loaded = findLoadedClass(name);
+                        return loaded != null ? loaded : findClass(name);
+                    }
+                    return super.loadClass(name, resolve);
+                }
+                Class<?> provider() { return defineClass(AiDj.class.getName(), current, 0, current.length); }
+            }
+            Spider spider = (Spider) new ProviderLoader().provider().getConstructor().newInstance();
+            assertEquals("com.github.catvod.spider.merge." + renamed, spider.getClass()
+                    .getMethod("categoryContent", String.class, String.class, boolean.class, java.util.HashMap.class)
+                    .getDeclaringClass().getName());
+            assertSame(spider, AiDramaFilterCompatibility.audited(new BaseSpiderGuard(spider)));
+            assertNull(AiDramaFilterCompatibility.page(null, spider, "comic", 1, Map.of("topic", ""), null, null));
         }
-        Spider spider = (Spider) new ProviderLoader().provider().getConstructor().newInstance();
-        assertEquals("com.github.catvod.spider.merge.YU", spider.getClass()
-                .getMethod("categoryContent", String.class, String.class, boolean.class, java.util.HashMap.class)
-                .getDeclaringClass().getName());
-        assertSame(spider, AiDramaFilterCompatibility.audited(new BaseSpiderGuard(spider)));
-        assertNull(AiDramaFilterCompatibility.page(null, spider, "comic", 1, Map.of("topic", ""), null, null));
         assertNull(AiDramaFilterCompatibility.audited(new com.github.catvod.spider.merge.YU()));
+    }
+
+    @Test public void bridgeMustBeAiDjsDirectSuperclassInTheMergePackage() {
+        assertTrue(AiDramaFilterCompatibility.isBridge(AiDj.class, "com.github.catvod.spider.merge.oE"));
+        assertFalse(AiDramaFilterCompatibility.isBridge(AiDj.class, "com.github.catvod.spider.merge.YU"));
+        assertFalse(AiDramaFilterCompatibility.isBridge(com.github.catvod.spider.merge.oE.class, "com.github.catvod.crawler.Spider"));
+        assertFalse(AiDramaFilterCompatibility.isBridge(AiDj.class, "com.github.catvod.spider.merge.oE.Inner"));
     }
 
     @Test public void auditedHelperShapeFindsNestedProtocolConstantsWithinBoundedDepth() throws Exception {

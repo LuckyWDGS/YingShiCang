@@ -44,10 +44,10 @@ import okhttp3.Response;
 /** Audited AiDj ignores its declared topic facet on AI categories. Read their current native web protocol. */
 public final class AiDramaFilterCompatibility {
     private static final String AI_DJ = "com.github.catvod.spider.AiDj";
-    // Both releases expose the same bound Python instance in `s`. The provider
-    // renamed its Java bridge in October; never infer support from branding alone.
-    private static final Set<String> BRIDGES = Set.of("com.github.catvod.spider.merge.oE",
-            "com.github.catvod.spider.merge.YU");
+    // The provider re-obfuscates its Java bridge on every release (oE, YU, AD, ...). Identify it
+    // by shape instead: AiDj's direct superclass in the plugin's merge package, holding exactly one
+    // bound Python instance. Branding alone is never enough.
+    private static final String BRIDGE_PACKAGE = "com.github.catvod.spider.merge.";
     private static final String GUARD = "com.github.catvod.spider.BaseSpiderGuard";
     private static final Pattern ROUTER = Pattern.compile("(?:window\\.)?_ROUTER_DATA\\s*=\\s*");
     private static final int MAX_BODY = 4 * 1024 * 1024;
@@ -72,7 +72,7 @@ public final class AiDramaFilterCompatibility {
             try {
                 String declaring = spider.getClass().getMethod("categoryContent", String.class,
                         String.class, boolean.class, java.util.HashMap.class).getDeclaringClass().getName();
-                if (AI_DJ.equals(spider.getClass().getName()) && BRIDGES.contains(declaring)
+                if (AI_DJ.equals(spider.getClass().getName()) && isBridge(spider.getClass(), declaring)
                         && PythonPluginCompatibility.requiresRuntime(spider)) return spider;
                 if (!GUARD.equals(declaring)) return null;
                 Field delegate = null;
@@ -108,14 +108,27 @@ public final class AiDramaFilterCompatibility {
         }
     }
 
+    static boolean isBridge(Class<?> aiDj, String declaring) {
+        Class<?> bridge = aiDj.getSuperclass();
+        return bridge != null && bridge.getName().equals(declaring) && declaring.startsWith(BRIDGE_PACKAGE)
+                && declaring.indexOf('.', BRIDGE_PACKAGE.length()) < 0;
+    }
+
     private static PyObject python(Spider primary) throws ReflectiveOperationException {
         Class<?> bridge = primary.getClass().getSuperclass();
-        while (bridge != null && !BRIDGES.contains(bridge.getName())) bridge = bridge.getSuperclass();
-        if (bridge == null) throw new ReflectiveOperationException();
-        Field field = bridge.getDeclaredField("s"); field.setAccessible(true);
-        Object value = field.get(primary);
-        if (!(value instanceof PyObject)) throw new ReflectiveOperationException();
-        return (PyObject) value;
+        if (bridge == null || !bridge.getName().startsWith(BRIDGE_PACKAGE)) throw new ReflectiveOperationException();
+        PyObject found = null;
+        for (Field field : bridge.getDeclaredFields()) {
+            if (Modifier.isStatic(field.getModifiers()) || field.getType().isPrimitive()) continue;
+            if (!field.getType().isAssignableFrom(PyObject.class)) continue;
+            field.setAccessible(true);
+            Object value = field.get(primary);
+            if (!(value instanceof PyObject)) continue;
+            if (found != null) throw new ReflectiveOperationException();
+            found = (PyObject) value;
+        }
+        if (found == null) throw new ReflectiveOperationException();
+        return found;
     }
 
     private record NativeHelper(PyObject instance, PyObject globals, PyObject helper, PyObject json) {}
@@ -447,7 +460,8 @@ public final class AiDramaFilterCompatibility {
         Map<String, Category> categories = new LinkedHashMap<>();
         Map<String, String> nativeChoices = Map.of(); boolean complete = false;
         Future<Map<String, String>> nativeMetadata = null;
-        long nativeDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(4);
+        // Native declarations ride a Python HTTP call; 4s regularly expired on phones (observed 4.7s).
+        long nativeDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(8);
         try {
             try {
                 nativeMetadata = TOPIC_WORKER.submit(() -> {

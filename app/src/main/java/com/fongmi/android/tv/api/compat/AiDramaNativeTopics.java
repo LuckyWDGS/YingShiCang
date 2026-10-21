@@ -38,9 +38,13 @@ public final class AiDramaNativeTopics {
         return Collections.unmodifiableMap(result);
     }
 
-    /** Recommendation rows prove coverage only when they declare every audited capability. */
+    /**
+     * Declarations are read from the first page of recommendation rows, so which audited
+     * capabilities appear depends on what is recommended today (e.g. 13 of 14). Any declared
+     * audited capability is therefore a successful read; only an empty read is a failure.
+     */
     public static boolean complete(Map<String, String> choices) {
-        return choices != null && choices.keySet().containsAll(SUPPORTED_IDS);
+        return choices != null && !choices.isEmpty() && SUPPORTED_IDS.containsAll(choices.keySet());
     }
 
     /** Empty theme is solely the first-page declaration request; AI filtering was not effective. */

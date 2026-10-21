@@ -1,7 +1,9 @@
 package com.fongmi.android.tv.server.process;
 
+import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.bean.Config;
+import com.fongmi.android.tv.impl.Callback;
 import com.fongmi.android.tv.source.SourceManager;
 import com.fongmi.android.tv.server.impl.Process;
 import com.google.gson.JsonArray;
@@ -28,7 +30,11 @@ public final class Sources implements Process {
             if (session.getMethod() == NanoHTTPD.Method.POST) {
                 Config item = SourceManager.save(params.get("name"), params.get("url"));
                 data.addProperty("name", item.getDesc());
-                return reply(Response.Status.OK, "已保存，请在电视「线路」中选择启用", data);
+                if (item.getUrl().equals(VodConfig.getUrl())) return reply(Response.Status.OK, "已保存，电视正在使用该线路", data);
+                if (SourceManager.busy()) return reply(Response.Status.OK, "已保存，电视正在切换其他线路，请稍后在「线路」中选择", data);
+                // A newly added line is used right away; a failed switch rolls back and stays listed in 线路.
+                App.post(() -> SourceManager.activate(item, new Callback() {}));
+                return reply(Response.Status.OK, "已保存，电视正在切换到该线路", data);
             }
             if (session.getMethod() != NanoHTTPD.Method.GET) return reply(Response.Status.METHOD_NOT_ALLOWED, "请求方式不支持", data);
             JsonArray list = new JsonArray();

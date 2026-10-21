@@ -52,7 +52,7 @@ public class AiDramaNativeTopicsTest {
         rejects(() -> AiDramaNativeTopics.choices(response(1, true, row("a", tag(379, "甲")), row("b", tag(379, "乙")))));
     }
 
-    @Test public void emptyOrIncompleteRecommendationDeclarationsCannotConfirmTopicRemoval() throws Exception {
+    @Test public void emptyDeclarationsFailButContentDependentSubsetsAreUsable() throws Exception {
         assertFalse(AiDramaNativeTopics.complete(AiDramaNativeTopics.choices(response(1, false))));
         var declarations = new JsonObject[]{tag(379, "求生"), tag(21, "修真"), tag(37, "穿越"), tag(19, "系统"),
                 tag(36, "重生"), tag(1334, "诡秘"), tag(598, "异能"), tag(739, "逆袭"), tag(599, "异界"),
@@ -63,7 +63,8 @@ public class AiDramaNativeTopicsTest {
                 if (index != missing) present.add(declarations[index]);
             var partial = AiDramaNativeTopics.choices(response(1, false, row("current", present.toArray(new JsonObject[0]))));
             assertEquals(13, partial.size());
-            assertFalse(AiDramaNativeTopics.complete(partial));
+            // Today's recommendations simply did not carry this tag; the other 13 remain usable.
+            assertTrue(AiDramaNativeTopics.complete(partial));
         }
         var full = AiDramaNativeTopics.choices(response(1, true, row("current", declarations)));
         assertEquals(14, full.size()); assertTrue(AiDramaNativeTopics.complete(full));
