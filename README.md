@@ -54,6 +54,6 @@
 
 ## 致谢与许可
 
-基于 [FongMi/TV](https://github.com/FongMi/TV) 和 [AndroidX Media3](https://github.com/androidx/media) 构建，保留 [上游说明](UPSTREAM_README.md) 与 [许可证](LICENSE.md)。
+基于 [FongMi/TV](https://github.com/FongMi/TV) 和 [AndroidX Media3](https://github.com/androidx/media) 构建，遵循 [GPLv3 许可证](LICENSE.md)。`app/libs` 中的 forcetech、hook、jianpian、thunder、tvbus 预编译包源码见 [FongMi/TV](https://github.com/FongMi/TV) 同名目录。
 
 本仓库不包含任何影视内容或站源地址；签名密钥、本机配置、测试输出和 APK 不纳入源码仓库。
