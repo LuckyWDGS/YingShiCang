@@ -3,7 +3,6 @@ package com.fongmi.android.tv;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
-import android.os.SystemClock;
 import android.provider.Settings;
 import android.view.View;
 
@@ -31,7 +30,6 @@ import okhttp3.Response;
 /** Publisher Releases and explicit custom manifests share the verified installation path. */
 public class Updater implements UpdateListener {
     private static final AtomicReference<Updater> ACTIVE = new AtomicReference<>();
-    private static volatile long lastCheck, lastAttempt;
     private final AtomicBoolean downloading = new AtomicBoolean();
     private boolean manual, github, waitingPermission, installerOpened;
     private final LifecycleEventObserver lifecycle = (source, event) -> onLifecycle(event);
@@ -59,16 +57,14 @@ public class Updater implements UpdateListener {
 
     public void start(FragmentActivity activity) {
         if (activity.isFinishing() || activity.isDestroyed()) return;
-        long now = SystemClock.elapsedRealtime();
-        if (!manual && (!Setting.getUpdate() || lastCheck > 0 && now - lastCheck < 21_600_000L
-                || lastAttempt > 0 && now - lastAttempt < 120_000L)) return;
+        // Every launch checks; the launch prompt itself appears only once per version.
+        if (!manual && !Setting.getUpdate()) return;
         if (!ACTIVE.compareAndSet(null, this)) {
             if (manual) Notify.show("更新正在进行，请先完成或关闭更新窗口");
             return;
         }
         owner = new WeakReference<>(activity);
         activity.getLifecycle().addObserver(lifecycle);
-        lastAttempt = now;
         String endpoint = ServiceSettings.manifestUrl();
         github = GitHubRelease.API_URL.equals(endpoint);
         if (manual) Notify.show("正在检查更新…");
@@ -94,22 +90,37 @@ public class Updater implements UpdateListener {
                 if (System.currentTimeMillis() - item.lastModified() > 86_400_000L) item.delete();
             if (github) {
                 GitHubRelease release = GitHubRelease.parse(fetch(endpoint, GitHubRelease.MAX_RELEASE_BYTES));
-                manifest = release.select(fetch(release.manifestUrl(), GitHubRelease.MAX_MANIFEST_BYTES),
-                        BuildConfig.APPLICATION_ID, BuildConfig.FLAVOR, Build.VERSION.SDK_INT, Build.SUPPORTED_ABIS);
+                if (!UpdateNotice.isNewer(release.versionName())) {
+                    UpdateNotice.clear();
+                    result(manual ? "当前已是最新版本（本机 " + BuildConfig.VERSION_NAME + "）" : null);
+                    return;
+                }
+                UpdateNotice.found(release.versionName());
+                try {
+                    manifest = release.select(fetch(release.manifestUrl(), GitHubRelease.MAX_MANIFEST_BYTES),
+                            BuildConfig.APPLICATION_ID, BuildConfig.FLAVOR, Build.VERSION.SDK_INT, Build.SUPPORTED_ABIS);
+                } catch (Exception error) {
+                    // api.github.com is often reachable where github.com downloads are not (mainland China).
+                    DiagnosticLog.write(App.get(), "update_manifest_failed", error.getClass().getSimpleName());
+                    if (!canceled) offerManual(release.versionName(), release.notes());
+                    return;
+                }
             } else {
                 manifest = UpdateManifest.parse(fetch(endpoint, 65_536));
                 manifest.compatible(BuildConfig.APPLICATION_ID, BuildConfig.FLAVOR, Build.VERSION.SDK_INT, Build.SUPPORTED_ABIS);
             }
             MaintenanceHttp.validate(manifest.url);
             if (canceled) return;
-            lastCheck = SystemClock.elapsedRealtime();
             if (manifest.versionCode <= BuildConfig.VERSION_CODE) {
+                UpdateNotice.clear();
                 result(manual ? "当前已是最新版本（本机 " + BuildConfig.VERSION_NAME + "）" : null);
                 return;
             }
+            UpdateNotice.found(manifest.versionName);
             App.post(() -> {
                 FragmentActivity target = host();
-                if (target == null || target.getSupportFragmentManager().isStateSaved()) { close(); return; }
+                if (target == null || target.getSupportFragmentManager().isStateSaved()
+                        || !manual && !UpdateNotice.firstPrompt(manifest.versionName)) { close(); return; }
                 String notes = manifest.notes == null || manifest.notes.trim().isEmpty()
                         ? "此版本未填写更新说明" : plainNotes(manifest.notes);
                 dialog = UpdateDialog.create().title("发现新版本 " + manifest.versionName)
@@ -127,6 +138,19 @@ public class Updater implements UpdateListener {
         return text.replaceAll("(?m)^#{1,6}\\s+", "")
                 .replaceAll("\\*\\*([^*]+)\\*\\*", "$1")
                 .replaceAll("\\[([^\\]]+)]\\([^\\s)]+\\)", "$1").trim();
+    }
+
+    /** A newer release exists but its package cannot be fetched here; announce it without a download. */
+    private void offerManual(String version, String notes) {
+        App.post(() -> {
+            FragmentActivity target = host();
+            if (target == null || target.getSupportFragmentManager().isStateSaved()
+                    || !manual && !UpdateNotice.firstPrompt(version)) { close(); return; }
+            dialog = UpdateDialog.create().title("发现新版本 " + version)
+                    .desc("更新内容\n\n" + plainNotes(notes)).listener(this).show(target);
+            // Manual-install guidance is intentionally left out for now.
+            dialog.setManual();
+        });
     }
 
     private FragmentActivity host() {

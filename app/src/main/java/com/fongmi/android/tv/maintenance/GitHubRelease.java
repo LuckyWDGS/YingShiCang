@@ -90,6 +90,14 @@ public final class GitHubRelease {
         }
     }
 
+    public String versionName() {
+        return versionName;
+    }
+
+    public String notes() {
+        return notes;
+    }
+
     public String manifestUrl() {
         return manifest.url;
     }

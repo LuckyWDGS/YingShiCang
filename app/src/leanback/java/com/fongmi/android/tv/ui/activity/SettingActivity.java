@@ -24,6 +24,7 @@ import com.fongmi.android.tv.impl.Callback;
 import com.fongmi.android.tv.impl.ConfigListener;
 import com.fongmi.android.tv.impl.LiveListener;
 import com.fongmi.android.tv.impl.SiteListener;
+import com.fongmi.android.tv.maintenance.UpdateNotice;
 import com.fongmi.android.tv.setting.PlayerSetting;
 import com.fongmi.android.tv.setting.Setting;
 import com.fongmi.android.tv.ui.base.BaseActivity;
@@ -80,7 +81,7 @@ public class SettingActivity extends BaseActivity implements ConfigListener, Sit
         mBinding.vodHomeText.setText(VodConfig.get().getHome().getName());
         mBinding.liveHomeText.setText(LiveConfig.get().getHome().getName());
         mBinding.linesText.setText(VodConfig.get().getConfig().getName());
-        mBinding.versionText.setText(BuildConfig.VERSION_NAME);
+        setUpdateText();
         setCacheText();
         setOtherText();
     }
@@ -90,6 +91,25 @@ public class SettingActivity extends BaseActivity implements ConfigListener, Sit
         mBinding.incognitoText.setText(Setting.getSwitch(Setting.isIncognito()));
         mBinding.chapterMarkerText.setText(Setting.getSwitch(PlayerSetting.isChapterMarker()));
         mBinding.sizeText.setText((size = ResUtil.getStringArray(R.array.select_size))[PlayerSetting.getSize()]);
+    }
+
+    private void setUpdateText() {
+        String version = UpdateNotice.available();
+        mBinding.updateDot.setVisibility(version.isEmpty() ? View.GONE : View.VISIBLE);
+        mBinding.versionText.setText(version.isEmpty() ? BuildConfig.VERSION_NAME : "新版本 " + version);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        UpdateNotice.observe(this::setUpdateText);
+        setUpdateText();
+    }
+
+    @Override
+    protected void onPause() {
+        UpdateNotice.observe(null);
+        super.onPause();
     }
 
     private void setCacheText() {
@@ -115,6 +135,7 @@ public class SettingActivity extends BaseActivity implements ConfigListener, Sit
         mBinding.danmaku.setOnClickListener(this::onDanmaku);
         mBinding.restore.setOnClickListener(this::onRestore);
         mBinding.version.setOnClickListener(this::onVersion);
+        mBinding.update.setOnClickListener(this::onUpdate);
         mBinding.vod.setOnLongClickListener(this::onVodEdit);
         mBinding.vodHome.setOnClickListener(this::onVodHome);
         mBinding.live.setOnLongClickListener(this::onLiveEdit);
@@ -233,6 +254,10 @@ public class SettingActivity extends BaseActivity implements ConfigListener, Sit
 
     private void onVersion(View view) {
         startActivity(new Intent(this, MaintenanceActivity.class));
+    }
+
+    private void onUpdate(View view) {
+        Updater.create().force().start(this);
     }
 
     private void setWallDefault(View view) {

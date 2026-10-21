@@ -28,7 +28,7 @@ public class UpdateDialog extends BaseAlertDialog {
     private long total = -1;
     private boolean focusCancelPending;
 
-    private enum Phase { AVAILABLE, DOWNLOADING, VERIFYING, READY, ERROR }
+    private enum Phase { AVAILABLE, DOWNLOADING, VERIFYING, READY, ERROR, MANUAL }
 
     public static UpdateDialog create() {
         return new UpdateDialog();
@@ -123,6 +123,13 @@ public class UpdateDialog extends BaseAlertDialog {
         render();
     }
 
+    /** No package can be downloaded here: announce the version and offer only a close button. */
+    public void setManual() {
+        phase = Phase.MANUAL;
+        focusCancelPending = true;
+        render();
+    }
+
     private void limitDescriptionHeight() {
         if (binding == null || !isAdded()) return;
         float density = getResources().getDisplayMetrics().density;
@@ -134,7 +141,8 @@ public class UpdateDialog extends BaseAlertDialog {
 
     private void render() {
         if (binding == null) return;
-        binding.transfer.setVisibility(phase == Phase.AVAILABLE ? View.GONE : View.VISIBLE);
+        boolean manual = phase == Phase.MANUAL;
+        binding.transfer.setVisibility(phase == Phase.AVAILABLE || manual ? View.GONE : View.VISIBLE);
         binding.status.setAccessibilityLiveRegion(phase == Phase.ERROR || phase == Phase.READY
                 ? View.ACCESSIBILITY_LIVE_REGION_POLITE : View.ACCESSIBILITY_LIVE_REGION_NONE);
         binding.status.setText(status);
@@ -147,11 +155,12 @@ public class UpdateDialog extends BaseAlertDialog {
         Button cancel = dialog.getButton(AlertDialog.BUTTON_NEGATIVE);
         if (confirm == null || cancel == null) return;
         boolean busy = phase == Phase.DOWNLOADING || phase == Phase.VERIFYING;
+        confirm.setVisibility(manual ? View.GONE : View.VISIBLE);
         confirm.setEnabled(!busy);
         confirm.setFocusable(!busy);
         confirm.setText(phase == Phase.READY ? "安装" : phase == Phase.ERROR ? "重试下载"
                 : phase == Phase.AVAILABLE ? "下载并安装" : getString(R.string.update_confirm));
-        cancel.setText(phase == Phase.READY || phase == Phase.ERROR ? "关闭"
+        cancel.setText(manual ? "知道了" : phase == Phase.READY || phase == Phase.ERROR ? "关闭"
                 : phase == Phase.DOWNLOADING ? "取消下载" : phase == Phase.VERIFYING ? "取消"
                 : "暂不更新");
         if (focusCancelPending) {
