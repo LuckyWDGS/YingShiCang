@@ -1,6 +1,7 @@
 package com.fongmi.android.tv.maintenance;
 
 import com.fongmi.android.tv.BuildConfig;
+import com.fongmi.android.tv.diagnostics.DeviceId;
 import com.fongmi.android.tv.diagnostics.RingLog;
 import com.google.gson.Gson;
 import java.io.*;
@@ -19,8 +20,15 @@ public final class LogUploader {
         return upload(store, endpoint, "");
     }
 
-    /** @param deviceInfo base64url device facts for X-Device-Info, or empty to omit the header. */
     public String upload(RingLog store, String endpoint, String deviceInfo) throws IOException {
+        return upload(store, endpoint, deviceInfo, "");
+    }
+
+    /**
+     * @param deviceInfo base64url device facts for X-Device-Info, or empty to omit the header.
+     * @param deviceId   anonymous {@link DeviceId} the server files this device's logs under, or empty.
+     */
+    public String upload(RingLog store, String endpoint, String deviceInfo, String deviceId) throws IOException {
         if (!BUSY.compareAndSet(false, true)) throw new IOException("已有日志上传正在进行");
         try {
             HttpUrl url = MaintenanceHttp.validate(endpoint);
@@ -46,6 +54,8 @@ public final class LogUploader {
                     .header("X-Batch-Id", batch.id()).header("X-Content-SHA256", digest.toString())
                     .header("X-App-Version", BuildConfig.VERSION_NAME);
             if (deviceInfo != null && deviceInfo.matches("[A-Za-z0-9_-]{1,8000}")) request.header("X-Device-Info", deviceInfo);
+            boolean identified = deviceId != null && deviceId.matches(DeviceId.PATTERN);
+            if (identified) request.header("X-Device-Id", deviceId);
             call = MaintenanceHttp.CLIENT.newCall(request.build());
             if (canceled) { call.cancel(); throw new InterruptedIOException("已取消"); }
             Receipt receipt;
@@ -57,7 +67,7 @@ public final class LogUploader {
                     || receipt.reportId == null || !receipt.reportId.matches("[a-zA-Z0-9-]{1,80}"))
                 throw new IOException("上传尚未确认保存，日志已保留");
             store.acknowledge(batch, receipt.batchId);
-            return "上传成功，已清理该批日志。\n请把报告编号发给开发者：" + receipt.reportId;
+            return "上传成功，已清理该批日志。\n请把设备 ID 和报告编号发给开发者：" + (identified ? deviceId + " / " : "") + receipt.reportId;
         } finally { BUSY.set(false); call = null; }
     }
 }

@@ -1,9 +1,16 @@
 """Aliyun Function Compute 3.0 log receiver that stores uploads in a private OSS bucket.
 
 The app POSTs one diagnostic batch with X-Batch-Id (UUID), X-Content-SHA256 and
-X-App-Version, plus an optional X-Device-Info (base64url JSON). This function
-verifies the checksum, writes the batch to OSS without overwriting a different
-batch, and returns the receipt the app requires before it clears local logs.
+X-App-Version, plus optional X-Device-Id (anonymous "XXXX-XXXX" install ID) and
+X-Device-Info (base64url JSON). This function verifies the checksum, writes the
+batch to OSS without overwriting a different batch, and returns the receipt the
+app requires before it clears local logs.
+
+Layout (kept permanently; one folder per device):
+  logs/<device id>/device.json                         latest device profile
+  logs/<device id>/<UTC date>/<version>_<batch>.log     sanitized diagnostic log
+  logs/<device id>/<UTC date>/<version>_<batch>.device.json
+Uploads without a device ID (apps older than 1.1.1) go under logs/unknown/.
 
 No AccessKey lives here or in the app: the function uses the temporary
 credentials of the RAM role bound to it (context.credentials).
@@ -26,6 +33,7 @@ DEVICE_CAP = 8192
 BATCH = re.compile(r"[a-f0-9-]{36}")
 DIGEST = re.compile(r"[a-f0-9]{64}")
 VERSION = re.compile(r"[0-9A-Za-z._+-]{1,40}")
+DEVICE_ID = re.compile(r"[0-9A-Z]{4}-[0-9A-Z]{4}")
 
 
 class Rejected(Exception):
@@ -59,7 +67,12 @@ def _device(value):
     return data
 
 
-def receive(event, bucket, token="", today=None):
+def _ascii(value, limit=64):
+    """OSS user metadata must be plain ASCII; keep it short and printable."""
+    return re.sub(r"[^ -~]", "?", str(value or ""))[:limit]
+
+
+def receive(event, bucket, token="", now=None):
     """Validate one upload and persist it through `bucket` (an oss2.Bucket-like object)."""
     method = ((event.get("requestContext") or {}).get("http") or {}).get("method", "POST")
     if method != "POST":
@@ -70,8 +83,11 @@ def receive(event, bucket, token="", today=None):
     batch = headers.get("x-batch-id", "")
     digest = headers.get("x-content-sha256", "")
     version = headers.get("x-app-version", "")
+    device_id = headers.get("x-device-id", "")
     if not BATCH.fullmatch(batch) or not DIGEST.fullmatch(digest) or not VERSION.fullmatch(version):
         raise Rejected(400, "Invalid batch metadata")
+    if device_id and not DEVICE_ID.fullmatch(device_id):
+        raise Rejected(400, "Invalid device id")
     device = _device(headers.get("x-device-info", ""))
     data = _body(event)
     if not 0 < len(data) <= CAP:
@@ -79,18 +95,28 @@ def receive(event, bucket, token="", today=None):
     if not hmac.compare_digest(hashlib.sha256(data).hexdigest(), digest):
         raise Rejected(400, "Checksum mismatch")
 
-    day = (today or datetime.datetime.now(datetime.timezone.utc).date()).isoformat()
-    key = f"logs/{day}/{version}/{batch}.log"
-    meta = {"x-oss-meta-sha256": digest, "x-oss-meta-bytes": str(len(data)), "x-oss-meta-app-version": version}
+    now = now or datetime.datetime.now(datetime.timezone.utc)
+    folder = f"logs/{device_id or 'unknown'}"
+    key = f"{folder}/{now.date().isoformat()}/{version}_{batch}.log"
+    meta = {"x-oss-meta-sha256": digest, "x-oss-meta-bytes": str(len(data)), "x-oss-meta-app-version": version,
+            "x-oss-meta-device-id": device_id or "unknown"}
+    if device is not None:
+        meta["x-oss-meta-model"] = _ascii(f"{device.get('brand', '')} {device.get('model', '')}".strip())
+        meta["x-oss-meta-android"] = _ascii(device.get("android", ""))
     if not bucket.put_if_absent(key, data, dict(meta, **{"Content-Type": "text/plain; charset=utf-8"})):
         existing = bucket.meta(key)
         if existing.get("x-oss-meta-sha256") != digest or existing.get("x-oss-meta-bytes") != str(len(data)):
             raise Rejected(409, "Batch identity conflict")
     if device is not None:
-        info = json.dumps({"batchId": batch, "appVersion": version, "device": device},
+        info = json.dumps({"deviceId": device_id or "unknown", "batchId": batch, "appVersion": version,
+                           "uploadedAt": now.isoformat(timespec="seconds"), "logKey": key, "device": device},
                           ensure_ascii=False, indent=1).encode("utf-8")
-        bucket.put(key[:-4] + ".device.json", info, {"Content-Type": "application/json; charset=utf-8"})
-    return {"batchId": batch, "reportId": batch, "persisted": True, "sha256": digest, "bytes": len(data)}
+        json_type = {"Content-Type": "application/json; charset=utf-8"}
+        bucket.put(key[:-4] + ".device.json", info, json_type)
+        if device_id:
+            bucket.put(f"{folder}/device.json", info, json_type)
+    return {"batchId": batch, "reportId": batch, "deviceId": device_id or "unknown", "persisted": True,
+            "sha256": digest, "bytes": len(data)}
 
 
 class OssBucket:

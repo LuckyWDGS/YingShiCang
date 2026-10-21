@@ -12,7 +12,9 @@ import java.util.concurrent.TimeUnit;
 /** Bounded, asynchronous diagnostics. Never uses the player network client. */
 public final class DiagnosticLog {
     public static final long MAX_BYTES = 10_000_000L;
+    private static final String CRASH_EXIT_SEEN = "ysc_crash_exit_seen";
     private static volatile RingLog store;
+    private static volatile File crashMarker;
     private static final ThreadPoolExecutor WRITER = new ThreadPoolExecutor(1, 1, 30, TimeUnit.SECONDS,
             new ArrayBlockingQueue<>(256), r -> new Thread(r, "diagnostics-writer"), new ThreadPoolExecutor.DiscardPolicy());
     private DiagnosticLog() {}
@@ -23,18 +25,26 @@ public final class DiagnosticLog {
                 && !com.fongmi.android.tv.BuildConfig.APPLICATION_ID.equals(android.app.Application.getProcessName())) return;
         try { store = new RingLog(new File(context.getFilesDir(), "diagnostics"), MAX_BYTES); }
         catch (IOException ignored) { return; }
+        crashMarker = new File(context.getFilesDir(), "diagnostics-crash-pending");
         Thread.UncaughtExceptionHandler previous = Thread.getDefaultUncaughtExceptionHandler();
         Thread.setDefaultUncaughtExceptionHandler((thread, error) -> {
             // Bounded emergency write; preserve the platform/upstream crash handler.
             append("uncaught", crashSummary(error));
+            markCrash();
             if (previous != null) previous.uncaughtException(thread, error);
             else Process.killProcess(Process.myPid());
         });
         if (android.os.Build.VERSION.SDK_INT >= 30) WRITER.execute(() -> {
             try {
                 android.app.ActivityManager manager = context.getSystemService(android.app.ActivityManager.class);
-                for (android.app.ApplicationExitInfo exit : manager.getHistoricalProcessExitReasons(null, 0, 3))
+                long seen = com.github.catvod.utils.Prefers.getLong(CRASH_EXIT_SEEN), newest = seen;
+                for (android.app.ApplicationExitInfo exit : manager.getHistoricalProcessExitReasons(null, 0, 3)) {
                     append("process_exit", "time=" + exit.getTimestamp() + " reason=" + exit.getReason() + " status=" + exit.getStatus());
+                    // Native (MPV/FFmpeg) crashes bypass the Java handler; mark them from the exit record.
+                    if (exit.getReason() == android.app.ApplicationExitInfo.REASON_CRASH_NATIVE && exit.getTimestamp() > seen) markCrash();
+                    newest = Math.max(newest, exit.getTimestamp());
+                }
+                if (newest > seen) com.github.catvod.utils.Prefers.put(CRASH_EXIT_SEEN, newest);
             } catch (Exception ignored) {}
         });
     }
@@ -64,6 +74,17 @@ public final class DiagnosticLog {
         if (log == null) return;
         try { log.append(Instant.now() + "\t" + LogSanitizer.clean(event) + "\t" + LogSanitizer.clean(detail)); }
         catch (Exception ignored) { /* An unavailable disk must not break playback. */ }
+    }
+    /** Flags a crash so the next launch uploads the log automatically; a new crash resets the retry count. */
+    private static void markCrash() {
+        File marker = crashMarker;
+        if (marker == null) return;
+        try (java.io.FileOutputStream out = new java.io.FileOutputStream(marker)) { out.write('0'); }
+        catch (Exception ignored) {}
+    }
+    /** Present while a crash log still waits for automatic upload; null before {@link #install}. */
+    public static File crashMarker() {
+        return crashMarker;
     }
     public static RingLog store() throws IOException {
         if (store == null) throw new IOException("诊断日志暂不可用");

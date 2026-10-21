@@ -15,6 +15,8 @@
 -keep class com.google.gson.** { *; }
 # Explicit custom update manifests are read by Gson reflection in release builds.
 -keep class com.fongmi.android.tv.maintenance.UpdateManifest { *; }
+# Log upload receipts are read the same way; without this R8 merges the class and drops its fields.
+-keep class com.fongmi.android.tv.maintenance.LogUploader$Receipt { *; }
 
 # SimpleXML
 -keep interface org.simpleframework.xml.core.Label { public *; }

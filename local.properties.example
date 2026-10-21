@@ -9,3 +9,6 @@ sdk.dir=C:/Android/Sdk
 # ysc.keyAlias=yingshicang
 # ysc.storePassword=configure-locally
 # ysc.keyPassword=configure-locally
+
+# Optional default log upload receiver (HTTPS, see docs/日志上传-阿里云OSS部署.md); -PlogUploadUrl overrides it.
+# ysc.logUploadUrl=https://xxxx.cn-beijing.fcapp.run

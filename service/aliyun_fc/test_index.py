@@ -7,7 +7,7 @@ import uuid
 
 from index import CAP, Rejected, receive
 
-DAY = datetime.date(2026, 10, 20)
+NOW = datetime.datetime(2026, 10, 20, 8, 30, tzinfo=datetime.timezone.utc)
 
 
 class FakeBucket:
@@ -27,10 +27,13 @@ class FakeBucket:
         self.objects[key] = (data, headers)
 
 
-def event(data, batch=None, digest=None, version="1.0.12", device=None, method="POST", encode=True, auth=None):
+def event(data, batch=None, digest=None, version="1.0.12", device=None, method="POST", encode=True, auth=None,
+          device_id=None):
     headers = {"X-Batch-Id": batch or str(uuid.uuid4()),
                "X-Content-SHA256": digest or hashlib.sha256(data).hexdigest(),
                "X-App-Version": version}
+    if device_id is not None:
+        headers["X-Device-Id"] = device_id
     if device is not None:
         headers["X-Device-Info"] = base64.urlsafe_b64encode(json.dumps(device).encode()).decode().rstrip("=")
     if auth:
@@ -45,51 +48,68 @@ class ReceiveTests(unittest.TestCase):
 
     def test_persists_receipt_and_device_info(self):
         data = b"2026-10-20T00:00:00Z\tapp_start\tok\n"
-        request = event(data, device={"model": "TV", "sdk": 34})
-        receipt = receive(request, self.bucket, today=DAY)
+        request = event(data, device={"brand": "Xiaomi", "model": "MiBOX4", "android": "9 (SDK 28)"},
+                        device_id="K7Q2-9MZD")
+        receipt = receive(request, self.bucket, now=NOW)
         batch = request["headers"]["X-Batch-Id"]
-        self.assertEqual(receipt, {"batchId": batch, "reportId": batch, "persisted": True,
+        self.assertEqual(receipt, {"batchId": batch, "reportId": batch, "deviceId": "K7Q2-9MZD", "persisted": True,
                                    "sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data)})
-        key = f"logs/2026-10-20/1.0.12/{batch}.log"
+        key = f"logs/K7Q2-9MZD/2026-10-20/1.0.12_{batch}.log"
         self.assertEqual(self.bucket.objects[key][0], data)
+        meta = self.bucket.objects[key][1]
+        self.assertEqual(meta["x-oss-meta-device-id"], "K7Q2-9MZD")
+        self.assertEqual(meta["x-oss-meta-model"], "Xiaomi MiBOX4")
+        self.assertEqual(meta["x-oss-meta-android"], "9 (SDK 28)")
         device = json.loads(self.bucket.objects[key[:-4] + ".device.json"][0])
-        self.assertEqual(device["device"]["model"], "TV")
+        self.assertEqual(device["device"]["model"], "MiBOX4")
+        self.assertEqual(device["uploadedAt"], "2026-10-20T08:30:00+00:00")
+        latest = json.loads(self.bucket.objects["logs/K7Q2-9MZD/device.json"][0])
+        self.assertEqual(latest["logKey"], key)
+
+    def test_devices_are_kept_apart_and_old_apps_go_to_unknown(self):
+        data = b"event\n"
+        receive(event(data, device_id="AAAA-0001"), self.bucket, now=NOW)
+        receive(event(data, device_id="BBBB-0002"), self.bucket, now=NOW)
+        receive(event(data), self.bucket, now=NOW)
+        folders = sorted({key.split("/")[1] for key in self.bucket.objects})
+        self.assertEqual(folders, ["AAAA-0001", "BBBB-0002", "unknown"])
 
     def test_plain_text_body_accepted(self):
         data = b"event\n"
-        self.assertTrue(receive(event(data, encode=False), self.bucket, today=DAY)["persisted"])
+        self.assertTrue(receive(event(data, encode=False), self.bucket, now=NOW)["persisted"])
 
     def test_retry_is_idempotent_and_conflict_rejected(self):
         data = b"event\n"
         batch = str(uuid.uuid4())
-        first = receive(event(data, batch=batch), self.bucket, today=DAY)
-        self.assertEqual(first, receive(event(data, batch=batch), self.bucket, today=DAY))
+        first = receive(event(data, batch=batch), self.bucket, now=NOW)
+        self.assertEqual(first, receive(event(data, batch=batch), self.bucket, now=NOW))
         with self.assertRaises(Rejected) as caught:
-            receive(event(b"other\n", batch=batch), self.bucket, today=DAY)
+            receive(event(b"other\n", batch=batch), self.bucket, now=NOW)
         self.assertEqual(caught.exception.status, 409)
 
     def test_bad_requests_never_stored(self):
         data = b"event\n"
         cases = [event(data, digest="0" * 64), event(data, batch="not-a-uuid"), event(data, version="bad version"),
+                 event(data, device_id="../../etc"), event(data, device_id="k7q2-9mzd"),
                  event(b"", digest=hashlib.sha256(b"").hexdigest()), event(data, method="GET")]
         for request in cases:
             with self.assertRaises(Rejected):
-                receive(request, self.bucket, today=DAY)
+                receive(request, self.bucket, now=NOW)
         big = b"x" * (CAP + 1)
         with self.assertRaises(Rejected):
-            receive(event(big), self.bucket, today=DAY)
+            receive(event(big), self.bucket, now=NOW)
         bad_device = event(data)
         bad_device["headers"]["X-Device-Info"] = "%%%"
         with self.assertRaises(Rejected):
-            receive(bad_device, self.bucket, today=DAY)
+            receive(bad_device, self.bucket, now=NOW)
         self.assertEqual(self.bucket.objects, {})
 
     def test_optional_token(self):
         data = b"event\n"
         with self.assertRaises(Rejected) as caught:
-            receive(event(data), self.bucket, token="secret", today=DAY)
+            receive(event(data), self.bucket, token="secret", now=NOW)
         self.assertEqual(caught.exception.status, 401)
-        self.assertTrue(receive(event(data, auth="Bearer secret"), self.bucket, token="secret", today=DAY)["persisted"])
+        self.assertTrue(receive(event(data, auth="Bearer secret"), self.bucket, token="secret", now=NOW)["persisted"])
 
 
 if __name__ == "__main__":

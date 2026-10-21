@@ -37,10 +37,11 @@ public class MaintenanceActivity extends AppCompatActivity {
         usage = label("", 16); refreshUsage();
         label("日志上传", 22);
         label("遇到问题时上传诊断日志和设备信息（型号、系统、解码能力），不含账号、播放地址或片名。",14);
+        label("本机设备 ID：" + DeviceId.get(this) + "（反馈问题时一并告诉开发者）",16);
         uploadUrl = input("HTTPS 日志接收接口", ServiceSettings.logsUrl());
         button("上传日志", v -> startUpload());
         button("保存日志服务地址", v -> save(false));
-        uploadStatus = label("仅在服务器确认保存后清除该批日志，上传期间的新日志保留；未配置服务时不会上传。",14);
+        uploadStatus = label("仅在服务器确认保存后清除该批日志，上传期间的新日志保留；未配置服务时不会上传。应用崩溃后，下次启动会自动上传一次。",14);
         label("播放诊断", 22);
         Switch quality = new Switch(this);
         quality.setText("最高画质优先（默认开启，关闭后自动适应网速）");
@@ -125,7 +126,7 @@ public class MaintenanceActivity extends AppCompatActivity {
         cancel(); int token = operation; uploader = new LogUploader(); LogUploader current = uploader; showUpload("正在上传日志，等待服务器保存回执…");
         android.content.Context app = getApplicationContext();
         task = MaintenanceTasks.submit(() -> {
-            try { String receipt=current.upload(DiagnosticLog.store(),endpoint,DeviceReport.encode(app)); App.post(() -> { if(token==operation)showUpload(receipt); }); }
+            try { String receipt=current.upload(DiagnosticLog.store(),endpoint,DeviceReport.encode(app),DeviceId.get(app)); App.post(() -> { if(token==operation)showUpload(receipt); }); }
             catch(Exception e) { App.post(() -> { if(token==operation)showUpload("未完成上传／清理："+e.getMessage()); }); }
         });
     }
