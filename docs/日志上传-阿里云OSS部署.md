@@ -82,6 +82,34 @@ OSS 控制台 → `ying-shi-cang` → 文件列表 → `logs/` → 设备 ID →
 
 崩溃堆栈来自混淆后的正式包，需要配合该版本的 `app/build/outputs/mapping/leanbackRelease/mapping.txt` 还原（用 Android SDK 的 `retrace`）。**每次正式构建后都要把 mapping.txt 与 APK 一起本地存档**（不要提交 Git）。
 
+## 下载与分析日志（开发者电脑）
+
+读取用单独的**只读** RAM 用户，不复用函数角色：
+
+1. 权限策略 `ysc-log-oss-read`：
+   ```json
+   {
+     "Version": "1",
+     "Statement": [
+       {"Effect": "Allow", "Action": "oss:ListObjects", "Resource": "acs:oss:*:*:ying-shi-cang"},
+       {"Effect": "Allow", "Action": "oss:GetObject", "Resource": "acs:oss:*:*:ying-shi-cang/logs/*"}
+     ]
+   }
+   ```
+2. 用户 `ysc-log-reader`：只开「使用永久 AccessKey 访问」，授权上面的策略。
+3. 在开发电脑上设置用户环境变量（值不要带尖括号或空格，也不要发到聊天或提交到仓库）：`setx OSS_ACCESS_KEY_ID "..."`、`setx OSS_ACCESS_KEY_SECRET "..."`。
+4. 安装官方 SDK：`python -m pip install oss2`。
+
+用法（脚本先读进程环境变量，读不到再读 Windows 用户环境变量，因此 setx 后无需重启）：
+
+```bash
+python scripts/fetch_logs.py latest -n 10            # 所有设备最新的上传
+python scripts/fetch_logs.py device K7Q2-9MZD --download
+python scripts/fetch_logs.py report <报告编号>        # 找到并下载
+```
+
+下载到 `.codex/session/logs/<设备ID>/<日期>/`（Git 忽略）。日志里有 Java 崩溃时，脚本按文件名中的版本用 `Release/<版本>/mapping/tv-mapping.txt`（手机版用 `phone-mapping.txt`）和 Android SDK 的 `retrace` 生成 `.retraced.log`；没有对应 mapping 时跳过并提示。
+
 ## 本地测试
 
 ```bash
