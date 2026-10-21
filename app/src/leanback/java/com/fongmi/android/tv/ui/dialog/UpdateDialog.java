@@ -41,11 +41,9 @@ public class UpdateDialog extends BaseAlertDialog {
     private int progress;
     private long downloaded = -1;
     private long total = -1;
-    private boolean focusCancelPending;
+    private boolean wasBusy;
     private boolean mandatory;
     private String reason;
-
-    private boolean transferShown;
 
     private enum Phase { AVAILABLE, CHECKING, DOWNLOADING, VERIFYING, READY, ERROR, MANUAL }
 
@@ -166,7 +164,6 @@ public class UpdateDialog extends BaseAlertDialog {
     }
 
     public void setProgress(int progress, long downloaded, long total) {
-        if (phase != Phase.CHECKING && phase != Phase.DOWNLOADING && phase != Phase.VERIFYING) focusCancelPending = true;
         phase = Phase.DOWNLOADING;
         this.progress = Math.max(0, Math.min(100, progress));
         this.downloaded = downloaded;
@@ -208,7 +205,6 @@ public class UpdateDialog extends BaseAlertDialog {
 
     /** Retrying the package list after a failed fetch. */
     public void setChecking() {
-        if (phase != Phase.CHECKING) focusCancelPending = true;
         phase = Phase.CHECKING;
         status = "正在连接下载服务器…";
         render();
@@ -266,52 +262,47 @@ public class UpdateDialog extends BaseAlertDialog {
         if (binding == null) return;
         boolean busy = phase == Phase.CHECKING || phase == Phase.DOWNLOADING || phase == Phase.VERIFYING;
         boolean manual = phase == Phase.MANUAL;
-        boolean transferVisible = phase != Phase.AVAILABLE && (!manual || status != null);
-        binding.transfer.setVisibility(transferVisible ? View.VISIBLE : View.GONE);
-        binding.progressBar.setVisibility(manual ? View.GONE : View.VISIBLE);
-        binding.progressText.setVisibility(manual || phase == Phase.CHECKING ? View.GONE : View.VISIBLE);
-        if (transferVisible != transferShown) {
-            transferShown = transferVisible;
-            binding.getRoot().post(this::fitNotes);
-        }
+        // Progress takes the buttons' slot while busy (Back cancels), so the window never resizes.
+        setVisible(binding.transfer, busy);
+        setVisible(binding.buttons, !busy);
+        boolean message = !busy && phase != Phase.AVAILABLE && status != null && !status.isEmpty();
+        if (setVisible(binding.status, message)) binding.getRoot().post(this::fitNotes);
+        binding.status.setText(message ? status : null);
         binding.status.setAccessibilityLiveRegion(phase == Phase.ERROR || phase == Phase.READY
                 ? View.ACCESSIBILITY_LIVE_REGION_POLITE : View.ACCESSIBILITY_LIVE_REGION_NONE);
-        binding.status.setText(status);
+        binding.transferText.setText(busy ? status : null);
         binding.progressBar.setIndeterminate(phase == Phase.VERIFYING || phase == Phase.CHECKING);
         binding.progressBar.setProgress(progress);
+        setVisible(binding.progressText, phase == Phase.DOWNLOADING);
         binding.progressText.setText(progressText());
         // Mandatory: no postponing; continuing for now is offered only after a failed or impossible download.
         boolean fallback = phase == Phase.ERROR || manual;
         boolean cancelVisible = !mandatory || fallback;
-        binding.confirm.setVisibility(View.VISIBLE);
-        binding.cancel.setVisibility(cancelVisible ? View.VISIBLE : View.GONE);
+        setVisible(binding.cancel, cancelVisible);
         setMargin(binding.confirm, false, cancelVisible ? ResUtil.dp2px(6) : 0);
-        setMargin(binding.cancel, true, ResUtil.dp2px(6));
-        binding.confirm.setEnabled(!busy);
-        binding.confirm.setFocusable(!busy);
-        binding.confirm.setAlpha(busy ? 0.55f : 1f);
         binding.confirmIcon.setVisibility(phase == Phase.AVAILABLE || phase == Phase.ERROR || manual ? View.VISIBLE : View.GONE);
-        binding.confirmText.setText(phase == Phase.READY ? "安装" : phase == Phase.ERROR || manual ? "重试下载"
-                : phase == Phase.AVAILABLE ? "下载并安装" : getString(R.string.update_confirm));
-        binding.cancel.setText(mandatory ? "暂时继续使用" : manual ? "知道了" : phase == Phase.READY || phase == Phase.ERROR ? "关闭"
-                : phase == Phase.DOWNLOADING ? "取消下载" : phase == Phase.VERIFYING || phase == Phase.CHECKING ? "取消"
-                : "暂不更新");
-        binding.backHint.setText(mandatory ? "返回键退出应用" : busy ? "返回键取消" : "返回键关闭");
-        boolean confirmFirst = !busy;
-        binding.descriptionScroll.setNextFocusDownId(busy ? R.id.cancel : R.id.confirm);
+        binding.confirmText.setText(phase == Phase.READY ? "安装" : phase == Phase.ERROR || manual ? "重试下载" : "下载并安装");
+        binding.cancel.setText(mandatory ? "暂时继续使用" : manual ? "知道了" : phase == Phase.READY || phase == Phase.ERROR ? "关闭" : "暂不更新");
+        binding.backHint.setText(mandatory ? "返回键退出应用" : phase == Phase.DOWNLOADING ? "返回键取消下载" : busy ? "返回键取消" : "返回键关闭");
+        binding.descriptionScroll.setNextFocusDownId(busy ? View.NO_ID : R.id.confirm);
         // A dialog opened in touch mode cannot take focus yet; the first remote key restores this default.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            binding.confirm.setFocusedByDefault(confirmFirst);
-            binding.cancel.setFocusedByDefault(!confirmFirst);
-        }
-        if (focusCancelPending) {
-            binding.cancel.requestFocus();
-            focusCancelPending = false;
-        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) binding.confirm.setFocusedByDefault(true);
+        // Leaving a download, the buttons come back: put the remote on 安装 / 重试下载.
+        if (wasBusy && !busy) binding.confirm.requestFocus();
+        wasBusy = busy;
+    }
+
+    /** Changes visibility only when needed; returns whether it changed. */
+    private static boolean setVisible(View view, boolean visible) {
+        int target = visible ? View.VISIBLE : View.GONE;
+        if (view.getVisibility() == target) return false;
+        view.setVisibility(target);
+        return true;
     }
 
     private static void setMargin(View view, boolean start, int margin) {
         ViewGroup.MarginLayoutParams params = (ViewGroup.MarginLayoutParams) view.getLayoutParams();
+        if ((start ? params.getMarginStart() : params.getMarginEnd()) == margin) return;
         if (start) params.setMarginStart(margin);
         else params.setMarginEnd(margin);
         view.setLayoutParams(params);

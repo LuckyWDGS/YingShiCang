@@ -168,6 +168,12 @@ public class JarLoader {
         }
     }
 
+    /** An already initialized spider, without loading or waiting; null otherwise. */
+    public Spider cachedSpider(String key, String api, String ext, String jar) {
+        String jaKey = Crypto.md5(jar);
+        return spiders.get(jaKey + key + Crypto.md5(api + "\0" + ext));
+    }
+
     public Spider getSpider(String key, String api, String ext, String jar) {
         checkCancellation();
         String jaKey = Crypto.md5(jar);

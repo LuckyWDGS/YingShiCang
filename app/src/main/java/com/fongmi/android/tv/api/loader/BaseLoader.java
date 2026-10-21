@@ -62,6 +62,14 @@ public class BaseLoader {
         else return new SpiderNull();
     }
 
+    /** An already initialized spider for this site, or null when it still has to be loaded. */
+    public Spider cachedSpider(String key, String api, String ext, String jar) {
+        if (isPy(api)) return pyLoader.cachedSpider(key, api, ext);
+        else if (isJs(api)) return jsLoader.cachedSpider(key, api, ext, jar);
+        else if (isCsp(api)) return jarLoader.cachedSpider(key, api, ext, jar);
+        return null;
+    }
+
     public Spider getSpider(String key) {
         Site site = VodConfig.get().getSite(key);
         Live live = LiveConfig.get().getLive(key);

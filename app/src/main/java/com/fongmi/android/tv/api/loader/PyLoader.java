@@ -35,6 +35,11 @@ public class PyLoader {
         this.recent = recent;
     }
 
+    /** An already initialized spider, without loading or waiting; null otherwise. */
+    public Spider cachedSpider(String key, String api, String ext) {
+        return spiders.get(key + "\0" + api + "\0" + ext);
+    }
+
     public Spider getSpider(String key, String api, String ext) {
         String identity = key + "\0" + api + "\0" + ext;
         return spiders.computeIfAbsent(identity, k -> {

@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.graphics.drawable.Drawable;
+import android.os.SystemClock;
 import android.text.SpannableString;
 import android.text.Spanned;
 import android.text.style.ImageSpan;
@@ -17,12 +18,14 @@ import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.bean.Vod;
 import com.fongmi.android.tv.databinding.ActivityHomeBinding;
 import com.fongmi.android.tv.discovery.DiscoveryCatalog;
+import com.fongmi.android.tv.diagnostics.DiagnosticLog;
 import com.fongmi.android.tv.discovery.AiDramaCatalog;
 import com.fongmi.android.tv.discovery.AiDramaRunner;
 import com.fongmi.android.tv.discovery.SourceDiscoveryRunner;
 import com.fongmi.android.tv.discovery.SourcePageCursor;
 import com.fongmi.android.tv.discovery.DiscoveryScanBudget;
 import com.fongmi.android.tv.utils.ResUtil;
+import com.github.catvod.net.NetTrace;
 import com.github.catvod.net.OkHttp;
 import java.io.IOException;
 import java.util.*;
@@ -81,7 +84,11 @@ public final class HomeDiscovery {
         this.render = render;
         this.showHistory = showHistory;
         preferences = activity.getSharedPreferences("discovery_filters", Context.MODE_PRIVATE);
-        client = OkHttp.client().newBuilder().connectTimeout(10, TimeUnit.SECONDS)
+        // Its own dispatcher: queued plugin/background requests on the shared one (5 per host,
+        // 64 in all) must never hold the category lists back after a few tab switches.
+        okhttp3.Dispatcher dispatcher = new okhttp3.Dispatcher();
+        dispatcher.setMaxRequestsPerHost(8);
+        client = OkHttp.client().newBuilder().dispatcher(dispatcher).connectTimeout(10, TimeUnit.SECONDS)
                 .readTimeout(15, TimeUnit.SECONDS).callTimeout(20, TimeUnit.SECONDS).build();
         binding.discoveryAction.setOnClickListener(v -> {
             Runnable action = statusAction;
@@ -153,6 +160,11 @@ public final class HomeDiscovery {
                 .map(group -> new FilterGroup(group.key, group.label, group.options.stream()
                         .map(option -> new Choice(option.label, option.value)).toList())).toList());
     }
+
+    private long roundStart;
+    private String roundTab, roundKind;
+    // Last provider failure of the current round (class + keyword or HTTP status), for diagnostics only.
+    private volatile String roundError;
 
     private String selectedValue(String key) {
         if (active != AI_DRAMA) return state().value(key);
@@ -493,6 +505,8 @@ public final class HomeDiscovery {
         busy = true;
         status("");
         int before = items.size();
+        roundError = null;
+        beginRound("douban");
         int[] remaining = {(int) batches.stream().filter(Objects::isNull).count()};
         for (int i = 0; i < specs.size(); i++) {
             // Keep successful responses and only reissue the failed provider slots.
@@ -502,12 +516,21 @@ public final class HomeDiscovery {
             Call call = client.newCall(new Request.Builder().url(spec.url).headers(Headers.of(spec.headers)).build());
             requests.add(call);
             call.enqueue(new Callback() {
-                @Override public void onFailure(Call call, IOException error) { complete(null); }
+                @Override public void onFailure(Call call, IOException error) {
+                    roundError = NetTrace.reason(error);
+                    complete(null);
+                }
                 @Override public void onResponse(Call call, Response response) {
                     try (response) {
-                        if (!response.isSuccessful() || response.body() == null) throw new IOException("Unavailable");
+                        if (!response.isSuccessful() || response.body() == null) {
+                            roundError = "HTTP" + response.code();
+                            throw new IOException("Unavailable");
+                        }
                         complete(DiscoveryCatalog.parse(response.body().string()));
-                    } catch (Exception error) { complete(null); }
+                    } catch (Exception error) {
+                        if (roundError == null) roundError = NetTrace.reason(error);
+                        complete(null);
+                    }
                 }
                 private void complete(DiscoveryCatalog.Page result) {
                     App.post(() -> {
@@ -537,6 +560,7 @@ public final class HomeDiscovery {
         busy = true; failed = false; pendingRefresh = false;
         status("");
         int before = items.size();
+        beginRound("ai");
         aiDramaRunner.load(retry, batch -> {
             if (token != generation || active != AI_DRAMA || activity.isDestroyed() || activity.isFinishing()) return;
             if (aiDramaRunner == null || !aiDramaRunner.current()) { configChanged(); configReady(); return; }
@@ -550,6 +574,7 @@ public final class HomeDiscovery {
             binding.recycler.setContentDescription("片单，共" + items.size() + "部");
             more = batch.more();
             if (!batch.finished()) return;
+            logRound(before, batch.failed() ? "failed" : batch.metadataFailed() ? "metadata_failed" : null);
             busy = false; failed = batch.failed() || batch.metadataFailed();
             if (failed) scheduleAutoRetry(token, retryAttempt, () -> loadAiDrama(true, retryAttempt + 1));
             else cancelAutoRetry();
@@ -588,6 +613,7 @@ public final class HomeDiscovery {
         // Load silently; reserve the status row for actionable failures.
         status("");
         int before = items.size();
+        beginRound("source");
         Consumer<SourceDiscoveryRunner.Batch> callback = batch -> {
             if (token != generation || activity.isDestroyed() || activity.isFinishing()) return;
             if (sourceRunner == null || !sourceRunner.current()) { configChanged(); configReady(); return; }
@@ -596,6 +622,7 @@ public final class HomeDiscovery {
             binding.recycler.setContentDescription("片单，共" + items.size() + "部");
             more = batch.more();
             if (!batch.finished()) return;
+            logRound(before, batch.failed() ? "partial_failed" : null);
             busy = false; failed = batch.failed(); page++;
             if (failed) scheduleAutoRetry(token, sourceRunner.retryAttempt(), () -> loadSource(false, true));
             else cancelAutoRetry();
@@ -663,6 +690,7 @@ public final class HomeDiscovery {
         // Visible emptiness after adult/promo filtering says nothing about raw provider pages.
         binding.recycler.setContentDescription("片单，共" + items.size() + "部");
         render.accept(new ArrayList<>(items));
+        logRound(targetPage == 0 ? 0 : before, failed ? "failed:" + roundError : null);
         if (targetPage == 0) binding.recycler.scrollToPosition(0);
         String message = items.isEmpty() ? "暂无符合条件的片单" : "";
         if (failed) message = items.isEmpty() ? message + "，部分片单加载失败" : "部分片单加载失败";
@@ -678,6 +706,25 @@ public final class HomeDiscovery {
         });
     }
 
+    private void beginRound(String kind) {
+        roundStart = SystemClock.elapsedRealtime();
+        roundTab = names[active];
+        roundKind = kind;
+    }
+
+    /** One line per load round: which tab, how long, how many cards; never titles or URLs. */
+    private void logRound(int before, String failure) {
+        int added = Math.max(0, items.size() - before);
+        writeRound(failure != null ? failure : items.isEmpty() ? "empty" : "ok", added);
+    }
+
+    private void writeRound(String outcome, int added) {
+        if (roundTab == null) return;
+        DiagnosticLog.write(activity, "category_load", "tab=" + roundTab + " kind=" + roundKind + " ms=" + (SystemClock.elapsedRealtime() - roundStart)
+                + " items=" + items.size() + " added=" + added + " outcome=" + outcome);
+        roundTab = null;
+    }
+
     public void focusCurrentTab() {
         View target = isHistory() ? tabs.get(0) : tabs.get(active);
         if (target != null) target.requestFocus();
@@ -691,6 +738,8 @@ public final class HomeDiscovery {
     }
 
     public void cancel() {
+        // A round left unfinished (tab switched, screen left) is what "keeps spinning" looks like.
+        if (busy) writeRound("cancelled", 0);
         generation++;
         cancelAutoRetry();
         statusAction = null;

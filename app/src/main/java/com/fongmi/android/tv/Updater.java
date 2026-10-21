@@ -48,6 +48,7 @@ public class Updater implements UpdateListener {
     private UpdateDialog dialog;
     private UpdateManifest manifest;
     private volatile GitHubRelease release;
+    private UpdateNotification notification;
     private volatile Call call;
     private volatile boolean canceled;
     private volatile File transfer;
@@ -235,6 +236,8 @@ public class Updater implements UpdateListener {
 
     private void download() {
         File file = null;
+        UpdateNotification shade = new UpdateNotification(manifest.versionName);
+        App.post(() -> { if (host() != null) notification = shade; });
         try {
             File directory = App.get().getCacheDir();
             if (UpdateStorage.availableFor(new File(directory, "ysc-update.apk")) < manifest.size * 2 + 20_000_000L)
@@ -259,18 +262,27 @@ public class Updater implements UpdateListener {
                         if (next != progress) {
                             progress = next;
                             long received = total;
-                            App.post(() -> { if (host() != null && dialog != null) dialog.setProgress(next, received, manifest.size); });
+                            App.post(() -> {
+                                if (host() == null) return;
+                                if (dialog != null) dialog.setProgress(next, received, manifest.size);
+                                shade.progress(next, received, manifest.size);
+                            });
                         }
                     }
                     out.getFD().sync();
                 }
             }
             if (canceled) throw new InterruptedIOException("已取消");
-            App.post(() -> { if (host() != null && dialog != null) dialog.setVerifying(); });
+            App.post(() -> {
+                if (host() == null) return;
+                if (dialog != null) dialog.setVerifying();
+                shade.verifying();
+            });
             ApkVerifier.verify(file, manifest);
             if (canceled) throw new InterruptedIOException("已取消");
             File verified = file;
             App.post(() -> {
+                shade.cancel();
                 if (host() == null) { verified.delete(); return; }
                 pending = verified;
                 transfer = null;
@@ -279,6 +291,7 @@ public class Updater implements UpdateListener {
             });
         } catch (Exception error) {
             if (file != null) file.delete();
+            App.post(shade::cancel);
             if (!canceled) {
                 String message = "更新未安装：" + reason(error);
                 App.post(() -> { if (host() != null && dialog != null) dialog.setError(message); });
@@ -324,6 +337,7 @@ public class Updater implements UpdateListener {
         canceled = true;
         waitingPermission = false;
         if (call != null) call.cancel();
+        if (notification != null) notification.cancel();
         File partial = transfer;
         if (partial != null) partial.delete();
         // The external installer may still be reading a verified APK after the host is destroyed.

@@ -120,16 +120,22 @@ public class SiteApi {
         }
     }
 
+    // The init gate bounds plugin creation only. An already initialized spider is returned
+    // directly, so details and categories never queue behind a search's plugin start-ups.
     private static Spider crawler(Site site) throws Exception {
-        return withPermit(CRAWLER_INIT_GATE, site::spider);
+        Spider cached = site.cachedSpider();
+        return cached != null ? cached : withPermit(CRAWLER_INIT_GATE, site::spider);
     }
 
     private static Spider recentCrawler(Site site) throws Exception {
-        return withPermit(CRAWLER_INIT_GATE, () -> site.recent().spider());
+        site.recent();
+        Spider cached = site.cachedSpider();
+        return cached != null ? cached : withPermit(CRAWLER_INIT_GATE, site::spider);
     }
 
     private static Spider searchSpider(Site site, SearchRequestScope scope) throws Exception {
-        return withPermit(CRAWLER_INIT_GATE, scope, site::spider);
+        Spider cached = site.cachedSpider();
+        return cached != null ? cached : withPermit(CRAWLER_INIT_GATE, scope, site::spider);
     }
 
     private static <T> T crawlerCall(Spider spider, Callable<T> operation) throws Exception {

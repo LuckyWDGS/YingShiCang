@@ -31,6 +31,11 @@ public class JsLoader {
         this.recent = recent;
     }
 
+    /** An already initialized spider, without loading or waiting; null otherwise. */
+    public Spider cachedSpider(String key, String api, String ext, String jar) {
+        return spiders.get(key + "\0" + api + "\0" + ext + "\0" + jar);
+    }
+
     public Spider getSpider(String key, String api, String ext, String jar) {
         String identity = key + "\0" + api + "\0" + ext + "\0" + jar;
         return spiders.computeIfAbsent(identity, k -> {

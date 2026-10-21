@@ -334,6 +334,11 @@ public class Site implements Parcelable {
         return this;
     }
 
+    /** The spider if it is already initialized, else null; never loads or blocks. */
+    public Spider cachedSpider() {
+        return BaseLoader.get().cachedSpider(getKey(), getApi(), getExt(), getJar());
+    }
+
     public Spider spider() {
         return BaseLoader.get().getSpider(getKey(), getApi(), getExt(), getJar());
     }

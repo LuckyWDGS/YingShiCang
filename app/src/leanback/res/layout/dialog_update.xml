@@ -145,24 +145,65 @@
 
     </androidx.core.widget.NestedScrollView>
 
-    <androidx.appcompat.widget.LinearLayoutCompat
-        android:id="@+id/transfer"
+    <!-- Install/failure messages; download progress itself sits in the action slot below. -->
+    <com.google.android.material.textview.MaterialTextView
+        android:id="@+id/status"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="14dp"
+        android:ellipsize="end"
+        android:maxLines="3"
+        android:textColor="@color/tv_theme_text"
+        android:textSize="14sp"
+        android:visibility="gone"
+        tools:text="下载及校验完成，等待确认安装"
+        tools:visibility="visible" />
+
+    <!-- One 56dp slot holds either the buttons or the download progress, so starting a download never
+         resizes (and re-centres) the dialog window. -->
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="14dp"
+        android:clipToPadding="false">
+
+    <androidx.appcompat.widget.LinearLayoutCompat
+        android:id="@+id/transfer"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:gravity="center_vertical"
         android:orientation="vertical"
         android:visibility="gone"
         tools:visibility="visible">
 
-        <com.google.android.material.textview.MaterialTextView
-            android:id="@+id/status"
+        <androidx.appcompat.widget.LinearLayoutCompat
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:ellipsize="end"
-            android:maxLines="3"
-            android:textColor="@color/tv_theme_text"
-            android:textSize="14sp"
-            tools:text="正在下载安装包…" />
+            android:orientation="horizontal">
+
+            <com.google.android.material.textview.MaterialTextView
+                android:id="@+id/transferText"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:singleLine="true"
+                android:textColor="@color/tv_theme_text"
+                android:textSize="14sp"
+                tools:text="正在下载安装包…" />
+
+            <com.google.android.material.textview.MaterialTextView
+                android:id="@+id/progressText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:fontFeatureSettings="tnum"
+                android:singleLine="true"
+                android:textColor="@color/tv_theme_text_secondary"
+                android:textSize="13sp"
+                tools:text="45%  ·  42.6 MB / 94.7 MB" />
+
+        </androidx.appcompat.widget.LinearLayoutCompat>
 
         <ProgressBar
             android:id="@+id/progressBar"
@@ -176,23 +217,14 @@
             android:progressTint="#F2F2F2"
             tools:progress="45" />
 
-        <com.google.android.material.textview.MaterialTextView
-            android:id="@+id/progressText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:textColor="@color/tv_theme_text_secondary"
-            android:textSize="13sp"
-            tools:text="45%  ·  42.6 MB / 94.7 MB" />
-
     </androidx.appcompat.widget.LinearLayoutCompat>
 
     <!-- Buttons reserve 4dp for the outer focus ring; the negative margin keeps their visible edges on the content edges. -->
     <androidx.appcompat.widget.LinearLayoutCompat
+        android:id="@+id/buttons"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginStart="-4dp"
-        android:layout_marginTop="14dp"
         android:layout_marginEnd="-4dp"
         android:orientation="horizontal">
 
@@ -247,6 +279,8 @@
             tools:text="暂不更新" />
 
     </androidx.appcompat.widget.LinearLayoutCompat>
+
+    </FrameLayout>
 
     <com.google.android.material.textview.MaterialTextView
         android:id="@+id/backHint"
