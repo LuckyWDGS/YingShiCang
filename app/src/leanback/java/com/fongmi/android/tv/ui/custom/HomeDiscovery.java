@@ -546,7 +546,10 @@ public final class HomeDiscovery {
             String message = batch.failed() ? items.isEmpty() ? "短剧漫剧加载失败" : "加载更多失败，已保留当前片单"
                     : batch.metadataFailed() ? items.isEmpty() ? "题材筛选加载失败" : "题材筛选加载失败，已保留当前片单"
                     : items.isEmpty() ? more ? "暂未找到符合条件的短剧漫剧" : "暂无符合条件的短剧漫剧" : "";
-            outcome(scanMore && items.isEmpty() ? "" : message,
+            // A failure that will be retried automatically stays silent: showing it for the
+            // ~0.7s backoff only flashed "加载失败" before the retry cleared it.
+            if (failed && autoRetry != null) status("");
+            else outcome(scanMore && items.isEmpty() ? "" : message,
                     () -> loadAiDrama(true, 0), () -> loadAiDrama(false, 0));
             if (scanMore) binding.recycler.post(() -> {
                 if (token != generation || active != AI_DRAMA || busy || !activeScreen) return;
