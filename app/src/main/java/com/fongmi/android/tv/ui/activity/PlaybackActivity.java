@@ -606,6 +606,13 @@ public abstract class PlaybackActivity extends BaseActivity implements MediaCont
     }
 
     @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        // A plugin dialog takes focus; answer the cloud-drive chooser so its QR shows directly.
+        if (!hasFocus) com.fongmi.android.tv.cloudlogin.CloudLoginChooser.onFocusLost(this);
+    }
+
+    @Override
     protected void onResume() {
         super.onResume();
         claimBinding();
