@@ -88,6 +88,7 @@ public class SettingActivity extends BaseActivity implements ConfigListener, Sit
     private void setOtherText() {
         mBinding.dohText.setText(getDohList()[getDohIndex()]);
         mBinding.incognitoText.setText(Setting.getSwitch(Setting.isIncognito()));
+        mBinding.chapterMarkerText.setText(Setting.getSwitch(PlayerSetting.isChapterMarker()));
         mBinding.sizeText.setText((size = ResUtil.getStringArray(R.array.select_size))[PlayerSetting.getSize()]);
     }
 
@@ -120,6 +121,7 @@ public class SettingActivity extends BaseActivity implements ConfigListener, Sit
         mBinding.liveHome.setOnClickListener(this::onLiveHome);
         mBinding.wall.setOnLongClickListener(this::onWallEdit);
         mBinding.incognito.setOnClickListener(this::setIncognito);
+        mBinding.chapterMarker.setOnClickListener(this::setChapterMarker);
         mBinding.wallDefault.setOnClickListener(this::setWallDefault);
         mBinding.wallRefresh.setOnClickListener(this::setWallRefresh);
         mBinding.wallRefresh.setOnLongClickListener(this::onWallHistory);
@@ -247,6 +249,11 @@ public class SettingActivity extends BaseActivity implements ConfigListener, Sit
     private boolean onWallHistory(View view) {
         HistoryDialog.create().wall().show(this);
         return true;
+    }
+
+    private void setChapterMarker(View view) {
+        PlayerSetting.putChapterMarker(!PlayerSetting.isChapterMarker());
+        mBinding.chapterMarkerText.setText(Setting.getSwitch(PlayerSetting.isChapterMarker()));
     }
 
     private void setIncognito(View view) {

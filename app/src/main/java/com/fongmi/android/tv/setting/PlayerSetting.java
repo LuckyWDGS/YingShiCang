@@ -62,6 +62,15 @@ public class PlayerSetting {
         Prefers.put("mpv_gpu_next", gpuNext);
     }
 
+    // Highlight markers on the seek bar; off by default until the feature is confirmed on devices.
+    public static boolean isChapterMarker() {
+        return Prefers.getBoolean("chapter_marker", false);
+    }
+
+    public static void putChapterMarker(boolean marker) {
+        Prefers.put("chapter_marker", marker);
+    }
+
     public static boolean isMpvVulkan() {
         return Prefers.getBoolean("mpv_vulkan");
     }

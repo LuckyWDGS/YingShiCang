@@ -277,6 +277,7 @@
     <string name="setting_player">播放設定</string>
     <string name="setting_danmaku">彈幕設定</string>
     <string name="setting_incognito">無痕模式</string>
+    <string name="setting_chapter_marker">精彩點標記</string>
     <string name="setting_theme_color">主題色彩</string>
     <string name="setting_auto">自動</string>
     <string name="setting_custom">自訂</string>

@@ -273,6 +273,7 @@
     <string name="setting_player">Player setting</string>
     <string name="setting_danmaku">Danmaku setting</string>
     <string name="setting_incognito">Incognito mode</string>
+    <string name="setting_chapter_marker">Highlight markers</string>
     <string name="setting_theme_color">Theme color</string>
     <string name="setting_auto">Auto</string>
     <string name="setting_custom">Custom</string>

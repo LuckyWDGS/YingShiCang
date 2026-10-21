@@ -157,6 +157,7 @@
                 android:id="@+id/vodHome"
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
+                android:layout_marginEnd="7dp"
                 android:layout_weight="1"
                 android:background="@drawable/selector_setting_item"
                 android:focusable="true"
@@ -193,6 +194,22 @@
                     android:text=">"
                     android:textColor="@color/tv_theme_text"
                     android:textSize="16sp" />
+            </androidx.appcompat.widget.LinearLayoutCompat>
+            <androidx.appcompat.widget.LinearLayoutCompat
+                android:id="@+id/chapterMarker"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:background="@drawable/selector_setting_item"
+                android:focusable="true"
+                android:focusableInTouchMode="false"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="9dp"
+                android:paddingEnd="7dp">
+                <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:fontFamily="sans-serif-medium" android:maxLines="1" android:text="@string/setting_chapter_marker" android:textColor="@color/tv_theme_text" android:textSize="16sp" />
+                <TextView android:id="@+id/chapterMarkerText" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="center_vertical|end" android:maxLines="1" android:textColor="@color/tv_theme_text" android:textSize="14sp" tools:text="关" />
+                <TextView android:layout_width="14dp" android:layout_height="wrap_content" android:gravity="center" android:includeFontPadding="false" android:text=">" android:textColor="@color/tv_theme_text" android:textSize="16sp" />
             </androidx.appcompat.widget.LinearLayoutCompat>
         </androidx.appcompat.widget.LinearLayoutCompat>
 

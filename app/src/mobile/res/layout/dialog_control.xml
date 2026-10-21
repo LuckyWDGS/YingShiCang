@@ -9,6 +9,17 @@
     tools:background="@color/white">
 
     <com.google.android.material.textview.MaterialTextView
+        android:id="@+id/netSpeed"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="12dp"
+        android:textColor="?attr/colorOnSurface"
+        android:textSize="16sp"
+        android:visibility="gone"
+        tools:text="网速：1.2 MB/s"
+        tools:visibility="visible" />
+
+    <com.google.android.material.textview.MaterialTextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="@string/control_speed"

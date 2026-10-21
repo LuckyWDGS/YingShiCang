@@ -14,27 +14,44 @@ public class Traffic {
     private static final int UID = App.get().getApplicationInfo().uid;
     private static final String UNIT_KB = " KB/s";
     private static final String UNIT_MB = " MB/s";
-
-    private static long lastTotalRxBytes;
-    private static long lastTimeStamp;
+    private static final Meter METER = new Meter();
 
     public static void setSpeed(TextView view) {
-        if (TrafficStats.getUidRxBytes(UID) == TrafficStats.UNSUPPORTED) return;
+        if (!isSupported()) return;
         view.setVisibility(View.VISIBLE);
-        view.setText(getSpeed());
+        view.setText(METER.read());
     }
 
-    private static String getSpeed() {
-        long nowTimeStamp = System.currentTimeMillis();
-        long nowTotalRxBytes = TrafficStats.getUidRxBytes(UID) / 1024;
-        long speed = (nowTotalRxBytes - lastTotalRxBytes) * 1000 / Math.max(nowTimeStamp - lastTimeStamp, 1);
-        lastTimeStamp = nowTimeStamp;
-        lastTotalRxBytes = nowTotalRxBytes;
-        return speed < 1000 ? speed + UNIT_KB : format.format(speed / 1024f) + UNIT_MB;
+    public static boolean isSupported() {
+        return TrafficStats.getUidRxBytes(UID) != TrafficStats.UNSUPPORTED;
     }
 
     public static void reset() {
-        lastTotalRxBytes = 0;
-        lastTimeStamp = 0;
+        METER.reset();
+    }
+
+    static String format(long kbPerSecond) {
+        return kbPerSecond < 1000 ? kbPerSecond + UNIT_KB : format.format(kbPerSecond / 1024f) + UNIT_MB;
+    }
+
+    /** Independent sampler, so a second reader (e.g. the More panel) does not skew the loading indicator. */
+    public static class Meter {
+
+        private long lastTotalRxBytes;
+        private long lastTimeStamp;
+
+        public String read() {
+            long nowTimeStamp = System.currentTimeMillis();
+            long nowTotalRxBytes = TrafficStats.getUidRxBytes(UID) / 1024;
+            long speed = lastTimeStamp == 0 ? 0 : (nowTotalRxBytes - lastTotalRxBytes) * 1000 / Math.max(nowTimeStamp - lastTimeStamp, 1);
+            lastTimeStamp = nowTimeStamp;
+            lastTotalRxBytes = nowTotalRxBytes;
+            return format(Math.max(speed, 0));
+        }
+
+        public void reset() {
+            lastTotalRxBytes = 0;
+            lastTimeStamp = 0;
+        }
     }
 }

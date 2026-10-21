@@ -23,6 +23,7 @@ import com.fongmi.android.tv.ui.custom.SpaceItemDecoration;
 import com.fongmi.android.tv.utils.ResUtil;
 import com.fongmi.android.tv.utils.SliderUtil;
 import com.fongmi.android.tv.utils.Timer;
+import com.fongmi.android.tv.utils.Traffic;
 import com.google.android.material.slider.Slider;
 
 import java.util.Arrays;
@@ -31,6 +32,8 @@ import java.util.List;
 public class ControlDialog extends BaseBottomSheetDialog implements ParseAdapter.OnClickListener {
 
     private final String[] scale;
+    private final Traffic.Meter meter = new Traffic.Meter();
+    private final Runnable netSpeed = this::updateNetSpeed;
     private DialogControlBinding binding;
     private ActivityVideoBinding parent;
     private List<TextView> scales;
@@ -86,6 +89,28 @@ public class ControlDialog extends BaseBottomSheetDialog implements ParseAdapter
         setScaleText();
         setPlayer();
         setParse();
+        startNetSpeed();
+    }
+
+    private void startNetSpeed() {
+        if (!Traffic.isSupported()) return;
+        binding.netSpeed.setVisibility(View.VISIBLE);
+        meter.read();
+        binding.netSpeed.setText(getString(R.string.control_network_speed, "--"));
+        binding.netSpeed.postDelayed(netSpeed, 1000);
+    }
+
+    private void updateNetSpeed() {
+        if (binding == null) return;
+        binding.netSpeed.setText(getString(R.string.control_network_speed, meter.read()));
+        binding.netSpeed.postDelayed(netSpeed, 1000);
+    }
+
+    @Override
+    public void onDestroyView() {
+        if (binding != null) binding.netSpeed.removeCallbacks(netSpeed);
+        super.onDestroyView();
+        binding = null;
     }
 
     @Override

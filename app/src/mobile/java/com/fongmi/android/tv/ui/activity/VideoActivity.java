@@ -351,7 +351,8 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         mBinding.control.action.ending.setOnClickListener(view -> onEnding());
         mBinding.control.action.repeat.setOnClickListener(view -> onRepeat());
         mBinding.control.action.opening.setOnClickListener(view -> onOpening());
-        mBinding.control.action.danmaku.setOnClickListener(view -> onDanmaku());
+        mBinding.control.action.danmaku.setOnClickListener(view -> onDanmakuToggle());
+        mBinding.control.action.danmaku.setOnLongClickListener(view -> onDanmaku());
         mBinding.control.action.edition.setOnClickListener(view -> onEdition());
         mBinding.control.action.chapter.setOnClickListener(view -> onChapter());
         mBinding.control.action.episodes.setOnClickListener(view -> onEpisodes());
@@ -389,7 +390,8 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
 
     private void setVideoView() {
         PlayerEngineDialog.setText(mBinding.control.action.player);
-        mBinding.control.action.danmaku.setVisibility(DanmakuSetting.isLoad() ? View.VISIBLE : View.GONE);
+        mBinding.control.action.danmaku.setVisibility(View.VISIBLE);
+        checkDanmakuImg();
         mBinding.video.addOnLayoutChangeListener((view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> mPiP.update(this, view));
     }
 
@@ -957,9 +959,20 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         hideControl();
     }
 
-    private void onDanmaku() {
+    // Long press keeps the source/search dialog; a tap simply turns danmaku on or off.
+    private boolean onDanmaku() {
         DanmakuDialog.create().player(player()).show(this);
         hideControl();
+        return true;
+    }
+
+    private void onDanmakuToggle() {
+        player().enableDanmaku(!isDanmakuOn());
+        checkDanmakuImg();
+    }
+
+    private boolean isDanmakuOn() {
+        return DanmakuSetting.isLoad() && DanmakuSetting.isShow();
     }
 
     private void onDanmakuShow() {
@@ -1153,6 +1166,7 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
 
     private void showControl() {
         if (service() == null || isInPictureInPictureMode()) return;
+        checkDanmakuImg();
         mBinding.control.danmaku.setVisibility(isLock() || !player().haveDanmaku() ? View.GONE : View.VISIBLE);
         mBinding.control.setting.setVisibility(mHistory == null || isFullscreen() ? View.GONE : View.VISIBLE);
         mBinding.control.right.rotate.setVisibility(isFullscreen() && !isLock() ? View.VISIBLE : View.GONE);
@@ -1241,6 +1255,7 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
 
     private void checkDanmakuImg() {
         mBinding.control.danmaku.setImageResource(DanmakuSetting.isShow() ? R.drawable.ic_control_danmaku_on : R.drawable.ic_control_danmaku_off);
+        mBinding.control.action.danmaku.setText(isDanmakuOn() ? R.string.danmaku_state_on : R.string.danmaku_state_off);
     }
 
     private void createKeep() {
