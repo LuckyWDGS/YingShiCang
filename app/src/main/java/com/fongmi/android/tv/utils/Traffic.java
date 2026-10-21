@@ -10,9 +10,8 @@ import java.text.DecimalFormat;
 
 public class Traffic {
 
-    private static final DecimalFormat format = new DecimalFormat("#.0");
+    private static final DecimalFormat format = new DecimalFormat("0.00");
     private static final int UID = App.get().getApplicationInfo().uid;
-    private static final String UNIT_KB = " KB/s";
     private static final String UNIT_MB = " MB/s";
     private static final Meter METER = new Meter();
 
@@ -30,8 +29,9 @@ public class Traffic {
         METER.reset();
     }
 
+    // Always MB/s so the value keeps one unit while it fluctuates.
     static String format(long kbPerSecond) {
-        return kbPerSecond < 1000 ? kbPerSecond + UNIT_KB : format.format(kbPerSecond / 1024f) + UNIT_MB;
+        return format.format(kbPerSecond / 1024f) + UNIT_MB;
     }
 
     /** Independent sampler, so a second reader (e.g. the More panel) does not skew the loading indicator. */
