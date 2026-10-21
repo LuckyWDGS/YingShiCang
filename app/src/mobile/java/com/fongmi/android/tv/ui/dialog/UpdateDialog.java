@@ -30,7 +30,7 @@ public class UpdateDialog extends BaseAlertDialog {
     private boolean focusCancelPending;
     private boolean mandatory;
 
-    private enum Phase { AVAILABLE, DOWNLOADING, VERIFYING, READY, ERROR, MANUAL }
+    private enum Phase { AVAILABLE, CHECKING, DOWNLOADING, VERIFYING, READY, ERROR, MANUAL }
 
     public static UpdateDialog create() {
         return new UpdateDialog();
@@ -109,7 +109,7 @@ public class UpdateDialog extends BaseAlertDialog {
     }
 
     public void setProgress(int progress, long downloaded, long total) {
-        if (phase != Phase.DOWNLOADING && phase != Phase.VERIFYING) focusCancelPending = true;
+        if (phase != Phase.CHECKING && phase != Phase.DOWNLOADING && phase != Phase.VERIFYING) focusCancelPending = true;
         phase = Phase.DOWNLOADING;
         this.progress = Math.max(0, Math.min(100, progress));
         this.downloaded = downloaded;
@@ -138,11 +138,27 @@ public class UpdateDialog extends BaseAlertDialog {
         render();
     }
 
-    /** No package can be downloaded here: announce the version and offer only a close button. */
+    /** The package list could not be fetched: announce the version and offer to try again. */
     public void setManual() {
+        setManual(null);
+    }
+
+    public void setManual(String message) {
         phase = Phase.MANUAL;
-        focusCancelPending = true;
+        status = message;
         render();
+    }
+
+    /** Retrying the package list after a failed fetch. */
+    public void setChecking() {
+        if (phase != Phase.CHECKING) focusCancelPending = true;
+        phase = Phase.CHECKING;
+        status = "正在连接下载服务器…";
+        render();
+    }
+
+    /** The phone dialog writes the size into its text only when created; kept for the shared Updater API. */
+    public void setPackageSize(long bytes) {
     }
 
     private void limitDescriptionHeight() {
@@ -157,11 +173,13 @@ public class UpdateDialog extends BaseAlertDialog {
     private void render() {
         if (binding == null) return;
         boolean manual = phase == Phase.MANUAL;
-        binding.transfer.setVisibility(phase == Phase.AVAILABLE || manual ? View.GONE : View.VISIBLE);
+        binding.transfer.setVisibility(phase == Phase.AVAILABLE || manual && status == null ? View.GONE : View.VISIBLE);
+        binding.progressBar.setVisibility(manual ? View.GONE : View.VISIBLE);
+        binding.progressText.setVisibility(manual || phase == Phase.CHECKING ? View.GONE : View.VISIBLE);
         binding.status.setAccessibilityLiveRegion(phase == Phase.ERROR || phase == Phase.READY
                 ? View.ACCESSIBILITY_LIVE_REGION_POLITE : View.ACCESSIBILITY_LIVE_REGION_NONE);
         binding.status.setText(status);
-        binding.progressBar.setIndeterminate(phase == Phase.VERIFYING);
+        binding.progressBar.setIndeterminate(phase == Phase.VERIFYING || phase == Phase.CHECKING);
         binding.progressBar.setProgress(progress);
         binding.progressText.setText(progressText());
         AlertDialog dialog = (AlertDialog) getDialog();
@@ -169,15 +187,15 @@ public class UpdateDialog extends BaseAlertDialog {
         Button confirm = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
         Button cancel = dialog.getButton(AlertDialog.BUTTON_NEGATIVE);
         if (confirm == null || cancel == null) return;
-        boolean busy = phase == Phase.DOWNLOADING || phase == Phase.VERIFYING;
-        confirm.setVisibility(manual ? View.GONE : View.VISIBLE);
+        boolean busy = phase == Phase.CHECKING || phase == Phase.DOWNLOADING || phase == Phase.VERIFYING;
+        confirm.setVisibility(View.VISIBLE);
         confirm.setEnabled(!busy);
         confirm.setFocusable(!busy);
-        confirm.setText(phase == Phase.READY ? "安装" : phase == Phase.ERROR ? "重试下载"
+        confirm.setText(phase == Phase.READY ? "安装" : phase == Phase.ERROR || manual ? "重试下载"
                 : phase == Phase.AVAILABLE ? "下载并安装" : getString(R.string.update_confirm));
         cancel.setVisibility(!mandatory || phase == Phase.ERROR || manual ? View.VISIBLE : View.GONE);
         cancel.setText(mandatory ? "暂时继续使用" : manual ? "知道了" : phase == Phase.READY || phase == Phase.ERROR ? "关闭"
-                : phase == Phase.DOWNLOADING ? "取消下载" : phase == Phase.VERIFYING ? "取消"
+                : phase == Phase.DOWNLOADING ? "取消下载" : phase == Phase.VERIFYING || phase == Phase.CHECKING ? "取消"
                 : "暂不更新");
         if (focusCancelPending) {
             cancel.requestFocus();

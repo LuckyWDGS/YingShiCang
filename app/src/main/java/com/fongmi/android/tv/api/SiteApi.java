@@ -22,6 +22,7 @@ import com.fongmi.android.tv.utils.ResUtil;
 import com.fongmi.android.tv.utils.Sniffer;
 import com.github.catvod.crawler.Spider;
 import com.github.catvod.crawler.SpiderDebug;
+import com.github.catvod.net.NetTrace;
 import com.github.catvod.net.OkHttp;
 import com.github.catvod.utils.Prefers;
 import com.github.catvod.utils.Util;
@@ -423,31 +424,74 @@ public class SiteApi {
     @NonNull
     public static Result detailContent(@NonNull String key, @NonNull String id) throws Exception {
         long start = SystemClock.elapsedRealtime();
+        NetTrace.Recording net = NetTrace.begin();
         try {
             Result result = detail(key, id);
-            timing("source_detail", key, start, result.getList().isEmpty() ? "empty" : "ok");
+            timing("source_detail", key, start, (result.getList().isEmpty() ? "empty" : "ok") + " " + net.end());
             return result;
         } catch (Exception error) {
-            timing("source_detail", key, start, error.getClass().getSimpleName());
+            timing("source_detail", key, start, failure(error) + " " + net.end());
             throw error;
+        } finally {
+            net.end();
         }
     }
 
     @NonNull
     public static Result playerContent(@NonNull String key, @NonNull String flag, @NonNull String id) throws Exception {
         long start = SystemClock.elapsedRealtime();
+        NetTrace.Recording net = NetTrace.begin();
+        SPIDER_MS.set(-1L);
         // Cloud-drive plugins show their login chooser while resolving the address.
         CloudLoginChooser.watch(true);
         try {
             Result result = player(key, flag, id);
-            timing("source_player", key, start, "ok");
+            timing("source_player", key, start, played(result) + " drive=" + drive(flag) + spiderMs() + " " + net.end());
             return result;
         } catch (Exception error) {
-            timing("source_player", key, start, error.getClass().getSimpleName());
+            timing("source_player", key, start, failure(error) + " drive=" + drive(flag) + spiderMs() + " " + net.end());
             throw error;
         } finally {
+            net.end();
+            SPIDER_MS.remove();
             CloudLoginChooser.watch(false);
         }
+    }
+
+    // Per calling thread: the plugin's own playerContent time, apart from the app's sniffing after it.
+    private static final ThreadLocal<Long> SPIDER_MS = new ThreadLocal<>();
+
+    private static String spiderMs() {
+        Long ms = SPIDER_MS.get();
+        return ms == null || ms < 0 ? "" : " spiderMs=" + ms;
+    }
+
+    private static String played(Result result) {
+        if (result.getUrl().isEmpty()) return "nourl";
+        return result.getParse() == 1 || result.getJx() == 1 ? "parse" : "ok";
+    }
+
+    /** The exception and its root cause, as classes plus fixed keywords; messages may carry URLs. */
+    static String failure(Throwable error) {
+        Throwable root = error;
+        for (int i = 0; i < 8 && root.getCause() != null && root.getCause() != root; i++) root = root.getCause();
+        String outcome = NetTrace.reason(error);
+        return root == error ? outcome : outcome + " cause=" + NetTrace.reason(root);
+    }
+
+    /** The cloud-drive family a line (flag) name refers to; anything else is "other". */
+    static String drive(String flag) {
+        String value = flag == null ? "" : flag.toLowerCase(java.util.Locale.ROOT);
+        if (value.contains("夸克") || value.contains("quark")) return "quark";
+        if (value.contains("uc")) return "uc";
+        if (value.contains("百度") || value.contains("嘟嘟") || value.contains("baidu")) return "baidu";
+        if (value.contains("阿里") || value.contains("ali")) return "ali";
+        if (value.contains("115")) return "115";
+        if (value.contains("123")) return "123";
+        if (value.contains("迅雷") || value.contains("xunlei")) return "xunlei";
+        if (value.contains("天翼") || value.contains("189")) return "tianyi";
+        if (value.contains("移动") || value.contains("139")) return "yidong";
+        return "other";
     }
 
     /** How long a source took to answer, so a slow line shows in uploaded logs; never URLs, titles or IDs. */
@@ -527,8 +571,14 @@ public class SiteApi {
             return result;
         } else if (site.getType() == 3) {
             Spider spider = recentCrawler(site);
-            String playerContent = spiderCall(spider, Constant.TIMEOUT_VOD,
-                    () -> spider.playerContent(flag, id, VodConfig.get().getFlags()));
+            long spiderStart = SystemClock.elapsedRealtime();
+            String playerContent;
+            try {
+                playerContent = spiderCall(spider, Constant.TIMEOUT_VOD,
+                        () -> spider.playerContent(flag, id, VodConfig.get().getFlags()));
+            } finally {
+                SPIDER_MS.set(SystemClock.elapsedRealtime() - spiderStart);
+            }
             SpiderDebug.log("player", playerContent);
             Result result = App.gson().fromJson(ResourceResponseSchema.json(playerContent, false), Result.class).trans();
             if (result.getFlag().isEmpty()) result.setFlag(flag);

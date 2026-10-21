@@ -160,6 +160,18 @@ public final class HomeDiscovery {
         return selected == null ? "" : selected.value(key);
     }
 
+    // Each app start opens 短剧漫剧 on 全部/默认; only the AI漫剧/AI短剧 type is remembered across launches.
+    private static boolean aiDramaFiltersReset;
+
+    private String savedAiDrama() {
+        String saved = preferences.getString("ai_drama", "");
+        if (aiDramaFiltersReset) return saved;
+        aiDramaFiltersReset = true;
+        saved = AiDramaCatalog.typeOnly(saved);
+        preferences.edit().putString("ai_drama", saved).apply();
+        return saved;
+    }
+
     private void persistAiDrama() {
         AiDramaCatalog.State selected = aiDramaRunner == null ? null : aiDramaRunner.state();
         if (selected != null) preferences.edit().putString("ai_drama", selected.serialize()).apply();
@@ -516,7 +528,7 @@ public final class HomeDiscovery {
     private void loadAiDrama(boolean retry, int retryAttempt) {
         if (aiDramaRunner == null) {
             scanBudget.reset();
-            aiDramaRunner = new AiDramaRunner(client, aiDramaCache, preferences.getString("ai_drama", ""));
+            aiDramaRunner = new AiDramaRunner(client, aiDramaCache, savedAiDrama());
             // A successful metadata cache can restore real choices synchronously.
             // If already expanded, show them before waiting for the page request.
             if (binding.filterPanel.getVisibility() == View.VISIBLE) showFilters(true);

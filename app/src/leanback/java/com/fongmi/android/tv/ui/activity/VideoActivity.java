@@ -113,6 +113,7 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
     private CustomKeyDownVod mKeyDown;
     private Clock mClock;
     private View mFocus1;
+    private boolean mTimeBarCenter;
     private View mFocus2;
     private Runnable mR1;
     private Runnable mR2;
@@ -1488,7 +1489,28 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
 
     private View getFocus2() {
         if (isMoreControl(mFocus2)) return mBinding.control.action.more;
-        return !isControlFocus(mFocus2) || mFocus2.getVisibility() != View.VISIBLE || mFocus2 == mBinding.control.action.opening || mFocus2 == mBinding.control.action.ending ? mBinding.control.action.next : mFocus2;
+        // The time bar is the default stop: a stray OK there pauses instead of skipping to the next episode.
+        return !isControlFocus(mFocus2) || mFocus2.getVisibility() != View.VISIBLE || mFocus2 == mBinding.control.action.opening || mFocus2 == mBinding.control.action.ending ? timeBar() : mFocus2;
+    }
+
+    private View timeBar() {
+        return mBinding.control.seek.findViewById(androidx.media3.ui.R.id.exo_progress);
+    }
+
+    /** OK on the time bar toggles playback; a press that commits a scrub stays the time bar's own. */
+    private boolean handleTimeBarCenter(KeyEvent event) {
+        if (!KeyUtil.isEnterKey(event) || !isVisible(mBinding.control.getRoot()) || getCurrentFocus() != timeBar()) {
+            mTimeBarCenter = false;
+            return false;
+        }
+        if (event.getAction() == KeyEvent.ACTION_DOWN) {
+            if (event.getRepeatCount() == 0) mTimeBarCenter = !isScrubbing();
+            return mTimeBarCenter;
+        }
+        if (event.getAction() != KeyEvent.ACTION_UP || !mTimeBarCenter) return false;
+        mTimeBarCenter = false;
+        onKeyCenter();
+        return true;
     }
 
     private boolean isControlFocus(View view) {
@@ -1506,6 +1528,7 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
         if (isFullscreen() && KeyUtil.isMenuKey(event)) onToggle();
         if (isVisible(mBinding.control.getRoot())) setR1Callback();
         if (handleMediaEpisodeKey(event)) return true;
+        if (handleTimeBarCenter(event)) return true;
         int code = event.getKeyCode();
         boolean direction = code == KeyEvent.KEYCODE_DPAD_UP || code == KeyEvent.KEYCODE_DPAD_DOWN || code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT;
         if (isFullscreen() && isVisible(mBinding.control.getRoot()) && event.getAction() == KeyEvent.ACTION_DOWN && direction && !isControlFocus(getCurrentFocus()) && !isScrubbing()) {

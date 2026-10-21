@@ -52,6 +52,23 @@ public class AiDramaCatalogTest {
                 new AiDramaCatalog.Category("ai", "AI短剧", List.of(topic, sort))));
     }
 
+    @Test public void typeOnlyKeepsTheTypeAndRestoresTopicAndSortDefaults() {
+        var sort = new AiDramaCatalog.Group("sort", "排序", "", List.of(option("默认", ""), option("最新", "online_time")));
+        var comic = new AiDramaCatalog.Category("comic", "AI漫剧", List.of(topic("", option("全部", ""), option("求生", "native:379")), sort));
+        var ai = new AiDramaCatalog.Category("ai", "AI短剧", List.of(topic("", option("全部", ""), option("玄幻", "fantasy")), sort));
+        var catalog = new AiDramaCatalog(List.of(comic, ai));
+        var state = new AiDramaCatalog.State(catalog, "source");
+        assertTrue(state.select(AiDramaCatalog.CATEGORY, "ai"));
+        assertTrue(state.select("topic", "fantasy"));
+        var restored = new AiDramaCatalog.State(catalog, "source");
+        restored.restore(AiDramaCatalog.typeOnly(state.serialize()));
+        assertEquals("ai", restored.categoryId());
+        assertEquals("", restored.value("topic"));
+        assertEquals("", restored.value("sort"));
+        assertEquals("", AiDramaCatalog.typeOnly("not json"));
+        assertEquals("", AiDramaCatalog.typeOnly(null));
+    }
+
     @Test public void latestAndTopicAreMutuallyExclusiveAndPersistOnlyLegalValues() {
         var state = new AiDramaCatalog.State(sortableCatalog(), "scope");
         assertTrue(state.select(AiDramaCatalog.SORT, AiDramaCatalog.LATEST));

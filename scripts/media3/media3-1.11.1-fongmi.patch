@@ -64888,10 +64888,10 @@ index 0000000..f1aae09
 +}
 diff --git a/libraries/ui/src/main/java/androidx/media3/ui/PlayerSeekView.java b/libraries/ui/src/main/java/androidx/media3/ui/PlayerSeekView.java
 new file mode 100644
-index 0000000..df60bf9
+index 0000000..91ac45d
 --- /dev/null
 +++ b/libraries/ui/src/main/java/androidx/media3/ui/PlayerSeekView.java
-@@ -0,0 +1,586 @@
+@@ -0,0 +1,585 @@
 +/*
 + * Copyright (C) 2026 The Android Open Source Project
 + *
@@ -65238,13 +65238,12 @@ index 0000000..df60bf9
 +
 +  private void updateScrubViews(long positionMs) {
 +    @Nullable String chapterLabel = getChapterLabel(positionMs);
-+    positionView.setText(getTimeString(positionMs));
++    String time = getTimeString(positionMs);
++    positionView.setText(time);
 +    updateChapterLabel(chapterLabel);
-+    if (chapterLabel == null) {
-+      hideChapterBubble();
-+    } else {
-+      showChapterBubble(chapterLabel, positionMs);
-+    }
++    // The bubble always leads with the scrub time; a chapter name (often an untranslated
++    // container label) alone did not tell the user where the seek would land.
++    showChapterBubble(chapterLabel == null ? time : time + "  " + chapterLabel, positionMs);
 +  }
 +
 +  private void showChapterBubble(String chapterLabel, long positionMs) {

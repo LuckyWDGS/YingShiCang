@@ -45,7 +45,9 @@ public class UpdateDialog extends BaseAlertDialog {
     private boolean mandatory;
     private String reason;
 
-    private enum Phase { AVAILABLE, DOWNLOADING, VERIFYING, READY, ERROR, MANUAL }
+    private boolean transferShown;
+
+    private enum Phase { AVAILABLE, CHECKING, DOWNLOADING, VERIFYING, READY, ERROR, MANUAL }
 
     public static UpdateDialog create() {
         return new UpdateDialog();
@@ -164,7 +166,7 @@ public class UpdateDialog extends BaseAlertDialog {
     }
 
     public void setProgress(int progress, long downloaded, long total) {
-        if (phase != Phase.DOWNLOADING && phase != Phase.VERIFYING) focusCancelPending = true;
+        if (phase != Phase.CHECKING && phase != Phase.DOWNLOADING && phase != Phase.VERIFYING) focusCancelPending = true;
         phase = Phase.DOWNLOADING;
         this.progress = Math.max(0, Math.min(100, progress));
         this.downloaded = downloaded;
@@ -193,11 +195,30 @@ public class UpdateDialog extends BaseAlertDialog {
         render();
     }
 
-    /** No package can be downloaded here: announce the version and offer only a close button. */
+    /** The package list could not be fetched: announce the version and offer to try again. */
     public void setManual() {
+        setManual(null);
+    }
+
+    public void setManual(String message) {
         phase = Phase.MANUAL;
-        focusCancelPending = true;
+        status = message;
         render();
+    }
+
+    /** Retrying the package list after a failed fetch. */
+    public void setChecking() {
+        if (phase != Phase.CHECKING) focusCancelPending = true;
+        phase = Phase.CHECKING;
+        status = "正在连接下载服务器…";
+        render();
+    }
+
+    public void setPackageSize(long bytes) {
+        size = bytes;
+        if (binding == null) return;
+        binding.size.setVisibility(size > 0 ? View.VISIBLE : View.GONE);
+        binding.size.setText("安装包 " + size(size));
     }
 
     @Override
@@ -208,17 +229,33 @@ public class UpdateDialog extends BaseAlertDialog {
             return;
         }
         setWidth(0.5f);
-        binding.descriptionScroll.post(this::limitDescriptionHeight);
         render();
+        binding.getRoot().post(this::fitNotes);
         if (phase == Phase.AVAILABLE) binding.confirm.requestFocus();
     }
 
-    private void limitDescriptionHeight() {
+    /**
+     * The notes take whatever height is left once everything else in the dialog is laid out, so the
+     * buttons stay on screen when the download progress appears on a short (phone-height) display.
+     */
+    private void fitNotes() {
         if (binding == null || !isAdded()) return;
+        View root = binding.getRoot();
+        int width = root.getWidth();
+        if (width == 0) return;
         float density = getResources().getDisplayMetrics().density;
-        int maximum = Math.min((int) (200 * density), (int) (getResources().getDisplayMetrics().heightPixels * 0.34f));
+        View decor = requireActivity().getWindow().getDecorView();
+        int screen = decor.getHeight() > 0 ? decor.getHeight() : getResources().getDisplayMetrics().heightPixels;
+        int notesWidth = binding.descriptionScroll.getWidth() > 0 ? binding.descriptionScroll.getWidth() : width - root.getPaddingLeft() - root.getPaddingRight();
+        binding.notes.measure(View.MeasureSpec.makeMeasureSpec(notesWidth, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
         int content = binding.notes.getMeasuredHeight();
         ViewGroup.LayoutParams params = binding.descriptionScroll.getLayoutParams();
+        params.height = 0;
+        binding.descriptionScroll.setLayoutParams(params);
+        root.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+        int chrome = root.getMeasuredHeight();
+        int available = (int) (screen * 0.94f) - chrome;
+        int maximum = Math.max((int) (56 * density), Math.min((int) (200 * density), available));
         params.height = Math.min(maximum, content);
         binding.descriptionScroll.setLayoutParams(params);
         // Only a list that actually overflows needs a D-pad stop to scroll it.
@@ -227,35 +264,41 @@ public class UpdateDialog extends BaseAlertDialog {
 
     private void render() {
         if (binding == null) return;
-        boolean busy = phase == Phase.DOWNLOADING || phase == Phase.VERIFYING;
+        boolean busy = phase == Phase.CHECKING || phase == Phase.DOWNLOADING || phase == Phase.VERIFYING;
         boolean manual = phase == Phase.MANUAL;
-        boolean transferVisible = phase != Phase.AVAILABLE && !manual;
+        boolean transferVisible = phase != Phase.AVAILABLE && (!manual || status != null);
         binding.transfer.setVisibility(transferVisible ? View.VISIBLE : View.GONE);
+        binding.progressBar.setVisibility(manual ? View.GONE : View.VISIBLE);
+        binding.progressText.setVisibility(manual || phase == Phase.CHECKING ? View.GONE : View.VISIBLE);
+        if (transferVisible != transferShown) {
+            transferShown = transferVisible;
+            binding.getRoot().post(this::fitNotes);
+        }
         binding.status.setAccessibilityLiveRegion(phase == Phase.ERROR || phase == Phase.READY
                 ? View.ACCESSIBILITY_LIVE_REGION_POLITE : View.ACCESSIBILITY_LIVE_REGION_NONE);
         binding.status.setText(status);
-        binding.progressBar.setIndeterminate(phase == Phase.VERIFYING);
+        binding.progressBar.setIndeterminate(phase == Phase.VERIFYING || phase == Phase.CHECKING);
         binding.progressBar.setProgress(progress);
         binding.progressText.setText(progressText());
         // Mandatory: no postponing; continuing for now is offered only after a failed or impossible download.
         boolean fallback = phase == Phase.ERROR || manual;
         boolean cancelVisible = !mandatory || fallback;
-        binding.confirm.setVisibility(manual ? View.GONE : View.VISIBLE);
+        binding.confirm.setVisibility(View.VISIBLE);
         binding.cancel.setVisibility(cancelVisible ? View.VISIBLE : View.GONE);
         setMargin(binding.confirm, false, cancelVisible ? ResUtil.dp2px(6) : 0);
-        setMargin(binding.cancel, true, manual ? 0 : ResUtil.dp2px(6));
+        setMargin(binding.cancel, true, ResUtil.dp2px(6));
         binding.confirm.setEnabled(!busy);
         binding.confirm.setFocusable(!busy);
         binding.confirm.setAlpha(busy ? 0.55f : 1f);
-        binding.confirmIcon.setVisibility(phase == Phase.AVAILABLE || phase == Phase.ERROR ? View.VISIBLE : View.GONE);
-        binding.confirmText.setText(phase == Phase.READY ? "安装" : phase == Phase.ERROR ? "重试下载"
+        binding.confirmIcon.setVisibility(phase == Phase.AVAILABLE || phase == Phase.ERROR || manual ? View.VISIBLE : View.GONE);
+        binding.confirmText.setText(phase == Phase.READY ? "安装" : phase == Phase.ERROR || manual ? "重试下载"
                 : phase == Phase.AVAILABLE ? "下载并安装" : getString(R.string.update_confirm));
         binding.cancel.setText(mandatory ? "暂时继续使用" : manual ? "知道了" : phase == Phase.READY || phase == Phase.ERROR ? "关闭"
-                : phase == Phase.DOWNLOADING ? "取消下载" : phase == Phase.VERIFYING ? "取消"
+                : phase == Phase.DOWNLOADING ? "取消下载" : phase == Phase.VERIFYING || phase == Phase.CHECKING ? "取消"
                 : "暂不更新");
         binding.backHint.setText(mandatory ? "返回键退出应用" : busy ? "返回键取消" : "返回键关闭");
-        boolean confirmFirst = !manual && !busy;
-        binding.descriptionScroll.setNextFocusDownId(manual ? R.id.cancel : R.id.confirm);
+        boolean confirmFirst = !busy;
+        binding.descriptionScroll.setNextFocusDownId(busy ? R.id.cancel : R.id.confirm);
         // A dialog opened in touch mode cannot take focus yet; the first remote key restores this default.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             binding.confirm.setFocusedByDefault(confirmFirst);

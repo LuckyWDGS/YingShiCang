@@ -1,12 +1,14 @@
 package com.fongmi.android.tv.maintenance;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import okhttp3.Call;
 import okhttp3.HttpUrl;
 import okhttp3.OkHttpClient;
+import okhttp3.Protocol;
 import okhttp3.Request;
 import okhttp3.Response;
 
@@ -19,6 +21,8 @@ public final class UpdateHttp {
 
     private static final class Clients {
         private static final OkHttpClient METADATA = client(120, 30);
+        // github.com sometimes resets HTTP/2 streams on mainland networks; retries use HTTP/1.1.
+        private static final OkHttpClient METADATA_HTTP1 = METADATA.newBuilder().protocols(List.of(Protocol.HTTP_1_1)).build();
         private static final OkHttpClient DOWNLOAD = client(600, 60);
     }
 
@@ -32,7 +36,16 @@ public final class UpdateHttp {
 
     /** The caller owns the final response. Every redirect response is closed here. */
     public static Response execute(String url, boolean github, Consumer<Call> onCall) throws IOException {
-        return fetch(Clients.METADATA, url, github, onCall);
+        return execute(url, github, onCall, false);
+    }
+
+    public static Response execute(String url, boolean github, Consumer<Call> onCall, boolean http1) throws IOException {
+        return fetch(http1 ? Clients.METADATA_HTTP1 : Clients.METADATA, url, github, onCall);
+    }
+
+    /** Dropped connections, resets and timeouts; the plain IOExceptions raised here for HTTP/API answers are final. */
+    public static boolean transientFailure(IOException error) {
+        return error.getClass() != IOException.class;
     }
 
     /** APK downloads have a longer deadline without changing metadata or log-upload deadlines. */

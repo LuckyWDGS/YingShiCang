@@ -1,12 +1,24 @@
 package com.fongmi.android.tv.utils;
 
 import android.Manifest;
+import android.app.Activity;
 import android.app.Notification;
 import android.content.Context;
 import android.content.pm.PackageManager;
+import android.graphics.PixelFormat;
+import android.graphics.drawable.GradientDrawable;
+import android.os.Looper;
 import android.text.TextUtils;
+import android.view.Gravity;
 import android.view.LayoutInflater;
+import android.view.View;
+import android.view.WindowManager;
+import android.widget.TextView;
 import android.widget.Toast;
+
+import androidx.lifecycle.Lifecycle;
+import androidx.lifecycle.LifecycleEventObserver;
+import androidx.lifecycle.LifecycleOwner;
 
 import androidx.appcompat.app.AlertDialog;
 import androidx.core.app.NotificationChannelCompat;
@@ -21,8 +33,17 @@ public class Notify {
 
     public static final String DEFAULT = "default";
     public static final int ID = 9527;
+    private static final long NOTICE_MS = 3500;
+    private final Runnable mHide = this::hideNotice;
     private AlertDialog mDialog;
     private Toast mToast;
+    private View mNotice;
+    private WindowManager mNoticeManager;
+    private Lifecycle mNoticeOwner;
+    // The notice window belongs to its activity; close it with the activity.
+    private final LifecycleEventObserver mHostObserver = (source, event) -> {
+        if (event == Lifecycle.Event.ON_DESTROY) hideNotice();
+    };
 
     private static class Loader {
         static volatile Notify INSTANCE = new Notify();
@@ -75,8 +96,72 @@ public class Notify {
     }
 
     private void makeText(String text) {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            App.post(() -> makeText(text));
+            return;
+        }
         if (mToast != null) mToast.cancel();
+        mToast = null;
+        hideNotice();
+        if (showNotice(App.activity(), text)) return;
         mToast = Toast.makeText(App.get(), text, Toast.LENGTH_LONG);
         mToast.show();
+    }
+
+    /**
+     * Android 11+ ignores gravity on text toasts and some systems (HyperOS in landscape) place them
+     * mid-screen, so a foreground activity shows the message in its own untouchable window at the
+     * bottom centre, above any dialog already open.
+     */
+    private boolean showNotice(Activity activity, String text) {
+        if (activity == null || activity.isFinishing() || activity.isDestroyed()) return false;
+        // Only once the activity window is attached; its WindowManager then supplies the activity token.
+        if (activity.getWindow().getDecorView().getWindowToken() == null) return false;
+        TextView view = new TextView(activity);
+        view.setText(text);
+        view.setTextColor(0xFFF2F2F2);
+        view.setTextSize(15);
+        view.setGravity(Gravity.CENTER);
+        view.setMaxWidth((int) (activity.getResources().getDisplayMetrics().widthPixels * 0.7f));
+        view.setPadding(ResUtil.dp2px(20), ResUtil.dp2px(10), ResUtil.dp2px(20), ResUtil.dp2px(10));
+        GradientDrawable background = new GradientDrawable();
+        background.setColor(0xE6262626);
+        background.setCornerRadius(ResUtil.dp2px(12));
+        view.setBackground(background);
+        WindowManager.LayoutParams params = new WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT,
+                WindowManager.LayoutParams.TYPE_APPLICATION, WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE, PixelFormat.TRANSLUCENT);
+        params.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
+        params.y = ResUtil.dp2px(40);
+        params.windowAnimations = android.R.style.Animation_Toast;
+        params.setTitle("Notice");
+        try {
+            activity.getWindowManager().addView(view, params);
+        } catch (RuntimeException e) {
+            return false;
+        }
+        mNotice = view;
+        mNoticeManager = activity.getWindowManager();
+        view.postDelayed(mHide, NOTICE_MS);
+        if (activity instanceof LifecycleOwner owner) {
+            mNoticeOwner = owner.getLifecycle();
+            mNoticeOwner.addObserver(mHostObserver);
+        }
+        return true;
+    }
+
+    private void hideNotice() {
+        View view = mNotice;
+        WindowManager manager = mNoticeManager;
+        if (mNoticeOwner != null) mNoticeOwner.removeObserver(mHostObserver);
+        mNotice = null;
+        mNoticeManager = null;
+        mNoticeOwner = null;
+        if (view == null || manager == null) return;
+        view.removeCallbacks(mHide);
+        try {
+            manager.removeViewImmediate(view);
+        } catch (RuntimeException ignored) {
+            // The host window is already gone.
+        }
     }
 }

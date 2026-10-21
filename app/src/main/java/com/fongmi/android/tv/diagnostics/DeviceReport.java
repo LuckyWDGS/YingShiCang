@@ -65,6 +65,8 @@ public final class DeviceReport {
         report.put("player", "engine=" + (PlayerSetting.isMpv() ? "mpv" : "exo")
                 + " render=" + (PlayerSetting.getRender() == PlayerSetting.RENDER_TEXTURE ? "texture" : "surface")
                 + " highestQuality=" + PlayerSetting.isHighestQualityPreferred());
+        // Only whether DNS-over-HTTPS is on: its resolver address is a user setting and never reported.
+        report.put("network", "doh=" + (com.fongmi.android.tv.setting.Setting.getDoh().isEmpty() ? "off" : "on"));
         report.put("decoders", decoders());
         return report;
     }

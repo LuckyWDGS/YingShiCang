@@ -4,7 +4,7 @@
   "archiveRef": "1.11.1",
   "archiveSha256": "992e6e27c5d38c5a22d3ddb23be3f7d477e89c4a422a84441e7fb98371daae23",
   "fongmiRevision": "3c2cbe8ac742c2fe15eff52f03eeb3b1b648848d",
-  "patchSha256": "714f0d78ed364d4c633a393c5a2c1552b2be070ba5c2402178d34ad0289c671e",
+  "patchSha256": "e37f0934a04f2ea4e4eda2e3cbc426505071fedc74d8642ff4304f2dcdd4b5a4",
   "files": {
     ".gitignore": "f1bf74f6d39f1f89279d715a8e0280a29bdd82ec11d89ca9a0198813c08bc3ab",
     "build.gradle.kts": "204d1a0880c99bcc10b2c00881c63582daee6c31c2a7bc89c973db3e85b20917",
@@ -427,7 +427,7 @@
     "libraries/ui/src/main/java/androidx/media3/ui/DefaultTrackNameProvider.java": "2d39e41c751c601802852853bc7902bcb60d4bfc351f3ac3554a61d2ffc313a3",
     "libraries/ui/src/main/java/androidx/media3/ui/MpvOsdSurfaceBridge.java": "08a999c1724d97546eb59e4ff9375634515dda087091a12080123af79c828baf",
     "libraries/ui/src/main/java/androidx/media3/ui/PlayerDebugView.java": "f7a4a53de3e98ce5af287c80ebabfd2bdbf87d95837f0e52de3e6cb9d719399f",
-    "libraries/ui/src/main/java/androidx/media3/ui/PlayerSeekView.java": "03cc7a5af7296e94d75dcf907492e64dee81193f35a624614cb5f082c0ba40fe",
+    "libraries/ui/src/main/java/androidx/media3/ui/PlayerSeekView.java": "7f81e91d5ae3d36a0d4f2685e5d6877621f6e376ff61fa69f7606731e24470c3",
     "libraries/ui/src/main/java/androidx/media3/ui/PlayerView.java": "1638fbbf6380c74f621a99a9bce21c1e5951d712d883e663ceda7fb72e8cd70e",
     "libraries/ui/src/main/java/androidx/media3/ui/SubtitlePainter.java": "0a3751f1a88cb1445638ee4e8eb8f5a01fd71ab2ddfb05ff27ff10c60e61d1b1",
     "libraries/ui/src/main/java/androidx/media3/ui/SubtitleView.java": "06f87aafc61d3b3d58eba12e4c9a885bec769df5183552382aeaeee333d4f42e",

@@ -17,6 +17,7 @@ import com.fongmi.android.tv.setting.Setting;
 import com.fongmi.android.tv.ui.dialog.UpdateDialog;
 import com.fongmi.android.tv.utils.FileUtil;
 import com.fongmi.android.tv.utils.Notify;
+import com.github.catvod.net.NetTrace;
 
 import java.io.*;
 import java.lang.ref.WeakReference;
@@ -46,6 +47,7 @@ public class Updater implements UpdateListener {
     private WeakReference<FragmentActivity> owner = new WeakReference<>(null);
     private UpdateDialog dialog;
     private UpdateManifest manifest;
+    private volatile GitHubRelease release;
     private volatile Call call;
     private volatile boolean canceled;
     private volatile File transfer;
@@ -75,9 +77,21 @@ public class Updater implements UpdateListener {
         if (canceled) current.cancel();
     }
 
+    /** Small metadata fetches retry twice after a dropped connection, reset or timeout. */
     private String fetch(String url, int cap) throws IOException {
-        try (Response response = UpdateHttp.execute(url, github, this::track)) {
-            return MaintenanceHttp.text(response, cap);
+        for (int attempt = 0; ; attempt++) {
+            try (Response response = UpdateHttp.execute(url, github, this::track, attempt > 0)) {
+                return MaintenanceHttp.text(response, cap);
+            } catch (IOException error) {
+                if (canceled || attempt >= 2 || !UpdateHttp.transientFailure(error)) throw error;
+                DiagnosticLog.write(App.get(), "update_fetch_retry", NetTrace.reason(error) + " attempt=" + (attempt + 1));
+                try {
+                    Thread.sleep(1000L * (attempt + 1));
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw new InterruptedIOException("已取消");
+                }
+            }
         }
     }
 
@@ -95,12 +109,13 @@ public class Updater implements UpdateListener {
                     return;
                 }
                 UpdateNotice.found(release.versionName());
+                this.release = release;
                 try {
                     manifest = release.select(fetch(release.manifestUrl(), GitHubRelease.MAX_MANIFEST_BYTES),
                             BuildConfig.APPLICATION_ID, BuildConfig.FLAVOR, Build.VERSION.SDK_INT, Build.SUPPORTED_ABIS);
                 } catch (Exception error) {
                     // api.github.com is often reachable where github.com downloads are not (mainland China).
-                    DiagnosticLog.write(App.get(), "update_manifest_failed", error.getClass().getSimpleName());
+                    DiagnosticLog.write(App.get(), "update_manifest_failed", NetTrace.reason(error));
                     if (!canceled) offerManual(release.versionName(), release.notes());
                     return;
                 }
@@ -126,7 +141,7 @@ public class Updater implements UpdateListener {
                         .listener(this).show(target);
             });
         } catch (Exception error) {
-            DiagnosticLog.write(App.get(), "update_check_failed", error.getClass().getSimpleName());
+            DiagnosticLog.write(App.get(), "update_check_failed", NetTrace.reason(error));
             if (!canceled) result(manual ? "检查更新失败：" + reason(error) : null);
         }
     }
@@ -174,11 +189,48 @@ public class Updater implements UpdateListener {
 
     @Override public void onConfirm(View button) {
         FragmentActivity target = host();
-        if (target == null || manifest == null) return;
+        if (target == null) return;
+        if (manifest == null) { retryManifest(); return; }
         if (pending != null) { install(target); return; }
         if (!downloading.compareAndSet(false, true)) return;
         dialog.setProgress(0, 0, manifest.size);
         MaintenanceTasks.execute(this::download);
+    }
+
+    /** 重试下载 after the package list could not be fetched: fetch it again, then download right away. */
+    private void retryManifest() {
+        GitHubRelease current = release;
+        if (current == null || dialog == null || !downloading.compareAndSet(false, true)) return;
+        dialog.setChecking();
+        MaintenanceTasks.execute(() -> {
+            boolean started = false;
+            try {
+                UpdateManifest selected = current.select(fetch(current.manifestUrl(), GitHubRelease.MAX_MANIFEST_BYTES),
+                        BuildConfig.APPLICATION_ID, BuildConfig.FLAVOR, Build.VERSION.SDK_INT, Build.SUPPORTED_ABIS);
+                MaintenanceHttp.validate(selected.url);
+                if (canceled) return;
+                if (selected.versionCode <= BuildConfig.VERSION_CODE) {
+                    UpdateNotice.clear();
+                    result("当前已是最新版本（本机 " + BuildConfig.VERSION_NAME + "）");
+                    return;
+                }
+                manifest = selected;
+                App.post(() -> {
+                    if (host() == null || dialog == null) return;
+                    dialog.setPackageSize(selected.size);
+                    dialog.setProgress(0, 0, selected.size);
+                });
+                started = true;
+                download();
+            } catch (Exception error) {
+                DiagnosticLog.write(App.get(), "update_manifest_failed", NetTrace.reason(error));
+                if (!canceled) App.post(() -> {
+                    if (host() != null && dialog != null) dialog.setManual("仍无法连接下载服务器：" + reason(error));
+                });
+            } finally {
+                if (!started) downloading.set(false);
+            }
+        });
     }
 
     private void download() {

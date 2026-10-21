@@ -174,6 +174,20 @@ public final class AiDramaCatalog {
         }
     }
 
+    /** A saved selection reduced to its type (category); topic and sort fall back to their defaults. */
+    public static String typeOnly(String saved) {
+        if (saved == null || saved.isEmpty()) return "";
+        try {
+            JsonElement parsed = JsonParser.parseString(saved);
+            if (!parsed.isJsonObject()) return "";
+            JsonObject json = parsed.getAsJsonObject();
+            json.remove("extend");
+            return json.toString();
+        } catch (RuntimeException ignored) {
+            return "";
+        }
+    }
+
     private static String string(JsonElement value) {
         return value != null && value.isJsonPrimitive() && value.getAsJsonPrimitive().isString() ? value.getAsString() : null;
     }
