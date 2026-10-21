@@ -71,7 +71,7 @@ logs/<设备ID>/<UTC日期>/<App版本>_<报告编号>.device.json     本次上
 
 - 正式包内置默认地址：在未跟踪的 `local.properties` 写 `ysc.logUploadUrl=https://xxxx.cn-beijing.fcapp.run`（本机已配置），或构建时加 `-PlogUploadUrl=...`（优先）。地址不提交 Git。
 - Release 混淆规则必须保留 `LogUploader$Receipt`（`app/proguard-rules.pro`），否则 R8 合并该类导致 App 读不到回执，日志不会被清理。
-- 或者在「设置 → 日志上传与诊断」里手动填写并保存。
+- 设置页不提供地址输入框，用户无法修改；以前版本保存的自定义地址（`ysc_logs_url`）也不再生效。未内置地址的构建无法上传。
 - 地址必须是 HTTPS；不需要也不应该填写任何 AccessKey。
 
 ## 查看日志

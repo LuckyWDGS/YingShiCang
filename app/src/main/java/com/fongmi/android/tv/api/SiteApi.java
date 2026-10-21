@@ -1,5 +1,6 @@
 package com.fongmi.android.tv.api;
 
+import android.os.SystemClock;
 import android.text.TextUtils;
 
 import androidx.annotation.NonNull;
@@ -14,6 +15,8 @@ import com.fongmi.android.tv.bean.Class;
 import com.fongmi.android.tv.bean.Result;
 import com.fongmi.android.tv.bean.Site;
 import com.fongmi.android.tv.bean.Vod;
+import com.fongmi.android.tv.cloudlogin.CloudLoginChooser;
+import com.fongmi.android.tv.diagnostics.DiagnosticLog;
 import com.fongmi.android.tv.player.extractor.Source;
 import com.fongmi.android.tv.utils.ResUtil;
 import com.fongmi.android.tv.utils.Sniffer;
@@ -419,6 +422,51 @@ public class SiteApi {
 
     @NonNull
     public static Result detailContent(@NonNull String key, @NonNull String id) throws Exception {
+        long start = SystemClock.elapsedRealtime();
+        try {
+            Result result = detail(key, id);
+            timing("source_detail", key, start, result.getList().isEmpty() ? "empty" : "ok");
+            return result;
+        } catch (Exception error) {
+            timing("source_detail", key, start, error.getClass().getSimpleName());
+            throw error;
+        }
+    }
+
+    @NonNull
+    public static Result playerContent(@NonNull String key, @NonNull String flag, @NonNull String id) throws Exception {
+        long start = SystemClock.elapsedRealtime();
+        // Cloud-drive plugins show their login chooser while resolving the address.
+        CloudLoginChooser.watch(true);
+        try {
+            Result result = player(key, flag, id);
+            timing("source_player", key, start, "ok");
+            return result;
+        } catch (Exception error) {
+            timing("source_player", key, start, error.getClass().getSimpleName());
+            throw error;
+        } finally {
+            CloudLoginChooser.watch(false);
+        }
+    }
+
+    /** How long a source took to answer, so a slow line shows in uploaded logs; never URLs, titles or IDs. */
+    private static void timing(String event, String key, long start, String outcome) {
+        Site site = VodConfig.get().getSite(key);
+        DiagnosticLog.write(App.get(), event, "api=" + apiLabel(site.getApi()) + " type=" + site.getType()
+                + " ms=" + (SystemClock.elapsedRealtime() - start) + " outcome=" + outcome);
+    }
+
+    static String apiLabel(String api) {
+        if (api == null || api.isEmpty()) return "none";
+        if (api.startsWith("csp_")) return api;
+        if (api.contains(".js")) return "js";
+        if (api.contains(".py")) return "py";
+        return "http";
+    }
+
+    @NonNull
+    private static Result detail(@NonNull String key, @NonNull String id) throws Exception {
         SpiderDebug.log("detail", "key=%s,id=%s", key, id);
         Site site = VodConfig.get().getSite(key);
         if (PUSH.equals(key) && (site.isEmpty() || directMedia(id))) {
@@ -466,7 +514,7 @@ public class SiteApi {
     }
 
     @NonNull
-    public static Result playerContent(@NonNull String key, @NonNull String flag, @NonNull String id) throws Exception {
+    private static Result player(@NonNull String key, @NonNull String flag, @NonNull String id) throws Exception {
         SpiderDebug.log("player", "key=%s,flag=%s,id=%s", key, flag, id);
         Site site = VodConfig.get().getSite(key);
         Source.get().stop();

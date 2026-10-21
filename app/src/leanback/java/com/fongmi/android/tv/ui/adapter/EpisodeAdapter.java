@@ -18,9 +18,8 @@ import java.util.List;
 
 public class EpisodeAdapter extends RecyclerView.Adapter<EpisodeAdapter.ViewHolder> {
 
-    // Partial rebinds: focus links touch only the first/last row, selection only two cards.
+    // Focus links touch only the first/last row, so they rebind partially.
     private static final Object PAYLOAD_FOCUS = new Object();
-    private static final Object PAYLOAD_SELECTION = new Object();
 
     private final OnClickListener mListener;
     private final List<Episode> mItems;
@@ -49,12 +48,14 @@ public class EpisodeAdapter extends RecyclerView.Adapter<EpisodeAdapter.ViewHold
         notifyDataSetChanged();
     }
 
-    /** Rebinds only the previously and newly playing cards after the shared Episode flags change. */
+    /**
+     * Fully rebinds the previously and newly playing cards after the shared Episode flags change.
+     * A selection-only partial rebind left the playing card's label scrolled out of view (blank cell).
+     */
     public void refreshSelection() {
         int current = findSelected();
-        if (current == selectedIndex) return;
-        if (selectedIndex != RecyclerView.NO_POSITION && selectedIndex < mItems.size()) notifyItemChanged(selectedIndex, PAYLOAD_SELECTION);
-        if (current != RecyclerView.NO_POSITION) notifyItemChanged(current, PAYLOAD_SELECTION);
+        if (selectedIndex != current && selectedIndex != RecyclerView.NO_POSITION && selectedIndex < mItems.size()) notifyItemChanged(selectedIndex);
+        if (current != RecyclerView.NO_POSITION) notifyItemChanged(current);
         selectedIndex = current;
     }
 
@@ -170,7 +171,6 @@ public class EpisodeAdapter extends RecyclerView.Adapter<EpisodeAdapter.ViewHold
         }
         for (Object payload : payloads) {
             if (payload == PAYLOAD_FOCUS) bindFocus(holder, position);
-            else if (payload == PAYLOAD_SELECTION) bindSelection(holder, mItems.get(position));
         }
     }
 

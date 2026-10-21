@@ -6,6 +6,7 @@ import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
 import android.os.Build;
 import android.os.SystemClock;
+import android.view.Choreographer;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
@@ -18,11 +19,16 @@ import android.widget.TextView;
 
 import androidx.annotation.RequiresApi;
 
+import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.R;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.WeakHashMap;
 
 /**
  * Answers the cloud-drive plugin's "选择任意网盘扫码后即可播放" chooser and gives it the app's own look.
@@ -34,6 +40,10 @@ import java.util.List;
  * periodically, because that reappearing chooser does not change the playback screen's focus. Only a
  * window titled exactly like the chooser is touched. Its content is replaced by
  * {@link CloudLoginChooserView}, which forwards every pick and cancel to the plugin's own views.</p>
+ *
+ * <p>While a source resolves a play address (when the plugin shows the chooser) new windows are also
+ * checked on every frame. The frame callback runs before a new dialog's first traversal, so the
+ * plugin's own chooser is hidden before it can draw and only the app's version is ever shown.</p>
  */
 public final class CloudLoginChooser {
 
@@ -44,10 +54,71 @@ public final class CloudLoginChooser {
     private static final long POLL_LIMIT_MS = 300_000;
     private static final int STYLED = R.id.cloud_login_chooser_styled;
     private static final int POLLING = R.id.cloud_login_chooser_polling;
+    private static final long WATCH_GRACE_MS = 20_000;
+    private static final int WATCH_FRAMES = 120;
 
     private static long lastPick = -REPEAT_WINDOW_MS;
+    // Main thread only: windows present when watching began, and how many frames each new window was checked.
+    private static final Set<View> existing = Collections.newSetFromMap(new WeakHashMap<>());
+    private static final Map<View, Integer> checked = new WeakHashMap<>();
+    private static int requests;
+    private static long watchUntil;
+    private static boolean watching;
 
     private CloudLoginChooser() {
+    }
+
+    /** A source starts (true) or finishes (false) resolving a play address; may be called from any thread. */
+    public static void watch(boolean active) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return;
+        App.post(() -> {
+            if (active) requests++;
+            else requests = Math.max(0, requests - 1);
+            watchUntil = SystemClock.uptimeMillis() + WATCH_GRACE_MS;
+            if (active && !watching) {
+                watching = true;
+                existing.clear();
+                existing.addAll(WindowInspector.getGlobalWindowViews());
+                Choreographer.getInstance().postFrameCallback(FRAME);
+            }
+        });
+    }
+
+    private static final Choreographer.FrameCallback FRAME = new Choreographer.FrameCallback() {
+        @Override
+        public void doFrame(long frameTimeNanos) {
+            if (requests == 0 && SystemClock.uptimeMillis() > watchUntil) {
+                watching = false;
+                existing.clear();
+                checked.clear();
+                return;
+            }
+            try {
+                for (View root : WindowInspector.getGlobalWindowViews()) if (!existing.contains(root)) check(root);
+            } catch (RuntimeException ignored) {
+                // Never let a plugin dialog's unexpected structure affect playback.
+            }
+            Choreographer.getInstance().postFrameCallback(this);
+        }
+    };
+
+    /** A new window: hide the plugin's chooser before its first draw, then show it restyled. */
+    @RequiresApi(Build.VERSION_CODES.Q)
+    private static void check(View root) {
+        int frames = checked.getOrDefault(root, 0);
+        if (frames > WATCH_FRAMES || root.getTag(STYLED) != null) return;
+        // The chooser is a dialog; a whole new activity window is never it and is costly to walk every frame.
+        if (root.getLayoutParams() instanceof WindowManager.LayoutParams params && params.type == WindowManager.LayoutParams.TYPE_BASE_APPLICATION) return;
+        checked.put(root, frames + 1);
+        if (find(root, TITLE, false).isEmpty()) return;
+        List<View> items = find(root, ITEM_SUFFIX, true);
+        if (items.isEmpty()) {
+            // Options are list rows that appear at the first layout; stay hidden until then, never for good.
+            root.setAlpha(frames >= WATCH_FRAMES / 2 ? 1f : 0f);
+            return;
+        }
+        handle(root.getContext().getApplicationContext(), root, items);
+        root.setAlpha(1f);
     }
 
     /** Called when a playback screen loses window focus, which is what a plugin dialog causes. */
@@ -83,17 +154,22 @@ public final class CloudLoginChooser {
             if (titles.isEmpty()) continue;
             List<View> items = find(root, ITEM_SUFFIX, true);
             if (items.isEmpty()) return;
-            List<String> labels = new ArrayList<>();
-            for (View item : items) labels.add(((TextView) item).getText().toString());
-            int index = choose(labels, hasQuarkLogin(context), hasBaiduLogin(context));
-            if (root.getTag(STYLED) == null) {
-                root.setTag(STYLED, Boolean.TRUE);
-                replace(root, items, index);
-            }
-            if (SystemClock.elapsedRealtime() - lastPick < REPEAT_WINDOW_MS) return;
-            if (click(items.get(index))) lastPick = SystemClock.elapsedRealtime();
+            handle(context, root, items);
             return;
         }
+    }
+
+    /** Restyles the chooser once and, outside the repeat window, picks a drive for the user. */
+    private static void handle(Context context, View root, List<View> items) {
+        List<String> labels = new ArrayList<>();
+        for (View item : items) labels.add(((TextView) item).getText().toString());
+        int index = choose(labels, hasQuarkLogin(context), hasBaiduLogin(context));
+        if (root.getTag(STYLED) == null) {
+            root.setTag(STYLED, Boolean.TRUE);
+            replace(root, items, index);
+        }
+        if (SystemClock.elapsedRealtime() - lastPick < REPEAT_WINDOW_MS) return;
+        if (click(items.get(index))) lastPick = SystemClock.elapsedRealtime();
     }
 
     /** A drive that already has login data wins; otherwise the first option. */
