@@ -18,12 +18,17 @@ import java.util.List;
 
 public class EpisodeAdapter extends RecyclerView.Adapter<EpisodeAdapter.ViewHolder> {
 
+    // Partial rebinds: focus links touch only the first/last row, selection only two cards.
+    private static final Object PAYLOAD_FOCUS = new Object();
+    private static final Object PAYLOAD_SELECTION = new Object();
+
     private final OnClickListener mListener;
     private final List<Episode> mItems;
     private final int maxWidth;
     private int columnCount = EpisodeGridView.DEFAULT_COLUMN_COUNT;
     private int nextFocusDown;
     private int nextFocusUp;
+    private int selectedIndex = RecyclerView.NO_POSITION;
 
     public EpisodeAdapter(OnClickListener listener) {
         mListener = listener;
@@ -34,12 +39,28 @@ public class EpisodeAdapter extends RecyclerView.Adapter<EpisodeAdapter.ViewHold
     public void addAll(List<Episode> items) {
         mItems.clear();
         mItems.addAll(items);
+        selectedIndex = findSelected();
         notifyDataSetChanged();
     }
 
     public void clear() {
         mItems.clear();
+        selectedIndex = RecyclerView.NO_POSITION;
         notifyDataSetChanged();
+    }
+
+    /** Rebinds only the previously and newly playing cards after the shared Episode flags change. */
+    public void refreshSelection() {
+        int current = findSelected();
+        if (current == selectedIndex) return;
+        if (selectedIndex != RecyclerView.NO_POSITION && selectedIndex < mItems.size()) notifyItemChanged(selectedIndex, PAYLOAD_SELECTION);
+        if (current != RecyclerView.NO_POSITION) notifyItemChanged(current, PAYLOAD_SELECTION);
+        selectedIndex = current;
+    }
+
+    private int findSelected() {
+        for (int i = 0; i < mItems.size(); i++) if (mItems.get(i).isSelected()) return i;
+        return RecyclerView.NO_POSITION;
     }
 
     public int getPosition() {
@@ -65,13 +86,17 @@ public class EpisodeAdapter extends RecyclerView.Adapter<EpisodeAdapter.ViewHold
     }
 
     public void setNextFocusDown(int nextFocusDown) {
+        if (this.nextFocusDown == nextFocusDown) return;
         this.nextFocusDown = nextFocusDown;
-        notifyDataSetChanged();
+        if (mItems.isEmpty()) return;
+        int lastRow = (mItems.size() - 1) / columnCount * columnCount;
+        notifyItemRangeChanged(lastRow, mItems.size() - lastRow, PAYLOAD_FOCUS);
     }
 
     public void setNextFocusUp(int nextFocusUp) {
+        if (this.nextFocusUp == nextFocusUp) return;
         this.nextFocusUp = nextFocusUp;
-        notifyDataSetChanged();
+        notifyItemRangeChanged(0, Math.min(columnCount, mItems.size()), PAYLOAD_FOCUS);
     }
 
     public void setColumnCount(int columnCount) {
@@ -132,10 +157,30 @@ public class EpisodeAdapter extends RecyclerView.Adapter<EpisodeAdapter.ViewHold
             holder.binding.name.setText(name);
         }
         holder.binding.name.setMaxWidth(maxWidth);
+        bindFocus(holder, position);
+        holder.binding.getRoot().setOnClickListener(v -> mListener.onItemClick(item));
+        bindSelection(holder, item);
+    }
+
+    @Override
+    public void onBindViewHolder(@NonNull ViewHolder holder, int position, @NonNull List<Object> payloads) {
+        if (payloads.isEmpty()) {
+            onBindViewHolder(holder, position);
+            return;
+        }
+        for (Object payload : payloads) {
+            if (payload == PAYLOAD_FOCUS) bindFocus(holder, position);
+            else if (payload == PAYLOAD_SELECTION) bindSelection(holder, mItems.get(position));
+        }
+    }
+
+    private void bindFocus(ViewHolder holder, int position) {
         holder.binding.getRoot().setNextFocusUpId(position < columnCount ? nextFocusUp : android.view.View.NO_ID);
         holder.binding.getRoot().setNextFocusDownId(position / columnCount == (mItems.size() - 1) / columnCount ? nextFocusDown : android.view.View.NO_ID);
+    }
+
+    private void bindSelection(ViewHolder holder, Episode item) {
         holder.binding.getRoot().setSelected(item.isSelected());
-        holder.binding.getRoot().setOnClickListener(v -> mListener.onItemClick(item));
         // Playing selection propagates to the card background; only focus
         // starts the child text marquee.
         holder.updateMarquee();

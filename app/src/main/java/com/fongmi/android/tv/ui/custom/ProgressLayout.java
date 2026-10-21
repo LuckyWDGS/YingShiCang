@@ -47,16 +47,31 @@ public class ProgressLayout extends RelativeLayout {
     }
 
     private void initView() {
-        mEmptyView = ViewEmptyBinding.inflate(LayoutInflater.from(getContext())).getRoot();
-        mEmptyView.setTag(TAG_PROGRESS);
-        mEmptyView.setVisibility(GONE);
         mProgressView = ViewProgressBinding.inflate(LayoutInflater.from(getContext())).getRoot();
         mProgressView.setTag(TAG_PROGRESS);
         mProgressView.setVisibility(GONE);
+        addView(mProgressView, centered());
+    }
+
+    /** The Lottie empty animation is inflated only the first time a screen is actually empty. */
+    private View emptyView() {
+        if (mEmptyView != null) return mEmptyView;
+        mEmptyView = ViewEmptyBinding.inflate(LayoutInflater.from(getContext())).getRoot();
+        mEmptyView.setTag(TAG_PROGRESS);
+        mEmptyView.setVisibility(GONE);
+        // Directly above the progress view, as before, so content keeps its stacking order.
+        addView(mEmptyView, indexOfChild(mProgressView) + 1, centered());
+        return mEmptyView;
+    }
+
+    private static LayoutParams centered() {
         LayoutParams params = new LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         params.addRule(CENTER_IN_PARENT);
-        addView(mProgressView, params);
-        addView(mEmptyView, params);
+        return params;
+    }
+
+    private void hideEmpty() {
+        if (mEmptyView != null) mEmptyView.setVisibility(GONE);
     }
 
     @Override
@@ -101,17 +116,17 @@ public class ProgressLayout extends RelativeLayout {
         mState = state;
         switch (state) {
             case CONTENT:
-                mEmptyView.setVisibility(GONE);
+                hideEmpty();
                 mProgressView.setVisibility(GONE);
                 setContentVisibility(true);
                 break;
             case PROGRESS:
-                mEmptyView.setVisibility(GONE);
+                hideEmpty();
                 mProgressView.setVisibility(VISIBLE);
                 setContentVisibility(false);
                 break;
             case EMPTY:
-                mEmptyView.setVisibility(VISIBLE);
+                emptyView().setVisibility(VISIBLE);
                 mProgressView.setVisibility(GONE);
                 setContentVisibility(false);
                 break;

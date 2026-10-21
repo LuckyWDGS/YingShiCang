@@ -609,7 +609,7 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
 
     @Override
     public void renderEpisodeSelection(Episode item) {
-        notifyItemChanged(mBinding.episode, mEpisodeAdapter);
+        mBinding.episode.post(mEpisodeAdapter::refreshSelection);
         mBinding.episode.setSelectedPosition(mEpisodeAdapter.getPosition());
     }
 
@@ -820,7 +820,6 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
         mEpisodeAdapter.setNextFocusUp(findFocusUp(1));
         mFlagAdapter.setNextFocusDown(findFocusDown(0));
         mEpisodeAdapter.setNextFocusDown(findFocusDown(1));
-        notifyItemChanged(mBinding.episode, mEpisodeAdapter);
         notifyItemChanged(mBinding.flag, mFlagAdapter);
     }
 

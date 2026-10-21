@@ -1,21 +1,23 @@
 package com.fongmi.android.tv.utils;
 
+import android.os.Handler;
+import android.os.Looper;
 import android.widget.TextView;
-
-import com.fongmi.android.tv.App;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
-import java.util.Timer;
-import java.util.TimerTask;
 
 public class Clock {
 
+    // Ticks on the main thread at each wall-clock second; no Timer thread per start().
+    private final Handler handler = new Handler(Looper.getMainLooper());
+    private final Runnable tick = this::tick;
     private DateTimeFormatter format;
     private Callback callback;
     private TextView view;
-    private Timer timer;
+    private String text;
+    private boolean running;
 
     public static Clock create() {
         return new Clock();
@@ -30,11 +32,13 @@ public class Clock {
 
     public Clock view(TextView view) {
         this.view = view;
+        this.text = null;
         return this;
     }
 
     public Clock format(String format) {
         this.format = DateTimeFormatter.ofPattern(format, Locale.getDefault());
+        this.text = null;
         return this;
     }
 
@@ -43,32 +47,40 @@ public class Clock {
     }
 
     public void start() {
-        timer = new Timer();
-        timer.schedule(new TimerTask() {
-            @Override
-            public void run() {
-                App.post(() -> doJob());
-            }
-        }, 0, 1000);
+        stop();
+        running = true;
+        tick();
+    }
+
+    private void tick() {
+        if (!running) return;
+        doJob();
+        handler.postDelayed(tick, 1000 - System.currentTimeMillis() % 1000);
     }
 
     private void doJob() {
         try {
             long time = System.currentTimeMillis();
             if (callback != null) callback.onTimeChanged(time);
-            if (view != null) view.setText(format.format(LocalDateTime.now()));
+            if (view == null) return;
+            // A minute-level clock changes once a minute; setText on every tick would relayout and redraw for nothing.
+            String next = format.format(LocalDateTime.now());
+            if (next.equals(text)) return;
+            text = next;
+            view.setText(next);
         } catch (Exception ignored) {
         }
     }
 
     public Clock stop() {
-        if (timer != null) timer.cancel();
+        running = false;
+        handler.removeCallbacks(tick);
         return this;
     }
 
     public void release() {
-        if (timer != null) timer.cancel();
-        if (callback != null) callback = null;
+        stop();
+        callback = null;
     }
 
     public interface Callback {

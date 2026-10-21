@@ -8,6 +8,7 @@ import com.fongmi.android.tv.bean.Filter;
 import com.fongmi.android.tv.bean.Result;
 import com.fongmi.android.tv.bean.Site;
 import com.fongmi.android.tv.bean.Vod;
+import com.fongmi.android.tv.utils.BackgroundThreads;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicLong;
@@ -107,9 +108,7 @@ public final class SourceDiscoveryRunner {
     private final OkHttpClient client;
     private final AtomicLong epoch = new AtomicLong();
     private final List<Work> running = new CopyOnWriteArrayList<>();
-    private final ExecutorService coordinator = Executors.newSingleThreadExecutor(runnable -> {
-        Thread thread = new Thread(runnable, "discovery-coordinator"); thread.setDaemon(true); return thread;
-    });
+    private final ExecutorService coordinator = Executors.newSingleThreadExecutor(BackgroundThreads.factory("discovery-coordinator"));
     private Future<?> round;
     private Batch published;
     private volatile boolean closed;

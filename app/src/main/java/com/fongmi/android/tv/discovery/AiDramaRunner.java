@@ -7,6 +7,7 @@ import com.fongmi.android.tv.bean.Filter;
 import com.fongmi.android.tv.bean.Result;
 import com.fongmi.android.tv.bean.Site;
 import com.fongmi.android.tv.bean.Vod;
+import com.fongmi.android.tv.utils.BackgroundThreads;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -176,9 +177,8 @@ public final class AiDramaRunner {
     }
 
     private static ThreadPoolExecutor pool(int threads, int queue, String name) {
-        return new ThreadPoolExecutor(threads, threads, 0, TimeUnit.SECONDS, new ArrayBlockingQueue<>(queue), runnable -> {
-            Thread thread = new Thread(runnable, name); thread.setDaemon(true); return thread;
-        }, new ThreadPoolExecutor.AbortPolicy());
+        return new ThreadPoolExecutor(threads, threads, 0, TimeUnit.SECONDS, new ArrayBlockingQueue<>(queue),
+                BackgroundThreads.factory(name), new ThreadPoolExecutor.AbortPolicy());
     }
     static boolean supportedApi(String api) {
         return "csp_AiDj".equals(api) || "csp_AiDjGuard".equals(api);

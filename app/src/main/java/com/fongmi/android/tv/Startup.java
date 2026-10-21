@@ -27,7 +27,13 @@ public class Startup implements Initializer<Void> {
     @Override
     public Void create(@NonNull Context context) {
         CaocConfig.Builder.create().trackActivities(true).backgroundMode(CaocConfig.BACKGROUND_MODE_SILENT).errorActivity(CrashActivity.class).apply();
-        Logger.addLogAdapter(new AndroidLogAdapter(PrettyFormatStrategy.newBuilder().methodCount(0).showThreadInfo(false).tag("TV").build()));
+        Logger.addLogAdapter(new AndroidLogAdapter(PrettyFormatStrategy.newBuilder().methodCount(0).showThreadInfo(false).tag("TV").build()) {
+            @Override
+            public boolean isLoggable(int priority, String tag) {
+                // Plugins log every request through SpiderDebug; release builds skip the formatting and logcat writes.
+                return BuildConfig.DEBUG;
+            }
+        });
         EventBus.builder().addIndex(new EventIndex()).installDefaultEventBus();
         OkHttp.dns().setDoh(() -> Doh.objectFrom(Setting.getDoh()));
         return null;

@@ -27,10 +27,14 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
+import java.util.regex.Pattern;
 import java.util.stream.IntStream;
 
 @Root(strict = false)
 public class Vod implements Parcelable, Diffable<Vod> {
+
+    // Cards read the remark label twice per bind (text and visibility); compile the pattern once.
+    private static final Pattern ZERO_SCORE = Pattern.compile("0+(\\.0+)?\\s*分?");
 
     @Element(name = "id", required = false)
     @SerializedName("vod_id")
@@ -307,7 +311,7 @@ public class Vod implements Parcelable, Diffable<Vod> {
 
     static String remarkLabel(String remarks) {
         String value = remarks == null ? "" : remarks.trim();
-        return value.matches("0+(\\.0+)?\\s*分?") ? "" : value;
+        return ZERO_SCORE.matcher(value).matches() ? "" : value;
     }
 
     public int getRemarkVisible() {

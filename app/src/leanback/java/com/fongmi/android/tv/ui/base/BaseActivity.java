@@ -1,12 +1,11 @@
 package com.fongmi.android.tv.ui.base;
 
-import static android.view.ViewGroup.LayoutParams.MATCH_PARENT;
-
 import android.content.res.Configuration;
 import android.content.res.Resources;
 import android.os.Bundle;
+import android.os.Looper;
+import android.util.DisplayMetrics;
 import android.view.View;
-import android.view.ViewGroup;
 
 import androidx.activity.OnBackPressedCallback;
 import androidx.annotation.NonNull;
@@ -15,7 +14,7 @@ import androidx.fragment.app.FragmentActivity;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.viewbinding.ViewBinding;
 
-import com.fongmi.android.tv.ui.custom.CustomWallView;
+import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.utils.Util;
 
 import org.greenrobot.eventbus.EventBus;
@@ -25,6 +24,10 @@ import org.greenrobot.eventbus.ThreadMode;
 import me.jessyan.autosize.AutoSizeCompat;
 
 public abstract class BaseActivity extends AppCompatActivity {
+
+    private float convertedDensity;
+    private float convertedScaledDensity;
+    private int convertedDensityDpi;
 
     protected abstract ViewBinding getBinding();
 
@@ -39,19 +42,11 @@ public abstract class BaseActivity extends AppCompatActivity {
         initEvent();
     }
 
-    @Override
-    public void setContentView(View view) {
-        super.setContentView(view);
-        if (!customWall()) return;
-        View backdrop = new View(this);
-        backdrop.setBackgroundResource(com.fongmi.android.tv.R.drawable.ysc_background);
-        ((ViewGroup) findViewById(android.R.id.content)).addView(backdrop, 0, new ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT));
-    }
-
     protected FragmentActivity getActivity() {
         return this;
     }
 
+    /** Mobile's wallpaper hook (the shared CrashActivity opts out); TV paints its backdrop with the theme's windowBackground. */
     protected boolean customWall() {
         return true;
     }
@@ -84,12 +79,23 @@ public abstract class BaseActivity extends AppCompatActivity {
     }
 
     private Resources hackResources(Resources resources) {
+        // getResources() runs constantly (inflation, colors, text); AutoSize only needs to run again when
+        // something (e.g. WebView, a configuration change) has reset the activity or application metrics.
+        // It refuses to run off the main thread anyway, throwing an exception each time.
+        if (Looper.myLooper() != Looper.getMainLooper()) return resources;
+        DisplayMetrics metrics = resources.getDisplayMetrics();
+        DisplayMetrics app = App.get().getResources().getDisplayMetrics();
+        if (convertedDensity != 0 && metrics.density == convertedDensity && metrics.scaledDensity == convertedScaledDensity
+                && metrics.densityDpi == convertedDensityDpi && app.density == convertedDensity) return resources;
         try {
             AutoSizeCompat.autoConvertDensityOfGlobal(resources);
-            return resources;
         } catch (Exception ignored) {
             return resources;
         }
+        convertedDensity = metrics.density;
+        convertedScaledDensity = metrics.scaledDensity;
+        convertedDensityDpi = metrics.densityDpi;
+        return resources;
     }
 
     @Subscribe(threadMode = ThreadMode.MAIN)

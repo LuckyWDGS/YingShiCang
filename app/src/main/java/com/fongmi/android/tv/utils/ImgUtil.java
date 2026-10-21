@@ -95,7 +95,8 @@ public class ImgUtil {
 
     public static void load(Context context, String url, CustomTarget<Drawable> target) {
         try {
-            Glide.with(context).load(getUrl(url)).override(ResUtil.getScreenWidth(), ResUtil.getScreenHeight()).error(R.drawable.artwork).into(target);
+            // Fit inside the screen as the player shows it; the default cover sizing decoded a 3:4 poster at 1920x2560.
+            Glide.with(context).load(getUrl(url)).override(ResUtil.getScreenWidth(), ResUtil.getScreenHeight()).fitCenter().error(R.drawable.artwork).into(target);
         } catch (Throwable e) {
             e.printStackTrace();
         }

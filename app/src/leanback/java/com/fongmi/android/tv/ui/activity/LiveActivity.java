@@ -119,11 +119,6 @@ public class LiveActivity extends PlaybackActivity implements GroupAdapter.OnCli
     }
 
     @Override
-    protected boolean customWall() {
-        return false;
-    }
-
-    @Override
     protected ViewBinding getBinding() {
         return mBinding = ActivityLiveBinding.inflate(getLayoutInflater());
     }

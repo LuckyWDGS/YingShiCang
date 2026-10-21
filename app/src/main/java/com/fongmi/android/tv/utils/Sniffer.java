@@ -11,10 +11,11 @@ import com.fongmi.android.tv.bean.Result;
 import com.fongmi.android.tv.bean.Rule;
 import com.github.catvod.utils.Json;
 import com.github.catvod.utils.Trans;
-import com.github.catvod.utils.Util;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -23,6 +24,8 @@ public class Sniffer {
 
     public static final Pattern CLICKER = Pattern.compile("\\[a=cr:(\\{.*?\\})\\/](.*?)\\[\\/a]");
     public static final Pattern AI_PUSH = Pattern.compile("(https?|thunder|magnet|ed2k|video):\\S+");
+    // Config rule patterns, compiled once instead of per intercepted request; bounded across config switches.
+    private static final Map<String, Pattern> PATTERNS = new ConcurrentHashMap<>();
     public static final Pattern SNIFFER = Pattern.compile("https?://[^\\s]{12,}\\.(?:m3u8|mp4|mkv|flv|mp3|m4a|aac|mpd)(?:\\?.*)?|https?://.*?video/tos[^\\s]*|rtmp:[^\\s]+");
 
     public static String getUrl(String text) {
@@ -35,9 +38,9 @@ public class Sniffer {
     public static boolean isVideoFormat(String url) {
         Rule rule = getRule(UrlUtil.uri(url));
         for (String exclude : rule.getExclude()) if (url.contains(exclude)) return false;
-        for (String exclude : rule.getExclude()) if (Pattern.compile(exclude).matcher(url).find()) return false;
+        for (String exclude : rule.getExclude()) if (pattern(exclude).matcher(url).find()) return false;
         for (String regex : rule.getRegex()) if (url.contains(regex)) return true;
-        for (String regex : rule.getRegex()) if (Pattern.compile(regex).matcher(url).find()) return true;
+        for (String regex : rule.getRegex()) if (pattern(regex).matcher(url).find()) return true;
         if (url.contains("url=http") || url.contains("v=http") || url.contains(".html")) return false;
         return SNIFFER.matcher(url).find();
     }
@@ -49,8 +52,27 @@ public class Sniffer {
     private static Rule getRule(Uri uri) {
         if (uri.getHost() == null) return Rule.empty();
         String hosts = TextUtils.join(",", Arrays.asList(UrlUtil.host(uri), UrlUtil.host(uri.getQueryParameter("url"))));
-        for (Rule rule : RuleConfig.get().getRules()) for (String host : rule.getHosts()) if (Util.containOrMatch(hosts, host)) return rule;
+        for (Rule rule : RuleConfig.get().getRules()) for (String host : rule.getHosts()) if (containOrMatch(hosts, host)) return rule;
         return Rule.empty();
+    }
+
+    /** Same result as Util.containOrMatch, with the host pattern compiled once. */
+    private static boolean containOrMatch(String text, String regex) {
+        try {
+            return text.contains(regex) || pattern(regex).matcher(text).matches();
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /** Throws PatternSyntaxException for an invalid rule, as Pattern.compile did; invalid rules are not cached. */
+    private static Pattern pattern(String regex) {
+        Pattern cached = PATTERNS.get(regex);
+        if (cached != null) return cached;
+        Pattern compiled = Pattern.compile(regex);
+        if (PATTERNS.size() >= 256) PATTERNS.clear();
+        PATTERNS.put(regex, compiled);
+        return compiled;
     }
 
     public static SpannableStringBuilder buildClickable(String text, Function<Result, ClickableSpan> factory) {

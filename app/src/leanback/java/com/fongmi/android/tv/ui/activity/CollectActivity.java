@@ -33,6 +33,8 @@ import java.util.*;
 public class CollectActivity extends BaseActivity implements VodPresenter.OnClickListener {
     private static final int MAX_PAGE_AUTO_RETRIES = 2;
     private static final long PAGE_AUTO_RETRY_DELAY_MS = 700L;
+    // Progressive search batches are merged into at most one diff per interval.
+    private static final long DISPLAY_INTERVAL_MS = 150L;
     static final String EXTRA_RETURN_HOME = "return_home_from_search";
     static final String EXTRA_EXPECTED_YEAR = "expected_year";
     static final String EXTRA_TARGET_TITLE = "target_title";
@@ -41,8 +43,12 @@ public class CollectActivity extends BaseActivity implements VodPresenter.OnClic
     private ArrayObjectAdapter cards;
     private final List<Vod> items = new ArrayList<>();
     private final Set<String> identities = new HashSet<>();
-    private final Map<String, Integer> ranks = new HashMap<>();
+    private final Map<Vod, Integer> ranks = new IdentityHashMap<>();
     private final Map<String, Long> cardIds = new HashMap<>();
+    private final Map<Vod, Long> objectIds = new IdentityHashMap<>();
+    private final Runnable queuedDisplay = () -> display(false);
+    private boolean displayQueued;
+    private long lastDisplay;
     private final Map<String, Site> sources = new LinkedHashMap<>();
     private final Map<String, Integer> pages = new HashMap<>();
     private final Set<String> exhausted = new HashSet<>();
@@ -85,19 +91,20 @@ public class CollectActivity extends BaseActivity implements VodPresenter.OnClic
         binding.results.setItemAnimator(null);
         cards = new ArrayObjectAdapter(new DiscoveryPresenter(this, true)) {
             @Override public long getId(int position) {
-                return cardIds.computeIfAbsent(identity((Vod) get(position)), key -> nextCardId++);
+                return objectIds.computeIfAbsent((Vod) get(position), item -> cardIds.computeIfAbsent(identity(item), key -> nextCardId++));
             }
         };
         cards.setHasStableIds(true);
         binding.results.setAdapter(new ItemBridgeAdapter(cards));
         model.getSearch().observe(this, result -> {
             if (result == null) return;
-            append(result.getSearchRawList());
+            append(result.getSearchRawList(), false);
         });
         model.getSearchStatus().observe(this, status -> {
             java.util.regex.Matcher progress = java.util.regex.Pattern.compile("(\\d+)/(\\d+)").matcher(status);
             binding.progress.setText(progress.find() ? "搜索(" + progress.group(1) + "/" + progress.group(2) + ")" : "搜索(0/0)");
             searchComplete = status.startsWith("搜索完成") || status.equals("没有启用的搜索源");
+            if (displayQueued) display(false);
             updateEmpty();
         });
         search();
@@ -166,7 +173,7 @@ public class CollectActivity extends BaseActivity implements VodPresenter.OnClic
             pageTask = null; pageJob = null; loadingKey = null;
             int before = identities.size();
             int visibleBefore = selected.equals(key) ? cards.size() : -1;
-            append(result.getList());
+            append(result.getList(), true);
             if (identities.size() == before) exhausted.add(key);
             else pages.put(key, page);
             pageRetryAttempts.remove(retryKey);
@@ -245,7 +252,7 @@ public class CollectActivity extends BaseActivity implements VodPresenter.OnClic
         history.remove(keyword()); history.add(0, keyword());
         return App.gson().toJson(history.subList(0, Math.min(9, history.size())));
     }
-    private void append(List<Vod> batch) {
+    private void append(List<Vod> batch, boolean immediate) {
         boolean sourceChanged = false;
         for (Vod item : batch) {
             if (item == null || item.getSite() == null || item.getId().isEmpty()) continue;
@@ -255,16 +262,29 @@ public class CollectActivity extends BaseActivity implements VodPresenter.OnClic
                 int rank = target == null ? queryRanker.score(item.getName()) : target.score(item.getName(), item.getYear());
                 if (ResourceHealth.isSearchCard(item) && (target == null || target.accepts(rank))) {
                     items.add(item);
-                    ranks.put(identity(item), rank);
+                    ranks.put(item, rank);
                 }
             }
             if (!sources.containsKey(item.getSiteKey())) { sources.put(item.getSiteKey(), item.getSite()); sourceChanged = true; }
         }
         // Stable sorting lets slow exact hits rise above unrelated fast-source
         // rows while retaining arrival order for equally relevant resources.
-        items.sort(Comparator.comparingInt(item -> ranks.get(identity(item))));
+        items.sort(Comparator.comparingInt(ranks::get));
         if (sourceChanged) rebuildSources();
-        display(false);
+        // Paging compares the visible count right after appending, so it cannot wait.
+        if (immediate) display(false);
+        else scheduleDisplay();
+    }
+
+    private void scheduleDisplay() {
+        if (displayQueued) return;
+        long wait = lastDisplay + DISPLAY_INTERVAL_MS - android.os.SystemClock.uptimeMillis();
+        if (wait <= 0) {
+            display(false);
+            return;
+        }
+        displayQueued = true;
+        binding.results.postDelayed(queuedDisplay, wait);
     }
 
     private void pruneFilteredCards() {
@@ -273,22 +293,22 @@ public class CollectActivity extends BaseActivity implements VodPresenter.OnClic
     }
     private void rebuildSources() {
         // Existing rows are retained while asynchronous sources arrive, preserving focus.
-        if (binding.sources.getChildCount() == 0 || sources.isEmpty()) {
-            binding.sources.removeAllViews(); addSource("", "全部来源");
-        }
+        // 全部来源 stays pinned above the list; only the individual sources scroll.
+        if (sources.isEmpty()) binding.sources.removeAllViews();
+        if (binding.allSource.getChildCount() == 0) addSource(binding.allSource, "", "全部来源");
         for (var source : sources.entrySet()) {
-            if (binding.sources.findViewWithTag(source.getKey()) == null) addSource(source.getKey(), source.getValue().getName());
+            if (binding.sources.findViewWithTag(source.getKey()) == null) addSource(binding.sources, source.getKey(), source.getValue().getName());
         }
         updateSourceSelection();
     }
-    private void addSource(String key, String label) {
+    private void addSource(android.view.ViewGroup parent, String key, String label) {
         android.widget.TextView button = new android.widget.TextView(this);
         button.setText(label); button.setTag(key); button.setTextColor(ResUtil.getColor(com.fongmi.android.tv.R.color.tv_theme_text)); button.setTextSize(14);
         button.setGravity(android.view.Gravity.CENTER_VERTICAL); button.setPadding(ResUtil.dp2px(10), 0, ResUtil.dp2px(10), 0);
         button.setSingleLine(true); button.setEllipsize(android.text.TextUtils.TruncateAt.END);
         button.setFocusable(true); button.setFocusableInTouchMode(false); button.setBackgroundResource(R.drawable.source_sidebar_selector);
         var params = new android.widget.LinearLayout.LayoutParams(-1, ResUtil.dp2px(40)); params.bottomMargin = ResUtil.dp2px(4);
-        binding.sources.addView(button, params);
+        parent.addView(button, params);
         button.setOnClickListener(v -> {
             if (!selected.equals(key)) {
                 cancelPage();
@@ -302,19 +322,30 @@ public class CollectActivity extends BaseActivity implements VodPresenter.OnClic
         });
     }
     private void updateSourceSelection() {
-        for (int i = 0; i < binding.sources.getChildCount(); i++) binding.sources.getChildAt(i).setSelected(selected.equals(binding.sources.getChildAt(i).getTag()));
+        for (android.view.ViewGroup group : new android.view.ViewGroup[]{binding.allSource, binding.sources})
+            for (int i = 0; i < group.getChildCount(); i++) group.getChildAt(i).setSelected(selected.equals(group.getChildAt(i).getTag()));
     }
     private void display(boolean top) {
+        // Any direct display also delivers a queued batch.
+        if (displayQueued) binding.results.removeCallbacks(queuedDisplay);
+        displayQueued = false;
+        lastDisplay = android.os.SystemClock.uptimeMillis();
         RecyclerView.ViewHolder focused = binding.results.findFocus() == null ? null
                 : binding.results.findContainingViewHolder(binding.results.findFocus());
         long focusedId = !top && focused != null ? focused.getItemId() : RecyclerView.NO_ID;
         int focusedPosition = focused == null ? RecyclerView.NO_POSITION : focused.getBindingAdapterPosition();
-        List<Vod> visible = new ArrayList<>();
-        for (Vod item : items) if ((selected.isEmpty() || selected.equals(item.getSiteKey()))
-                && !ResourceHealth.isFiltered(VodConfig.getDiscoveryRevision(), item.getSiteKey(), item.getId())) visible.add(item);
-        // Sort a copy so recovery restores original relevance and arrival order.
         long revision = VodConfig.getDiscoveryRevision();
-        visible.sort(Comparator.comparingInt(item -> ResourceHealth.searchPenalty(revision, item.getSiteKey(), item.getId())));
+        // The penalty is 0 or 1: a stable partition equals the former stable sort
+        // and keeps relevance/arrival order, with one health lookup per card.
+        List<Vod> visible = new ArrayList<>();
+        List<Vod> penalized = new ArrayList<>();
+        for (Vod item : items) {
+            if (!selected.isEmpty() && !selected.equals(item.getSiteKey())) continue;
+            if (ResourceHealth.isFiltered(revision, item.getSiteKey(), item.getId())) continue;
+            if (ResourceHealth.searchPenalty(revision, item.getSiteKey(), item.getId()) > 0) penalized.add(item);
+            else visible.add(item);
+        }
+        visible.addAll(penalized);
         binding.results.setContentDescription(keyword() + "，影片列表，共" + visible.size() + "项");
         cards.setItems(visible, new androidx.leanback.widget.DiffCallback<Vod>() {
             @Override public boolean areItemsTheSame(Vod oldItem, Vod newItem) {
@@ -379,5 +410,5 @@ public class CollectActivity extends BaseActivity implements VodPresenter.OnClic
         }
         super.onBackInvoked();
     }
-    @Override protected void onDestroy() { searchSources.cancel(); cancelPage(); model.stopSearch(); super.onDestroy(); }
+    @Override protected void onDestroy() { binding.results.removeCallbacks(queuedDisplay); searchSources.cancel(); cancelPage(); model.stopSearch(); super.onDestroy(); }
 }

@@ -202,6 +202,10 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
                 return position < mAdapter.size() && mAdapter.get(position) instanceof Vod ? 1 : 5;
             }
         });
+        // Without the caches every layout recounts spans from position 0, which grows with each discovery page.
+        // GridLayoutManager invalidates them on every adapter change.
+        layout.getSpanSizeLookup().setSpanIndexCacheEnabled(true);
+        layout.getSpanSizeLookup().setSpanGroupIndexCacheEnabled(true);
         mBinding.recycler.setLayoutManager(layout);
         mBinding.recycler.setItemAnimator(null);
         mBinding.recycler.addItemDecoration(new RecyclerView.ItemDecoration() {

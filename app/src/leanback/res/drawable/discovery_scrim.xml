@@ -1,3 +1,0 @@
-<shape xmlns:android="http://schemas.android.com/apk/res/android">
-    <gradient android:angle="90" android:startColor="@color/tv_theme_scrim_start" android:endColor="@color/tv_theme_scrim_end" />
-</shape>

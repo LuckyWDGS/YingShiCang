@@ -1,5 +1,0 @@
-<shape xmlns:android="http://schemas.android.com/apk/res/android">
-    <solid android:color="@color/tv_theme_rating_panel" />
-    <corners android:radius="7dp" />
-    <stroke android:width="0.5dp" android:color="@color/tv_theme_filter_border" />
-</shape>

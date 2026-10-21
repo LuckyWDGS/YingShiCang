@@ -60,11 +60,6 @@ public class CastActivity extends PlaybackActivity implements CustomKeyDownVod.L
     private int scale;
 
     @Override
-    protected boolean customWall() {
-        return false;
-    }
-
-    @Override
     protected ViewBinding getBinding() {
         return mBinding = ActivityCastBinding.inflate(getLayoutInflater());
     }

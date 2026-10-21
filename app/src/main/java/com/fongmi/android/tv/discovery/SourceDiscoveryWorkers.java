@@ -1,5 +1,6 @@
 package com.fongmi.android.tv.discovery;
 
+import com.fongmi.android.tv.utils.BackgroundThreads;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.Future;
@@ -26,9 +27,7 @@ final class SourceDiscoveryWorkers implements AutoCloseable {
 
     private static ThreadPoolExecutor pool(int limit, String name) {
         return new ThreadPoolExecutor(limit, limit, 0, TimeUnit.SECONDS,
-                new ArrayBlockingQueue<>(limit * 2), runnable -> {
-                    Thread thread = new Thread(runnable, name); thread.setDaemon(true); return thread;
-                }, new ThreadPoolExecutor.AbortPolicy());
+                new ArrayBlockingQueue<>(limit * 2), BackgroundThreads.factory(name), new ThreadPoolExecutor.AbortPolicy());
     }
 
     int limit(boolean plugin) { return plugin ? crawlerLimit : networkLimit; }

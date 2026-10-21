@@ -5,6 +5,7 @@ import com.chaquo.python.PyObject;
 import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.bean.Site;
 import com.fongmi.android.tv.discovery.AiDramaCatalog;
+import com.fongmi.android.tv.utils.BackgroundThreads;
 import com.github.catvod.crawler.Spider;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -56,7 +57,7 @@ public final class AiDramaFilterCompatibility {
     private static final Map<String, CachedCatalog> CACHE = new LinkedHashMap<>();
     // An uninterruptible provider cannot create more metadata threads on retries.
     private static final ThreadPoolExecutor TOPIC_WORKER = new ThreadPoolExecutor(1, 1, 0, TimeUnit.SECONDS,
-            new ArrayBlockingQueue<>(1), runnable -> { Thread thread = new Thread(runnable, "ai-topic-metadata"); thread.setDaemon(true); return thread; },
+            new ArrayBlockingQueue<>(1), BackgroundThreads.factory("ai-topic-metadata"),
             new ThreadPoolExecutor.AbortPolicy());
     private record Category(String id, String slug, int rpc, Map<String, String> choices,
                             Map<String, String> nativeChoices) {}

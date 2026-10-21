@@ -19,6 +19,8 @@ public class AnimatedWeatherView extends View {
     private static final float[] PRECIPITATION_PHASE = {0.02f, 0.19f, 0.37f, 0.56f, 0.74f, 0.91f, 0.46f, 0.67f};
     private static final float[] PRECIPITATION_SPEED = {0.66f, 0.79f, 0.72f, 0.91f, 0.75f, 0.84f, 0.61f, 0.88f};
     private static final float[] PRECIPITATION_X = {15f, 21.5f, 28f, 34.5f, 41f, 47.5f, 18f, 44f};
+    // The slow drift reads the same at 20fps; per-vsync redraws kept Home rendering every frame.
+    private static final long FRAME_MS = 50;
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.DITHER_FLAG);
     private final Path path = new Path();
     private final Shader sunGlow = new RadialGradient(0, 0, 19,
@@ -137,7 +139,7 @@ public class AnimatedWeatherView extends View {
             }
         }
         canvas.restore();
-        if (animating) postInvalidateOnAnimation();
+        if (animating) postInvalidateDelayed(FRAME_MS);
     }
 
     private float cloudDrift(float seconds, float speed) {
