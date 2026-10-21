@@ -76,8 +76,20 @@ public final class NetTrace extends EventListener {
                 : message.contains("unable to resolve") || message.contains("no address") ? "dns"
                 : message.contains("closed") ? "closed"
                 : message.contains("handshake") || message.contains("certificate") ? "tls"
-                : message.isEmpty() ? "" : "other";
+                : message.isEmpty() ? "" : readable(error.getMessage());
         return keyword.isEmpty() ? name : name + "(" + keyword + ")";
+    }
+
+    /**
+     * A plugin's own short Chinese error text (such as why a drive refused a file) is kept; anything that
+     * could carry an address, token, account or title is reduced to "other".
+     */
+    static String readable(String message) {
+        String value = message.trim().replaceAll("\\s+", "_");
+        if (value.isEmpty() || value.length() > 30 || !value.matches(".*\\p{IsHan}.*")) return "other";
+        if (value.matches(".*[/:=@.?&%#\\\\《》「」『』“”\"'<>\\[\\]{}].*")) return "other";
+        if (value.matches(".*[A-Za-z0-9]{7,}.*")) return "other";
+        return value;
     }
 
     @Override

@@ -66,6 +66,53 @@ public class WoggAddressCompatibilityTest {
         assertFalse(WoggAddressCompatibility.supports(deep));
     }
 
+    @Test public void detailWaitingBehindSearchInterruptsOnlyThatSearch() throws Exception {
+        WoGG source = new WoGG(OLD);
+        CountDownLatch searching = new CountDownLatch(1);
+        ExecutorService pool = Executors.newSingleThreadExecutor();
+        try {
+            Future<Object> search = pool.submit(() -> WoggAddressCompatibility.search(source, () -> 10_000, ACTIVE, () -> {
+                searching.countDown();
+                Thread.sleep(10_000);
+                return "never";
+            }));
+            assertTrue(searching.await(2, TimeUnit.SECONDS));
+            long started = System.nanoTime();
+            assertEquals("detail", call(source, () -> "detail"));
+            assertTrue(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started) < 2000);
+            try { search.get(2, TimeUnit.SECONDS); fail(); }
+            catch (java.util.concurrent.ExecutionException expected) { assertTrue(expected.getCause() instanceof InterruptedException); }
+            // The pooled search thread must not carry the preemption interrupt into its next task.
+            assertFalse(pool.submit(() -> Thread.currentThread().isInterrupted()).get(2, TimeUnit.SECONDS));
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    @Test public void searchesNeverPreemptEachOther() throws Exception {
+        WoGG source = new WoGG(OLD);
+        CountDownLatch holding = new CountDownLatch(1), release = new CountDownLatch(1);
+        ExecutorService pool = Executors.newSingleThreadExecutor();
+        try {
+            Future<Object> first = pool.submit(() -> WoggAddressCompatibility.search(source, () -> 10_000, ACTIVE, () -> {
+                holding.countDown();
+                release.await();
+                return "first";
+            }));
+            assertTrue(holding.await(2, TimeUnit.SECONDS));
+            try {
+                WoggAddressCompatibility.search(source, () -> 200, ACTIVE, () -> "second");
+                fail();
+            } catch (InterruptedIOException expected) {
+                // The second search runs out of budget waiting; the first keeps running.
+            }
+            release.countDown();
+            assertEquals("first", first.get(2, TimeUnit.SECONDS));
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
     @Test public void unmatchedPluginsKeepEntireOriginalCallbackContract() throws Exception {
         Spider other = new Spider() {};
         Object value = new Object();

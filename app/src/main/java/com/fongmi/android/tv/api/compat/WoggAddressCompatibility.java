@@ -43,6 +43,30 @@ public final class WoggAddressCompatibility {
     /** The existing caller's remaining budget includes waiting for this same instance's earlier callback. */
     public static <T> T call(Spider spider, RemainingMillis remaining, CancellationCheck cancellation,
                              Callable<T> operation) throws Exception {
+        return call(spider, remaining, cancellation, operation, false);
+    }
+
+    /**
+     * A search callback. Details and play addresses are what the user is waiting on, so one that has to
+     * wait for this instance interrupts a search holding it, as leaving the search page would; the
+     * search fails like any cancelled search and may be retried.
+     */
+    public static <T> T search(Spider spider, RemainingMillis remaining, CancellationCheck cancellation,
+                               Callable<T> operation) throws Exception {
+        return call(spider, remaining, cancellation, operation, true);
+    }
+
+    /** How long this thread's last callback waited for the instance lock, in milliseconds. */
+    public static long lastWaitMillis() {
+        Long value = WAIT.get();
+        return value == null ? 0 : value;
+    }
+
+    private static final ThreadLocal<Long> WAIT = new ThreadLocal<>();
+
+    private static <T> T call(Spider spider, RemainingMillis remaining, CancellationCheck cancellation,
+                              Callable<T> operation, boolean search) throws Exception {
+        WAIT.remove();
         Audited audited = audited(spider);
         if (audited == null) return operation.call();
         Objects.requireNonNull(remaining);
@@ -53,10 +77,12 @@ public final class WoggAddressCompatibility {
         Budget budget = new Budget(remaining);
         State state = state(audited.delegate);
         boolean acquired = false;
+        long waitStart = System.nanoTime();
         try {
             while (!acquired) {
                 cancellation.check();
                 checkInterrupted();
+                if (!search) state.preemptSearch();
                 long wait = Math.min(50, budget.remaining());
                 try { acquired = state.lock.tryLock(wait, TimeUnit.MILLISECONDS); }
                 catch (InterruptedException interrupted) {
@@ -66,6 +92,8 @@ public final class WoggAddressCompatibility {
                     throw failure;
                 }
             }
+            WAIT.set(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - waitStart));
+            if (search) state.holdSearch();
             cancellation.check();
             checkInterrupted();
             budget.remaining();
@@ -84,7 +112,10 @@ public final class WoggAddressCompatibility {
                 state.finish(audited);
             }
         } finally {
-            if (acquired) state.lock.unlock();
+            if (acquired) {
+                if (search) state.releaseSearch();
+                state.lock.unlock();
+            }
         }
     }
 
@@ -123,6 +154,27 @@ public final class WoggAddressCompatibility {
 
     private static final class State {
         final ReentrantLock lock = new ReentrantLock(true);
+        private Thread searchHolder;
+        private boolean preempted;
+
+        synchronized void holdSearch() {
+            searchHolder = Thread.currentThread();
+            preempted = false;
+        }
+
+        /** Interrupts the search holding the lock, once; it cannot have released the lock meanwhile. */
+        synchronized void preemptSearch() {
+            if (searchHolder == null || preempted) return;
+            preempted = true;
+            searchHolder.interrupt();
+        }
+
+        /** Called by the holder: a preemption interrupt must not outlive this callback on a pooled thread. */
+        synchronized void releaseSearch() {
+            if (preempted) Thread.interrupted();
+            searchHolder = null;
+            preempted = false;
+        }
         String lastValid;
         void remember(Audited audited) {
             try {

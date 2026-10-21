@@ -6,6 +6,7 @@ import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.drawable.Drawable;
 import android.net.Uri;
+import android.media.AudioManager;
 import android.os.Bundle;
 import android.text.TextUtils;
 import android.text.style.ClickableSpan;
@@ -1232,6 +1233,11 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
 
     private void setR1Callback() {
         if (isScrubbing() || isVisible(mBinding.control.action.morePanel)) return;
+        // Paused controls stay up: with Up/Down on the volume, they are the remote's way back in.
+        if (controller() != null && !controller().getPlayWhenReady()) {
+            App.removeCallbacks(mR1);
+            return;
+        }
         App.post(mR1, Constant.INTERVAL_HIDE);
     }
 
@@ -1606,22 +1612,23 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
         player().setSpeed(SpeedSetting.getPlayback());
     }
 
+    // With the controls hidden Up/Down change the volume; OK (pausing), Menu or a tap opens the controls.
     @Override
     public void onKeyUp() {
-        long position = player().getPosition();
-        long duration = player().getDuration();
-        if (player().canSetOpening(position, duration)) {
-            showControl(mBinding.control.action.opening);
-        } else if (player().canSetEnding(position, duration)) {
-            showControl(mBinding.control.action.ending);
-        } else {
-            showControl(getFocus2());
-        }
+        adjustVolume(AudioManager.ADJUST_RAISE);
     }
 
     @Override
     public void onKeyDown() {
-        showControl(getFocus2());
+        adjustVolume(AudioManager.ADJUST_LOWER);
+    }
+
+    private void adjustVolume(int direction) {
+        AudioManager audio = getSystemService(AudioManager.class);
+        if (audio == null) return;
+        // HDMI passthrough boxes keep a fixed output level that only the TV can change.
+        if (audio.isVolumeFixed()) Notify.show("此设备音量由电视控制，请用电视遥控器调节音量");
+        else audio.adjustStreamVolume(AudioManager.STREAM_MUSIC, direction, AudioManager.FLAG_SHOW_UI);
     }
 
     @Override
@@ -1630,8 +1637,13 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
         // Commit the coalesced directional seek before toggling playback. A
         // delayed callback must not resume a pause requested by this key.
         mKeyDown.commitPendingSeek();
-        if (controller().getPlayWhenReady()) onPaused();
-        else if (player().isEmpty()) onRefresh();
+        if (controller().getPlayWhenReady()) {
+            // Pausing shows the controls, so remotes without a Menu key can still reach them.
+            onPaused();
+            showControl(getFocus2());
+            return;
+        }
+        if (player().isEmpty()) onRefresh();
         else onPlay();
         hideControl();
     }

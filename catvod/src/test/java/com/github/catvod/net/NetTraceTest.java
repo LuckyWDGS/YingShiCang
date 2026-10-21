@@ -29,6 +29,16 @@ public class NetTraceTest {
     }
 
     @Test
+    public void onlyShortChinesePluginMessagesAreKept() {
+        assertEquals("IOException(分享已失效)", NetTrace.reason(new IOException("分享已失效")));
+        assertEquals("IOException(容量不足_请清理网盘)", NetTrace.reason(new IOException("容量不足 请清理网盘")));
+        assertEquals("other", NetTrace.readable("文件《希望》不存在"));
+        assertEquals("other", NetTrace.readable("失效 https://pan.quark.cn/s/abc"));
+        assertEquals("other", NetTrace.readable("令牌 abcdef123456 已过期"));
+        assertEquals("other", NetTrace.readable("account expired"));
+    }
+
+    @Test
     public void emptyRecordingSummarizesNothing() {
         assertEquals("net=0 fail=0", NetTrace.begin().end());
     }

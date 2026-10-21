@@ -181,8 +181,7 @@ public class EpisodeAdapter extends RecyclerView.Adapter<EpisodeAdapter.ViewHold
 
     private void bindSelection(ViewHolder holder, Episode item) {
         holder.binding.getRoot().setSelected(item.isSelected());
-        // Playing selection propagates to the card background; only focus
-        // starts the child text marquee.
+        // Selection propagates to the children; updateMarquee then decides which text scrolls.
         holder.updateMarquee();
     }
 
@@ -219,11 +218,10 @@ public class EpisodeAdapter extends RecyclerView.Adapter<EpisodeAdapter.ViewHold
         }
 
         private void updateMarquee() {
-            // A playing episode is marked selected for the background state,
-            // but only the D-pad/touch focused card should consume attention
-            // with a marquee. This also prevents recycled, off-screen cards
-            // from continuing to scroll after focus moves away.
-            boolean active = itemView.hasFocus();
+            // The focused card and the playing card scroll a label too long to fit; touch
+            // users never focus a card, so the playing one is how they read it. Recycled and
+            // off-screen cards stop (detach/recycle reset it).
+            boolean active = itemView.hasFocus() || itemView.isSelected();
             setMarquee(binding.name, active);
             setMarquee(binding.size, active);
         }

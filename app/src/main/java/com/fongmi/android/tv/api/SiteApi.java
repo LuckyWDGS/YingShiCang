@@ -425,15 +425,17 @@ public class SiteApi {
     public static Result detailContent(@NonNull String key, @NonNull String id) throws Exception {
         long start = SystemClock.elapsedRealtime();
         NetTrace.Recording net = NetTrace.begin();
+        SPIDER_MS.set(-1L);
         try {
             Result result = detail(key, id);
-            timing("source_detail", key, start, (result.getList().isEmpty() ? "empty" : "ok") + " " + net.end());
+            timing("source_detail", key, start, (result.getList().isEmpty() ? "empty" : "ok") + spiderMs() + " " + net.end());
             return result;
         } catch (Exception error) {
-            timing("source_detail", key, start, failure(error) + " " + net.end());
+            timing("source_detail", key, start, failure(error) + spiderMs() + " " + net.end());
             throw error;
         } finally {
             net.end();
+            SPIDER_MS.remove();
         }
     }
 
@@ -458,12 +460,18 @@ public class SiteApi {
         }
     }
 
-    // Per calling thread: the plugin's own playerContent time, apart from the app's sniffing after it.
+    // Per calling thread: the plugin's own detail/player time, apart from the app's work around it.
     private static final ThreadLocal<Long> SPIDER_MS = new ThreadLocal<>();
 
     private static String spiderMs() {
         Long ms = SPIDER_MS.get();
-        return ms == null || ms < 0 ? "" : " spiderMs=" + ms;
+        return (ms == null || ms < 0 ? "" : " spiderMs=" + ms) + waitMs();
+    }
+
+    /** Time a 玩偶哥哥-family call queued behind another callback of the same plugin instance. */
+    private static String waitMs() {
+        long wait = WoggAddressCompatibility.lastWaitMillis();
+        return wait > 0 ? " waitMs=" + wait : "";
     }
 
     private static String played(Result result) {
@@ -524,8 +532,13 @@ public class SiteApi {
             return Result.vod(vod);
         } else if (isSpider(site)) {
             Spider spider = recentCrawler(site);
-            String detailContent = spiderCall(spider, Constant.TIMEOUT_VOD,
-                    () -> spider.detailContent(Arrays.asList(id)));
+            long spiderStart = SystemClock.elapsedRealtime();
+            String detailContent;
+            try {
+                detailContent = spiderCall(spider, Constant.TIMEOUT_VOD, () -> spider.detailContent(Arrays.asList(id)));
+            } finally {
+                SPIDER_MS.set(SystemClock.elapsedRealtime() - spiderStart);
+            }
             SpiderDebug.log("detail", detailContent);
             Result result = detailResult(site.getType(), detailContent);
             prepareDetail(result);
@@ -665,7 +678,7 @@ public class SiteApi {
             Spider spider = searchSpider(site, scope);
             // Only the verified base implementation has no optional pagination.
             if (hasPage && SpiderSearchCapability.hasDefaultPagination(spider)) return Result.empty();
-            String searchContent = crawlerCall(spider, scope, () -> WoggAddressCompatibility.call(spider,
+            String searchContent = crawlerCall(spider, scope, () -> WoggAddressCompatibility.search(spider,
                     scope::remainingMillis, scope::checkCancellation,
                     () -> hasPage ? spider.searchContent(keyword, quick, page) : spider.searchContent(keyword, quick)));
             scope.checkCancellation();
