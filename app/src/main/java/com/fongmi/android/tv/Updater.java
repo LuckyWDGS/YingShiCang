@@ -20,7 +20,6 @@ import com.fongmi.android.tv.utils.Notify;
 
 import java.io.*;
 import java.lang.ref.WeakReference;
-import java.util.Locale;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -40,7 +39,7 @@ public class Updater implements UpdateListener {
             if (waitingPermission) resumePermission();
             else if (installerOpened) {
                 installerOpened = false;
-                if (dialog != null) dialog.setReady("安装尚未完成，可再次选择安装或关闭");
+                if (dialog != null) dialog.setReady("安装尚未完成，可再次选择安装");
             }
         }
     }
@@ -117,15 +116,13 @@ public class Updater implements UpdateListener {
                 return;
             }
             UpdateNotice.found(manifest.versionName);
+            boolean mandatory = UpdateNotice.mandatory(manifest.notes, manifest.versionName);
             App.post(() -> {
                 FragmentActivity target = host();
                 if (target == null || target.getSupportFragmentManager().isStateSaved()
-                        || !manual && !UpdateNotice.firstPrompt(manifest.versionName)) { close(); return; }
-                String notes = manifest.notes == null || manifest.notes.trim().isEmpty()
-                        ? "此版本未填写更新说明" : plainNotes(manifest.notes);
-                dialog = UpdateDialog.create().title("发现新版本 " + manifest.versionName)
-                        .desc("更新内容\n\n" + notes + "\n\n安装包 "
-                                + String.format(Locale.ROOT, "%.1f MB", manifest.size / 1_000_000.0))
+                        || !prompt(manifest.versionName, mandatory)) { close(); return; }
+                dialog = UpdateDialog.create().version(BuildConfig.VERSION_NAME, manifest.versionName)
+                        .notes(manifest.notes).packageSize(manifest.size).mandatory(mandatory, ReleaseNotes.importantReason(manifest.notes))
                         .listener(this).show(target);
             });
         } catch (Exception error) {
@@ -134,23 +131,23 @@ public class Updater implements UpdateListener {
         }
     }
 
-    private static String plainNotes(String text) {
-        return text.replaceAll("(?m)^#{1,6}\\s+", "")
-                .replaceAll("\\*\\*([^*]+)\\*\\*", "$1")
-                .replaceAll("\\[([^\\]]+)]\\([^\\s)]+\\)", "$1").trim();
-    }
-
     /** A newer release exists but its package cannot be fetched here; announce it without a download. */
     private void offerManual(String version, String notes) {
+        boolean mandatory = UpdateNotice.mandatory(notes, version);
         App.post(() -> {
             FragmentActivity target = host();
             if (target == null || target.getSupportFragmentManager().isStateSaved()
-                    || !manual && !UpdateNotice.firstPrompt(version)) { close(); return; }
-            dialog = UpdateDialog.create().title("发现新版本 " + version)
-                    .desc("更新内容\n\n" + plainNotes(notes)).listener(this).show(target);
+                    || !prompt(version, mandatory)) { close(); return; }
+            dialog = UpdateDialog.create().version(BuildConfig.VERSION_NAME, version)
+                    .notes(notes).mandatory(mandatory, ReleaseNotes.importantReason(notes)).listener(this).show(target);
             // Manual-install guidance is intentionally left out for now.
             dialog.setManual();
         });
+    }
+
+    /** Optional releases prompt once per version at launch; mandatory ones on every launch until installed. */
+    private boolean prompt(String version, boolean mandatory) {
+        return manual || mandatory || UpdateNotice.firstPrompt(version);
     }
 
     private FragmentActivity host() {

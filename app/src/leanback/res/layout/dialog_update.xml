@@ -3,43 +3,145 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
+    android:background="@drawable/update_panel"
+    android:clipToPadding="false"
     android:orientation="vertical"
-    android:padding="24dp">
+    android:paddingStart="28dp"
+    android:paddingTop="26dp"
+    android:paddingEnd="28dp"
+    android:paddingBottom="16dp">
 
-    <com.google.android.material.textview.MaterialTextView
-        android:id="@+id/version"
-        android:layout_width="wrap_content"
+    <androidx.appcompat.widget.LinearLayoutCompat
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:letterSpacing="0.02"
-        android:textColor="@color/white"
-        android:textSize="18sp"
-        tools:text="@string/update_version" />
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <ImageView
+            android:layout_width="60dp"
+            android:layout_height="60dp"
+            android:background="@drawable/update_icon_box"
+            android:importantForAccessibility="no"
+            android:padding="14dp"
+            android:src="@drawable/ic_update_sync" />
+
+        <androidx.appcompat.widget.LinearLayoutCompat
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="20dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <com.google.android.material.textview.MaterialTextView
+                android:id="@+id/title"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="发现新版本"
+                android:textColor="@color/tv_theme_text"
+                android:textSize="24sp"
+                android:textStyle="bold" />
+
+            <com.google.android.material.textview.MaterialTextView
+                android:id="@+id/version"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:fontFeatureSettings="tnum"
+                android:singleLine="true"
+                android:textColor="#CCCCCC"
+                android:textSize="16sp"
+                tools:text="当前版本 1.3.0  →  新版本 1.4.0" />
+
+        </androidx.appcompat.widget.LinearLayoutCompat>
+
+    </androidx.appcompat.widget.LinearLayoutCompat>
+
+    <androidx.appcompat.widget.LinearLayoutCompat
+        android:id="@+id/important"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="18dp"
+        android:background="@drawable/update_important"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="14dp"
+        android:paddingTop="10dp"
+        android:paddingEnd="14dp"
+        android:paddingBottom="10dp"
+        android:visibility="gone"
+        tools:visibility="visible">
+
+        <ImageView
+            android:layout_width="22dp"
+            android:layout_height="22dp"
+            android:importantForAccessibility="no"
+            android:src="@drawable/ic_update_important" />
+
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/importantText"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:layout_weight="1"
+            android:lineSpacingExtra="2dp"
+            android:textColor="#F2D49B"
+            android:textSize="15sp"
+            tools:text="重要更新：当前版本已停止支持，请更新后继续使用" />
+
+    </androidx.appcompat.widget.LinearLayoutCompat>
 
     <View
         android:layout_width="match_parent"
         android:layout_height="1dp"
-        android:layout_marginTop="16dp"
-        android:layout_marginBottom="16dp"
-        android:background="?attr/colorOutlineVariant" />
+        android:layout_marginTop="18dp"
+        android:background="#2E2E2E" />
+
+    <androidx.appcompat.widget.LinearLayoutCompat
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="14dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <com.google.android.material.textview.MaterialTextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="更新内容"
+            android:textColor="@color/tv_theme_text"
+            android:textSize="17sp"
+            android:textStyle="bold" />
+
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/size"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="@color/tv_theme_text_secondary"
+            android:textSize="13sp"
+            android:visibility="gone"
+            tools:text="安装包 94.7 MB"
+            tools:visibility="visible" />
+
+    </androidx.appcompat.widget.LinearLayoutCompat>
 
     <androidx.core.widget.NestedScrollView
         android:id="@+id/descriptionScroll"
         android:layout_width="match_parent"
-        android:layout_height="160dp"
-        android:layout_marginBottom="16dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:background="@drawable/update_notes_panel"
         android:focusable="true"
         android:nextFocusDown="@id/confirm"
-        android:overScrollMode="never">
+        android:overScrollMode="never"
+        android:scrollbars="none">
 
-        <com.google.android.material.textview.MaterialTextView
-            android:id="@+id/desc"
+        <androidx.appcompat.widget.LinearLayoutCompat
+            android:id="@+id/notes"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:letterSpacing="0.02"
-            android:lineSpacingExtra="8dp"
-            android:textColor="@color/white"
-            android:textSize="16sp"
-            tools:text="1. 新增 ffmpeg 音頻軟解\n2. 詳情頁新增分詞快搜\n3. 修復搜尋閃退問題\n4. 設定支援渲染切換" />
+            android:orientation="vertical"
+            android:paddingTop="4dp"
+            android:paddingBottom="4dp" />
 
     </androidx.core.widget.NestedScrollView>
 
@@ -47,7 +149,7 @@
         android:id="@+id/transfer"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="16dp"
+        android:layout_marginTop="14dp"
         android:orientation="vertical"
         android:visibility="gone"
         tools:visibility="visible">
@@ -58,7 +160,7 @@
             android:layout_height="wrap_content"
             android:ellipsize="end"
             android:maxLines="3"
-            android:textColor="@color/white"
+            android:textColor="@color/tv_theme_text"
             android:textSize="14sp"
             tools:text="正在下载安装包…" />
 
@@ -79,47 +181,81 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:textColor="#AAAAAA"
+            android:textColor="@color/tv_theme_text_secondary"
             android:textSize="13sp"
             tools:text="45%  ·  42.6 MB / 94.7 MB" />
 
     </androidx.appcompat.widget.LinearLayoutCompat>
 
+    <!-- Buttons reserve 4dp for the outer focus ring; the negative margin keeps their visible edges on the content edges. -->
     <androidx.appcompat.widget.LinearLayoutCompat
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_marginStart="-4dp"
+        android:layout_marginTop="14dp"
+        android:layout_marginEnd="-4dp"
         android:orientation="horizontal">
 
-        <com.google.android.material.textview.MaterialTextView
+        <androidx.appcompat.widget.LinearLayoutCompat
             android:id="@+id/confirm"
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginEnd="16dp"
+            android:layout_height="56dp"
+            android:layout_marginEnd="6dp"
             android:layout_weight="1"
-            android:background="@drawable/selector_button"
+            android:background="@drawable/update_primary"
             android:focusable="true"
             android:focusableInTouchMode="false"
             android:gravity="center"
-            android:minHeight="44dp"
             android:nextFocusRight="@id/cancel"
             android:nextFocusUp="@id/descriptionScroll"
-            android:text="@string/update_confirm"
-            android:textColor="@color/white" />
+            android:orientation="horizontal">
+
+            <ImageView
+                android:id="@+id/confirmIcon"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:layout_marginEnd="10dp"
+                android:importantForAccessibility="no"
+                android:src="@drawable/ic_update_download" />
+
+            <com.google.android.material.textview.MaterialTextView
+                android:id="@+id/confirmText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/tv_theme_primary_text"
+                android:textSize="17sp"
+                android:textStyle="bold"
+                tools:text="下载并安装" />
+
+        </androidx.appcompat.widget.LinearLayoutCompat>
 
         <com.google.android.material.textview.MaterialTextView
             android:id="@+id/cancel"
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
+            android:layout_height="56dp"
+            android:layout_marginStart="6dp"
             android:layout_weight="1"
-            android:background="@drawable/selector_button"
+            android:background="@drawable/update_secondary"
             android:focusable="true"
             android:focusableInTouchMode="false"
             android:gravity="center"
-            android:minHeight="44dp"
             android:nextFocusLeft="@id/confirm"
             android:nextFocusUp="@id/descriptionScroll"
-            android:text="@string/dialog_negative"
-            android:textColor="@color/white" />
+            android:textColor="@color/tv_theme_text"
+            android:textSize="17sp"
+            android:textStyle="bold"
+            tools:text="暂不更新" />
 
     </androidx.appcompat.widget.LinearLayoutCompat>
+
+    <com.google.android.material.textview.MaterialTextView
+        android:id="@+id/backHint"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginTop="8dp"
+        android:textColor="#8A8A8A"
+        android:textSize="13sp"
+        tools:text="返回键关闭" />
+
 </androidx.appcompat.widget.LinearLayoutCompat>

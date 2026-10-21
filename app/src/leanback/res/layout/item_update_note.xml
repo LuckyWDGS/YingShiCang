@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.appcompat.widget.LinearLayoutCompat xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:paddingStart="16dp"
+    android:paddingTop="3dp"
+    android:paddingEnd="16dp"
+    android:paddingBottom="3dp">
+
+    <com.google.android.material.textview.MaterialTextView
+        android:layout_width="14dp"
+        android:layout_height="wrap_content"
+        android:importantForAccessibility="no"
+        android:text="•"
+        android:textColor="@color/tv_theme_text_secondary"
+        android:textSize="15sp" />
+
+    <com.google.android.material.textview.MaterialTextView
+        android:id="@+id/text"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:lineSpacingExtra="3dp"
+        android:textColor="#E6E6E6"
+        android:textSize="15sp"
+        tools:text="每次打开应用都会检查是否有新版本。" />
+
+</androidx.appcompat.widget.LinearLayoutCompat>

@@ -11,6 +11,7 @@ import androidx.viewbinding.ViewBinding;
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.databinding.DialogUpdateBinding;
 import com.fongmi.android.tv.impl.UpdateListener;
+import com.fongmi.android.tv.maintenance.ReleaseNotes;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
 import java.util.Locale;
@@ -27,6 +28,7 @@ public class UpdateDialog extends BaseAlertDialog {
     private long downloaded = -1;
     private long total = -1;
     private boolean focusCancelPending;
+    private boolean mandatory;
 
     private enum Phase { AVAILABLE, DOWNLOADING, VERIFYING, READY, ERROR, MANUAL }
 
@@ -34,13 +36,26 @@ public class UpdateDialog extends BaseAlertDialog {
         return new UpdateDialog();
     }
 
-    public UpdateDialog title(String title) {
-        this.title = title;
+    public UpdateDialog version(String current, String latest) {
+        this.title = "发现新版本 " + latest;
         return this;
     }
 
-    public UpdateDialog desc(String desc) {
-        this.desc = desc;
+    public UpdateDialog notes(String notes) {
+        String plain = ReleaseNotes.plain(notes);
+        this.desc = "更新内容\n\n" + (plain.isEmpty() ? "此版本未填写更新说明" : plain);
+        return this;
+    }
+
+    public UpdateDialog packageSize(long bytes) {
+        this.desc += "\n\n安装包 " + String.format(Locale.ROOT, "%.1f MB", bytes / 1_000_000.0);
+        return this;
+    }
+
+    /** A mandatory update cannot be postponed; only a failed or impossible download offers to continue for now. */
+    public UpdateDialog mandatory(boolean mandatory, String reason) {
+        this.mandatory = mandatory;
+        if (mandatory) this.desc = "重要更新：" + (reason == null || reason.isEmpty() ? "当前版本已停止支持，请更新后继续使用" : reason) + "\n\n" + desc;
         return this;
     }
 
@@ -160,7 +175,8 @@ public class UpdateDialog extends BaseAlertDialog {
         confirm.setFocusable(!busy);
         confirm.setText(phase == Phase.READY ? "安装" : phase == Phase.ERROR ? "重试下载"
                 : phase == Phase.AVAILABLE ? "下载并安装" : getString(R.string.update_confirm));
-        cancel.setText(manual ? "知道了" : phase == Phase.READY || phase == Phase.ERROR ? "关闭"
+        cancel.setVisibility(!mandatory || phase == Phase.ERROR || manual ? View.VISIBLE : View.GONE);
+        cancel.setText(mandatory ? "暂时继续使用" : manual ? "知道了" : phase == Phase.READY || phase == Phase.ERROR ? "关闭"
                 : phase == Phase.DOWNLOADING ? "取消下载" : phase == Phase.VERIFYING ? "取消"
                 : "暂不更新");
         if (focusCancelPending) {

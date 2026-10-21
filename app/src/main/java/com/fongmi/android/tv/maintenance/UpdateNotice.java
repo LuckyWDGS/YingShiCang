@@ -31,7 +31,7 @@ public final class UpdateNotice {
         changed();
     }
 
-    /** True only the first time the launch check meets this version. */
+    /** True only the first time the launch check meets this version; mandatory releases bypass this. */
     public static boolean firstPrompt(String version) {
         if (version.equals(Prefers.getString(PROMPTED))) return false;
         Prefers.put(PROMPTED, version);
@@ -63,5 +63,14 @@ public final class UpdateNotice {
 
     public static boolean isNewer(String candidate) {
         return newer(candidate, BuildConfig.VERSION_NAME);
+    }
+
+    /** This build must update: it is below the release's declared minimum, which the release itself satisfies. */
+    public static boolean mandatory(String notes, String release) {
+        return mandatory(ReleaseNotes.minVersion(notes), release, BuildConfig.VERSION_NAME);
+    }
+
+    static boolean mandatory(String minimum, String release, String current) {
+        return newer(minimum, current) && !newer(minimum, release);
     }
 }
