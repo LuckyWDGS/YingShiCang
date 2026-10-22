@@ -14,6 +14,7 @@ import androidx.core.os.HandlerCompat;
 
 import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.diagnostics.DiagnosticLog;
+import com.fongmi.android.tv.maintenance.CacheJanitor;
 import com.fongmi.android.tv.maintenance.CrashLogUpload;
 import com.fongmi.hook.Hook;
 import com.github.catvod.Init;
@@ -86,6 +87,7 @@ public class App extends Application implements Application.ActivityLifecycleCal
         DiagnosticLog.install(this);
         DiagnosticLog.write(this, "app_start", BuildConfig.VERSION_NAME + "/" + BuildConfig.FLAVOR);
         if (DiagnosticLog.crashMarker() != null) CrashLogUpload.schedule(this);
+        CacheJanitor.schedule(this);
         Notify.createChannel();
         registerActivityLifecycleCallbacks(this);
     }

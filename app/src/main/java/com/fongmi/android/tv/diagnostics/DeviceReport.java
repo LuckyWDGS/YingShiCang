@@ -11,12 +11,15 @@ import android.view.WindowManager;
 
 import com.fongmi.android.tv.BuildConfig;
 import com.fongmi.android.tv.setting.PlayerSetting;
+import com.github.catvod.utils.Path;
 import com.google.gson.Gson;
 
+import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -67,8 +70,27 @@ public final class DeviceReport {
                 + " highestQuality=" + PlayerSetting.isHighestQualityPreferred());
         // Only whether DNS-over-HTTPS is on: its resolver address is a user setting and never reported.
         report.put("network", "doh=" + (com.fongmi.android.tv.setting.Setting.getDoh().isEmpty() ? "off" : "on"));
+        report.put("storage", storage(context));
         report.put("decoders", decoders());
         return report;
+    }
+
+    /** Where the app's space goes (MB), so a growing cache can be traced to its source; sizes only, no names. */
+    static String storage(Context context) {
+        File cache = context.getCacheDir();
+        long images = Path.size(new File(cache, "image_manager_disk_cache"));
+        long plugins = 0;
+        for (String name : new String[]{"jar", "js", "py", "chaquopy"}) plugins += Path.size(new File(cache, name));
+        for (File file : Path.list(cache)) if (file.isFile() && file.getName().endsWith(".so")) plugins += file.length();
+        return "cache=" + mb(Path.size(cache)) + " images=" + mb(images) + " plugins=" + mb(plugins)
+                + " epg=" + mb(Path.size(new File(cache, "epg"))) + " exo=" + mb(Path.size(new File(cache, "exo")))
+                + " mpv=" + mb(Path.size(new File(cache, "mpv"))) + " files=" + mb(Path.size(context.getFilesDir()))
+                + " db=" + mb(Path.size(context.getDatabasePath("tv").getParentFile()))
+                + " free=" + mb(cache.getUsableSpace());
+    }
+
+    private static String mb(long bytes) {
+        return String.format(Locale.ROOT, "%.1f", bytes / 1_048_576.0);
     }
 
     private static String display(Context context) {

@@ -9,6 +9,7 @@ import android.text.TextUtils;
 
 import androidx.core.content.FileProvider;
 
+import com.bumptech.glide.Glide;
 import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.impl.Callback;
@@ -206,18 +207,36 @@ public class FileUtil {
         }
     }
 
+    /**
+     * 清除缓存 removes images, guides, subtitles and playback caches but keeps source plugin files (jars, JS/Python
+     * plugins, native libraries, plugin IDs), so sources do not download and initialize again on the next start.
+     */
     public static void clearCache(Callback callback) {
         Task.execute(() -> {
-            Path.clear(Path.cache());
+            try { Glide.get(App.get()).clearDiskCache(); } catch (Throwable ignored) {}
+            for (File file : Path.list(Path.cache())) if (isClearable(file)) Path.clear(file);
             App.post(callback::success);
         });
     }
 
     public static void getCacheSize(Callback callback) {
         Task.execute(() -> {
-            String usage = byteCountToDisplaySize(Path.size(Path.cache()));
+            String usage = byteCountToDisplaySize(clearableCacheSize());
             App.post(() -> callback.success(usage));
         });
+    }
+
+    public static long clearableCacheSize() {
+        long total = 0;
+        for (File file : Path.list(Path.cache())) if (isClearable(file)) total += Path.size(file);
+        return total;
+    }
+
+    /** Top-level cache entries that belong to source plugins (or ART's compiled copies of them) stay. */
+    static boolean isClearable(File file) {
+        String name = file.getName();
+        if (file.isDirectory()) return !(name.equals("jar") || name.equals("js") || name.equals("py") || name.equals("chaquopy") || name.equals("oat_primary"));
+        return !(name.endsWith(".so") || name.endsWith(".lck") || name.startsWith("data_ID"));
     }
 
     public static Uri getShareUri(String path) {

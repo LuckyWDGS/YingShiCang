@@ -602,7 +602,7 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         // A return bookmark belongs only to a remotely focused history card.
         // Background saves and clicks elsewhere must never pull focus off tabs.
         if (!mBinding.recycler.isInTouchMode() && item.getKey().equals(getFocusedHistoryKey())) mHistoryReturnKey = item.getKey();
-        VideoActivity.start(this, item.getSiteKey(), item.getVodId(), item.getVodName(), item.getVodPic());
+        VideoActivity.startFull(this, item.getSiteKey(), item.getVodId(), item.getVodName(), item.getVodPic());
     }
 
     @Override

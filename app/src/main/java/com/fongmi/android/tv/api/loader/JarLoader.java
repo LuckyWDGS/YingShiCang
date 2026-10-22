@@ -21,10 +21,12 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.lang.reflect.Method;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CancellationException;
@@ -45,6 +47,13 @@ public class JarLoader {
             });
 
     static { FAILED_CLEANUP.allowCoreThreadTimeOut(true); }
+
+    // Plugin files opened by this process; CacheJanitor never deletes them.
+    private static final Set<String> LOADED_FILES = ConcurrentHashMap.newKeySet();
+
+    public static Set<String> loadedFiles() {
+        return Collections.unmodifiableSet(LOADED_FILES);
+    }
 
     private final ConcurrentHashMap<String, DexClassLoader> loaders;
     private final ConcurrentHashMap<String, Method> methods;
@@ -83,6 +92,7 @@ public class JarLoader {
     private void load(String key, File file) {
         checkCancellation();
         if (!Path.exists(file) || !file.setReadOnly()) throw new IllegalStateException("源插件文件不可用");
+        LOADED_FILES.add(file.getAbsolutePath());
         String cachePath = Path.jar().getAbsolutePath();
         DexClassLoader loader = new DexClassLoader(file.getAbsolutePath(), cachePath, cachePath, App.get().getClassLoader());
         invokeInit(loader);

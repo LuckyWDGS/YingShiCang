@@ -123,7 +123,7 @@ public class CastActivity extends PlaybackActivity implements CustomKeyDownVod.L
         mBinding.control.action.player.setOnClickListener(view -> onPlayer());
         mBinding.control.action.decode.setOnClickListener(view -> onDecode());
         mBinding.control.action.speed.setOnLongClickListener(view -> onSpeedLong());
-        mBinding.video.setOnTouchListener((view, event) -> mKeyDown.onTouchEvent(event));
+        mBinding.video.setOnTouchListener((view, event) -> mKeyDown.onTouchEvent(view, event));
     }
 
     private void setVideoView() {

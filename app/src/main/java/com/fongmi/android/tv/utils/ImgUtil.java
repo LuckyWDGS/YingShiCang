@@ -17,6 +17,7 @@ import androidx.annotation.Nullable;
 import com.bumptech.glide.Glide;
 import com.bumptech.glide.RequestBuilder;
 import com.bumptech.glide.load.DataSource;
+import com.bumptech.glide.load.engine.DiskCacheStrategy;
 import com.bumptech.glide.load.engine.GlideException;
 import com.bumptech.glide.load.model.GlideUrl;
 import com.bumptech.glide.load.model.LazyHeaders;
@@ -115,7 +116,8 @@ public class ImgUtil {
         }
         else try {
             RequestBuilder<Drawable> builder = Glide.with(view).load(getUrl(url)).listener(getListener(text, url, view, vod));
-            if (vod) builder.placeholder(R.drawable.poster_default).error(R.drawable.poster_default);
+            // Cards keep only the display-size poster on disk, not the original download (often several times larger).
+            if (vod) builder.diskCacheStrategy(DiskCacheStrategy.RESOURCE).placeholder(R.drawable.poster_default).error(R.drawable.poster_default);
             if (vod) builder.centerCrop().into(view);
             else builder.fitCenter().into(view);
         } catch (Throwable e) {
@@ -219,7 +221,7 @@ public class ImgUtil {
     /** Real poster request with a second image size as fallback, never a cached failure glyph. */
     public static void loadPoster(String url, ImageView view) {
         String highResolution = url.replace("/s_ratio_poster/", "/m_ratio_poster/");
-        RequestBuilder<Drawable> retry = Glide.with(view).load(getUrl(url)).centerCrop().error(R.drawable.poster_default);
-        Glide.with(view).load(getUrl(highResolution)).centerCrop().placeholder(R.drawable.poster_default).error(retry).into(view);
+        RequestBuilder<Drawable> retry = Glide.with(view).load(getUrl(url)).diskCacheStrategy(DiskCacheStrategy.RESOURCE).centerCrop().error(R.drawable.poster_default);
+        Glide.with(view).load(getUrl(highResolution)).diskCacheStrategy(DiskCacheStrategy.RESOURCE).centerCrop().placeholder(R.drawable.poster_default).error(retry).into(view);
     }
 }

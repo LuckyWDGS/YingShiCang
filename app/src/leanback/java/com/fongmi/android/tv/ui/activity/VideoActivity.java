@@ -166,7 +166,16 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
         start(activity, key, id, name, pic, mark, false, false);
     }
 
+    /** From 最近观看: straight into full-screen playback; Back still leads to the detail page. */
+    public static void startFull(Activity activity, String key, String id, String name, String pic) {
+        activity.startActivity(intent(activity, key, id, name, pic, null, false, false).putExtra("full", true));
+    }
+
     public static void start(Activity activity, String key, String id, String name, String pic, String mark, boolean collect, boolean cast) {
+        activity.startActivity(intent(activity, key, id, name, pic, mark, collect, cast));
+    }
+
+    private static Intent intent(Activity activity, String key, String id, String name, String pic, String mark, boolean collect, boolean cast) {
         Intent intent = new Intent(activity, VideoActivity.class);
         intent.putExtra("collect", collect);
         intent.putExtra("cast", cast);
@@ -175,7 +184,7 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
         intent.putExtra("key", key);
         intent.putExtra("id", id);
         putPic(intent, pic);
-        activity.startActivity(intent);
+        return intent;
     }
 
     private static void putPic(Intent intent, String pic) {
@@ -186,6 +195,10 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
 
     private boolean isCast() {
         return getIntent().getBooleanExtra("cast", false);
+    }
+
+    private boolean isFullStart() {
+        return getIntent().getBooleanExtra("full", false);
     }
 
     private String getName() {
@@ -351,7 +364,7 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
         mBinding.control.action.speed.setOnLongClickListener(view -> onSpeedLong());
         mBinding.control.action.ending.setOnLongClickListener(view -> onEndingReset());
         mBinding.control.action.opening.setOnLongClickListener(view -> onOpeningReset());
-        mBinding.video.setOnTouchListener((view, event) -> mKeyDown.onTouchEvent(event));
+        mBinding.video.setOnTouchListener((view, event) -> mKeyDown.onTouchEvent(view, event));
         mBinding.flag.addOnChildViewHolderSelectedListener(new OnChildViewHolderSelectedListener() {
             @Override
             public void onChildViewHolderSelected(@NonNull RecyclerView parent, @Nullable RecyclerView.ViewHolder child, int position, int subposition) {
@@ -751,7 +764,7 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
     }
 
     private void checkCast() {
-        if (isCast() && !isFullscreen()) enterFullscreen();
+        if ((isCast() || isFullStart()) && !isFullscreen()) enterFullscreen();
         else mBinding.progressLayout.showProgress();
     }
 
@@ -760,6 +773,8 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
     }
 
     private void showEmpty() {
+        // A full-screen start (history) must not leave a black screen over the empty detail page.
+        if (isFullscreen()) exitFullscreen();
         mBinding.progressLayout.showEmpty();
     }
 
@@ -1717,6 +1732,11 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
     @Override
     public void onKeyDown() {
         adjustVolume(AudioManager.ADJUST_LOWER);
+    }
+
+    @Override
+    public void onSwipeVolume(boolean raise) {
+        adjustVolume(raise ? AudioManager.ADJUST_RAISE : AudioManager.ADJUST_LOWER);
     }
 
     private void adjustVolume(int direction) {
