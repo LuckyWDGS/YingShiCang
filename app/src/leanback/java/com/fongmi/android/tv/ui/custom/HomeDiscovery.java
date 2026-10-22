@@ -512,36 +512,42 @@ public final class HomeDiscovery {
             // Keep successful responses and only reissue the failed provider slots.
             if (batches.get(i) != null) continue;
             int slot = i;
-            DiscoveryCatalog.Request spec = specs.get(i);
-            Call call = client.newCall(new Request.Builder().url(spec.url).headers(Headers.of(spec.headers)).build());
-            requests.add(call);
-            call.enqueue(new Callback() {
-                @Override public void onFailure(Call call, IOException error) {
-                    roundError = NetTrace.reason(error);
-                    complete(null);
-                }
-                @Override public void onResponse(Call call, Response response) {
-                    try (response) {
-                        if (!response.isSuccessful() || response.body() == null) {
-                            roundError = "HTTP" + response.code();
-                            throw new IOException("Unavailable");
-                        }
-                        complete(DiscoveryCatalog.parse(response.body().string()));
-                    } catch (Exception error) {
-                        if (roundError == null) roundError = NetTrace.reason(error);
-                        complete(null);
-                    }
-                }
-                private void complete(DiscoveryCatalog.Page result) {
-                    App.post(() -> {
-                        if (token != generation || activity.isDestroyed() || activity.isFinishing()) return;
-                        batches.set(slot, result);
-                        if (--remaining[0] != 0) return;
-                        finish(specs, batches, targetPage, retryAttempt, token, before);
-                    });
-                }
-            });
+            fetch(specs.get(i).effective(), result -> App.post(() -> {
+                if (token != generation || activity.isDestroyed() || activity.isFinishing()) return;
+                batches.set(slot, result);
+                if (--remaining[0] != 0) return;
+                finish(specs, batches, targetPage, retryAttempt, token, before);
+            }));
         }
+    }
+
+    /** One provider page; a Douban refusal of the web endpoint retries once from the mobile API. */
+    private void fetch(DiscoveryCatalog.Request spec, Consumer<DiscoveryCatalog.Page> complete) {
+        Call call = client.newCall(new Request.Builder().url(spec.url).headers(Headers.of(spec.headers)).build());
+        requests.add(call);
+        call.enqueue(new Callback() {
+            @Override public void onFailure(Call call, IOException error) {
+                roundError = NetTrace.reason(error);
+                complete.accept(null);
+            }
+            @Override public void onResponse(Call call, Response response) {
+                try (response) {
+                    if (DiscoveryCatalog.refused(response.code()) && spec.fallback != null) {
+                        DiscoveryCatalog.webRefused();
+                        App.post(() -> { if (!call.isCanceled()) fetch(spec.fallback, complete); });
+                        return;
+                    }
+                    if (!response.isSuccessful() || response.body() == null) {
+                        roundError = "HTTP" + response.code();
+                        throw new IOException("Unavailable");
+                    }
+                    complete.accept(DiscoveryCatalog.parse(response.body().string()));
+                } catch (Exception error) {
+                    if (roundError == null) roundError = NetTrace.reason(error);
+                    complete.accept(null);
+                }
+            }
+        });
     }
 
     private void loadAiDrama(boolean retry) {

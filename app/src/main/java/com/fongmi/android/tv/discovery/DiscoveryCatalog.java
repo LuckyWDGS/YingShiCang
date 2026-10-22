@@ -120,9 +120,30 @@ public final class DiscoveryCatalog {
         public final String url;
         public final int start, pageSize;
         public final Map<String, String> headers;
+        /** Same list from the mobile API, for when the rate-limited web endpoint refuses (403). */
+        public final Request fallback;
         private Request(String url, int start) {
-            this.url = url; this.start = start; this.pageSize = PAGE_SIZE; this.headers = HEADERS;
+            this(url, start, null);
         }
+        private Request(String url, int start, Request fallback) {
+            this.url = url; this.start = start; this.pageSize = PAGE_SIZE; this.headers = HEADERS; this.fallback = fallback;
+        }
+        /** The web endpoint while it answers; its fallback for a while after Douban refused it. */
+        public Request effective() {
+            return fallback != null && System.nanoTime() - webBlockedUntil < 0 ? fallback : this;
+        }
+    }
+
+    private static final long WEB_BLOCK_NANOS = java.util.concurrent.TimeUnit.MINUTES.toNanos(10);
+    private static volatile long webBlockedUntil = System.nanoTime();
+
+    /** Douban rate-limits movie.douban.com/j/search_subjects per IP; refusals mean "use the mobile API". */
+    public static boolean refused(int code) {
+        return code == 403 || code == 418 || code == 429;
+    }
+
+    public static void webRefused() {
+        webBlockedUntil = System.nanoTime() + WEB_BLOCK_NANOS;
     }
 
     public static List<Request> requests(State state, int page) {
@@ -140,7 +161,16 @@ public final class DiscoveryCatalog {
 
     private static Request search(String type, String tag, String sort, int start) {
         return new Request("https://movie.douban.com/j/search_subjects?type=" + type + "&tag=" + encode(tag)
-                + "&sort=" + sort + "&page_limit=" + PAGE_SIZE + "&page_start=" + start, start);
+                + "&sort=" + sort + "&page_limit=" + PAGE_SIZE + "&page_start=" + start, start, mobile(type, tag, sort, start));
+    }
+
+    /** The mobile API's recent-hot list matching a web search: sort → category, region tag → type. */
+    private static Request mobile(String type, String tag, String sort, int start) {
+        if (type.equals("tv")) return recent("tv", "tv", start);
+        String category = switch (sort) { case "time" -> "最新"; case "rank" -> "豆瓣高分"; default -> "热门"; };
+        String region = tag.equals("热门") ? "全部" : tag;
+        return new Request(API + "subject/recent_hot/movie?category=" + encode(category) + "&type=" + encode(region)
+                + "&start=" + start + "&limit=" + PAGE_SIZE, start);
     }
 
     private static Request recent(String category, String type, int start) {

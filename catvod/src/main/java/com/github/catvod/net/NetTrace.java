@@ -81,15 +81,18 @@ public final class NetTrace extends EventListener {
     }
 
     /**
-     * A plugin's own short Chinese error text (such as why a drive refused a file) is kept; anything that
-     * could carry an address, token, account or title is reduced to "other".
+     * A plugin's own Chinese error text (such as why a drive refused a file) is kept, with titles and any
+     * address/token/account-like run replaced by an ellipsis and the length capped; text with no Chinese
+     * (often a raw URL or stack message) is reduced to "other".
      */
     static String readable(String message) {
-        String value = message.trim().replaceAll("\\s+", "_");
-        if (value.isEmpty() || value.length() > 30 || !value.matches(".*\\p{IsHan}.*")) return "other";
-        if (value.matches(".*[/:=@.?&%#\\\\《》「」『』“”\"'<>\\[\\]{}].*")) return "other";
-        if (value.matches(".*[A-Za-z0-9]{7,}.*")) return "other";
-        return value;
+        String value = message.trim();
+        if (!value.matches("(?s).*\\p{IsHan}.*")) return "other";
+        // Titles, then anything address- or token-like (a run of 7+ URL characters), become an ellipsis.
+        value = value.replaceAll("《[^》]*》|「[^」]*」|“[^”]*”", "…");
+        value = value.replaceAll("[A-Za-z0-9._~:/?#\\[\\]@!$&'()*+,;=%\\-]{7,}", "…");
+        value = value.replaceAll("\\s+", "_");
+        return value.length() > 40 ? value.substring(0, 40) + "…" : value;
     }
 
     @Override

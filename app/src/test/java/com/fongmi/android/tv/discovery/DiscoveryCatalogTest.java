@@ -257,4 +257,25 @@ public class DiscoveryCatalogTest {
         }
         return query;
     }
+
+    @Test public void webSearchRequestsFallBackToTheMatchingMobileListAfterARefusal() {
+        DiscoveryCatalog.Request home = DiscoveryCatalog.requests(new DiscoveryCatalog.State(0), 0).get(0);
+        assertTrue(home.url.startsWith("https://movie.douban.com/j/search_subjects"));
+        Map<String, String> movie = query(home.fallback.url);
+        assertTrue(home.fallback.url.contains("/subject/recent_hot/movie?"));
+        assertEquals("热门", movie.get("category"));
+        assertEquals("全部", movie.get("type"));
+        DiscoveryCatalog.Request tv = DiscoveryCatalog.requests(new DiscoveryCatalog.State(0), 1).get(1);
+        assertTrue(tv.fallback.url.contains("/subject/recent_hot/tv?"));
+        assertEquals("20", query(tv.fallback.url).get("start"));
+        assertTrue(DiscoveryCatalog.refused(403));
+        assertFalse(DiscoveryCatalog.refused(404));
+        assertSame(home, home.effective());
+        DiscoveryCatalog.webRefused();
+        assertSame(home.fallback, home.effective());
+        // Lists that already use the mobile API have no fallback and never switch.
+        DiscoveryCatalog.Request series = DiscoveryCatalog.requests(new DiscoveryCatalog.State(2), 0).get(0);
+        assertNull(series.fallback);
+        assertSame(series, series.effective());
+    }
 }
