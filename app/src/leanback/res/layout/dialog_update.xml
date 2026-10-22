@@ -188,6 +188,7 @@
         <androidx.appcompat.widget.LinearLayoutCompat
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:gravity="center_vertical"
             android:orientation="horizontal">
 
             <com.google.android.material.textview.MaterialTextView
@@ -212,6 +213,23 @@
                 android:textSize="13sp"
                 tools:text="45%  ·  42.6 MB / 94.7 MB" />
 
+            <!-- Touch screens have no Back key to press: a small visible cancel inside the same 56dp slot. -->
+            <com.google.android.material.textview.MaterialTextView
+                android:id="@+id/transferCancel"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:layout_marginStart="10dp"
+                android:layout_marginEnd="-4dp"
+                android:background="@drawable/update_secondary"
+                android:focusable="true"
+                android:focusableInTouchMode="false"
+                android:gravity="center"
+                android:paddingStart="18dp"
+                android:paddingEnd="18dp"
+                android:text="取消"
+                android:textColor="@color/tv_theme_text"
+                android:textSize="14sp" />
+
         </androidx.appcompat.widget.LinearLayoutCompat>
 
         <ProgressBar
@@ -219,7 +237,7 @@
             style="?android:attr/progressBarStyleHorizontal"
             android:layout_width="match_parent"
             android:layout_height="8dp"
-            android:layout_marginTop="10dp"
+            android:layout_marginTop="8dp"
             android:indeterminate="false"
             android:max="100"
             android:progressBackgroundTint="#303030"

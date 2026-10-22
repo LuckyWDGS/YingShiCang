@@ -207,6 +207,7 @@ public class UpdateDialog extends BaseAlertDialog {
     protected void initEvent() {
         binding.confirm.setOnClickListener(this::onConfirm);
         binding.cancel.setOnClickListener(this::onCancel);
+        binding.transferCancel.setOnClickListener(this::onCancel);
     }
 
     public void setProgress(int progress) {
@@ -320,6 +321,8 @@ public class UpdateDialog extends BaseAlertDialog {
         // Progress takes the buttons' slot while busy (Back cancels), so the window never resizes.
         setVisible(binding.transfer, busy);
         setVisible(binding.buttons, !busy);
+        // Not focused by default: a stray remote OK must not cancel a running download.
+        setVisible(binding.transferCancel, busy && !mandatory);
         boolean message = !busy && phase != Phase.AVAILABLE && status != null && !status.isEmpty();
         if (setVisible(binding.status, message)) binding.getRoot().post(this::fitNotes);
         binding.status.setText(message ? status : null);

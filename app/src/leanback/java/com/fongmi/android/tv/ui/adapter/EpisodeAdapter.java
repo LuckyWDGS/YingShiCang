@@ -210,6 +210,8 @@ public class EpisodeAdapter extends RecyclerView.Adapter<EpisodeAdapter.ViewHold
 
     public static class ViewHolder extends RecyclerView.ViewHolder {
 
+        private static final int PLAYING_PASSES = 3;
+
         private final AdapterEpisodeBinding binding;
         ViewHolder(@NonNull AdapterEpisodeBinding binding) {
             super(binding.getRoot());
@@ -221,18 +223,27 @@ public class EpisodeAdapter extends RecyclerView.Adapter<EpisodeAdapter.ViewHold
             // The focused card and the playing card scroll a label too long to fit; touch
             // users never focus a card, so the playing one is how they read it. Recycled and
             // off-screen cards stop (detach/recycle reset it).
-            boolean active = itemView.hasFocus() || itemView.isSelected();
-            setMarquee(binding.name, active);
-            setMarquee(binding.size, active);
+            // Focus scrolls until it moves; the playing card alone scrolls a few passes, then rests
+            // (an endless marquee keeps redrawing beside the preview video on low-end boxes).
+            boolean focused = itemView.hasFocus();
+            boolean active = focused || itemView.isSelected();
+            int repeat = focused ? -1 : PLAYING_PASSES;
+            setMarquee(binding.name, active, repeat);
+            setMarquee(binding.size, active, repeat);
         }
 
         private void stopMarquee() {
-            setMarquee(binding.name, false);
-            setMarquee(binding.size, false);
+            setMarquee(binding.name, false, 0);
+            setMarquee(binding.size, false, 0);
         }
 
-        private void setMarquee(TextView text, boolean active) {
+        private void setMarquee(TextView text, boolean active, int repeat) {
             if (active) {
+                // A changed pass limit only applies to a restarted marquee.
+                if (text.getMarqueeRepeatLimit() != repeat) {
+                    text.setSelected(false);
+                    text.setMarqueeRepeatLimit(repeat);
+                }
                 text.setEllipsize(TextUtils.TruncateAt.MARQUEE);
                 text.setSelected(true);
             } else {

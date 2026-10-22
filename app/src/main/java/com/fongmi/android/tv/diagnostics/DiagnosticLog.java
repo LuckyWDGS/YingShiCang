@@ -41,7 +41,18 @@ public final class DiagnosticLog {
                 for (android.app.ApplicationExitInfo exit : manager.getHistoricalProcessExitReasons(null, 0, 3)) {
                     append("process_exit", "time=" + exit.getTimestamp() + " reason=" + exit.getReason() + " status=" + exit.getStatus());
                     // Native (MPV/FFmpeg) crashes bypass the Java handler; mark them from the exit record.
-                    if (exit.getReason() == android.app.ApplicationExitInfo.REASON_CRASH_NATIVE && exit.getTimestamp() > seen) markCrash();
+                    if (exit.getReason() == android.app.ApplicationExitInfo.REASON_CRASH_NATIVE && exit.getTimestamp() > seen) {
+                        markCrash();
+                        // Android 12+ keeps the tombstone: record the signal and the crashing thread's top frames.
+                        if (android.os.Build.VERSION.SDK_INT >= 31) {
+                            try {
+                                String summary = NativeCrashSummary.summarize(exit.getTraceInputStream());
+                                if (!summary.isEmpty()) append("native_crash", LogSanitizer.clean(summary));
+                            } catch (Exception unreadable) {
+                                append("native_crash", "unreadable " + unreadable.getClass().getSimpleName());
+                            }
+                        }
+                    }
                     newest = Math.max(newest, exit.getTimestamp());
                 }
                 if (newest > seen) com.github.catvod.utils.Prefers.put(CRASH_EXIT_SEEN, newest);

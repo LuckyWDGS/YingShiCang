@@ -1,0 +1,3 @@
+# Hash-locked recipe files: keep their bytes exactly as committed (prepare_media.py checks the patch SHA-256).
+scripts/media3/*.patch -text
+scripts/media3/sources.lock.json -text

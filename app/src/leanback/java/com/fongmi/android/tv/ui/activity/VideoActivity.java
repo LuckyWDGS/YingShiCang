@@ -115,6 +115,7 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
     private Clock mClock;
     private View mFocus1;
     private boolean mTimeBarCenter;
+    private static final long PAUSED_HIDE_MS = java.util.concurrent.TimeUnit.MINUTES.toMillis(5);
     private View mFocus2;
     private Runnable mR1;
     private Runnable mR2;
@@ -1233,12 +1234,10 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
 
     private void setR1Callback() {
         if (isScrubbing() || isVisible(mBinding.control.action.morePanel)) return;
-        // Paused controls stay up: with Up/Down on the volume, they are the remote's way back in.
-        if (controller() != null && !controller().getPlayWhenReady()) {
-            App.removeCallbacks(mR1);
-            return;
-        }
-        App.post(mR1, Constant.INTERVAL_HIDE);
+        // Paused controls stay up (with Up/Down on the volume they are the remote's way back in), but not
+        // for good: a pause left for hours must not burn the control bar into an OLED screen.
+        boolean paused = controller() != null && !controller().getPlayWhenReady();
+        App.post(mR1, paused ? PAUSED_HIDE_MS : Constant.INTERVAL_HIDE);
     }
 
     @Override
