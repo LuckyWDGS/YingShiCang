@@ -30,6 +30,23 @@ public class PosterLabelTest {
         assertEquals("真实站源", PosterLabel.source("真实站源", "key"));
         assertEquals("", PosterLabel.source(null, null));
     }
+    @Test public void historyFileNamesShowTheirEpisode() {
+        assertEquals("第1集", PosterLabel.history("[1.51GB]S01E01.mkv"));
+        assertEquals("第1集", PosterLabel.history("[5.18GB]S01E01.4KHQHDR60FPS.mp4"));
+        assertEquals("第12集", PosterLabel.history("某剧.S02E12.2160p.mkv"));
+        assertEquals("第7集", PosterLabel.history("EP07"));
+        assertEquals("第4集", PosterLabel.history("第4集"));
+        assertEquals("某电影.2023.HEVC", PosterLabel.history("[2.10GB]某电影.2023.HEVC.mkv"));
+        assertEquals("HD中字", PosterLabel.history("HD中字"));
+        assertEquals("E.T.", PosterLabel.history("E.T."));
+    }
+    @Test public void watchedTimeShowsOnlyMeaningfulProgress() {
+        assertEquals("20:19", PosterLabel.watched(1_219_730, 2_890_000));
+        assertEquals("1:02:03", PosterLabel.watched(3_723_000, 7_200_000));
+        assertEquals("", PosterLabel.watched(30_000, 2_890_000));
+        assertEquals("", PosterLabel.watched(2_885_000, 2_890_000));
+        assertEquals("05:00", PosterLabel.watched(300_000, 0));
+    }
     @Test public void explicitTotalTakesPriorityOverProgressAndRating() {
         assertEquals("共24集", PosterLabel.text("更新至18集 / 共24集", "8.2"));
         assertEquals("共9集", PosterLabel.text("全9集", "7.5"));

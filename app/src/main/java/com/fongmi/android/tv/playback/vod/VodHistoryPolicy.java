@@ -98,6 +98,6 @@ public class VodHistoryPolicy {
 
     public long startPositionMs(History history) {
         if (history == null) return C.TIME_UNSET;
-        return VodSkipPolicy.startPosition(history.getPosition(), history.getOpening(), history.getEnding(), history.getDuration());
+        return VodSkipPolicy.startPosition(history.getPosition(), history.getLineOpening(), history.getLineEnding(), history.getDuration());
     }
 }

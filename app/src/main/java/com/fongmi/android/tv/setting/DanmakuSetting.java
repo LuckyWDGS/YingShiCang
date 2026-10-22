@@ -4,6 +4,7 @@ import android.text.TextUtils;
 
 import androidx.media3.ui.danmaku.DanmakuConfig;
 
+import com.fongmi.android.tv.BuildConfig;
 import com.fongmi.android.tv.api.config.VodConfig;
 import com.github.catvod.utils.Prefers;
 
@@ -343,6 +344,29 @@ public class DanmakuSetting {
     }
 
     public static DanmakuConfig getConfig() {
+        return tv(builder()).build();
+    }
+
+    /**
+     * The TV player has no danmaku settings panel, so it keeps comments to the top of the picture: scrolling
+     * comments in the top quarter (at most 4 lines), at most 2 pinned top lines, no bottom-pinned comments over
+     * subtitles, and at least 15% transparency.
+     */
+    private static DanmakuConfig.Builder tv(DanmakuConfig.Builder builder) {
+        if (!"leanback".equals(BuildConfig.FLAVOR)) return builder;
+        return builder.setScrollAreaRatio(Math.min(getScrollAreaRatio(), 0.25f))
+                .setMaxScrollLines(cap(getMaxScrollLines(), 4))
+                .setMaxTopLines(cap(getMaxTopLines(), 2))
+                .setShowBottom(false)
+                .setTransparency(Math.max(getTransparency(), 0.15f));
+    }
+
+    /** 0 means "as many as fit". */
+    private static int cap(int lines, int max) {
+        return lines == 0 ? max : Math.min(lines, max);
+    }
+
+    private static DanmakuConfig.Builder builder() {
         return new DanmakuConfig.Builder()
                 .setTextScale(getTextScale())
                 .setTransparency(getTransparency())
@@ -370,7 +394,6 @@ public class DanmakuSetting {
                 .setShowReverse(isShowReverse())
                 .setShowPositioned(isShowPositioned())
                 .setShowSubtitle(isShowSubtitle())
-                .setShowSpecial(isShowSpecial())
-                .build();
+                .setShowSpecial(isShowSpecial());
     }
 }

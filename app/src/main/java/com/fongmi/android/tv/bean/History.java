@@ -52,6 +52,8 @@ public class History implements Diffable<History> {
     private long opening;
     @SerializedName("ending")
     private long ending;
+    @SerializedName("skipFlag")
+    private String skipFlag;
     @SerializedName("position")
     private long position;
     @SerializedName("duration")
@@ -216,6 +218,38 @@ public class History implements Diffable<History> {
         this.ending = ending;
     }
 
+    /** The line (flag) the stored opening/ending were set on. */
+    public String getSkipFlag() {
+        return skipFlag;
+    }
+
+    public void setSkipFlag(String skipFlag) {
+        this.skipFlag = skipFlag;
+    }
+
+    /**
+     * 片头/片尾 differ between sources and between lines of one source, so they apply only on the line they
+     * were set on (this record is already one source). Rows without a line (older backups) apply as before.
+     */
+    public boolean isSkipLine() {
+        return skipFlag == null || skipFlag.isEmpty() || skipFlag.equals(getVodFlag());
+    }
+
+    public long getLineOpening() {
+        return isSkipLine() ? opening : C.TIME_UNSET;
+    }
+
+    public long getLineEnding() {
+        return isSkipLine() ? ending : C.TIME_UNSET;
+    }
+
+    /** Sets both times for the playing line; another line's times are replaced. */
+    public void setLineSkip(long opening, long ending) {
+        this.opening = opening;
+        this.ending = ending;
+        this.skipFlag = getVodFlag();
+    }
+
     public long getPosition() {
         return position;
     }
@@ -300,9 +334,13 @@ public class History implements Diffable<History> {
         return Math.abs(getDuration() - item.getDuration()) <= TimeUnit.MINUTES.toMillis(10);
     }
 
+    /** Skip times carry over only within one source and line; another source cuts its files differently. */
     private void copyTo(History item) {
-        if (getEnding() != C.TIME_UNSET) item.setEnding(getEnding());
-        if (getOpening() != C.TIME_UNSET) item.setOpening(getOpening());
+        if (getSkipFlag() == null || getSkipFlag().isEmpty() || !getSiteKey().equals(item.getSiteKey())) return;
+        if (getOpening() == C.TIME_UNSET && getEnding() == C.TIME_UNSET) return;
+        item.setOpening(getOpening());
+        item.setEnding(getEnding());
+        item.setSkipFlag(getSkipFlag());
     }
 
     public boolean canSave() {
@@ -326,6 +364,7 @@ public class History implements Diffable<History> {
         item.createTime = createTime;
         item.opening = opening;
         item.ending = ending;
+        item.skipFlag = skipFlag;
         item.position = position;
         item.duration = duration;
         item.speed = speed;

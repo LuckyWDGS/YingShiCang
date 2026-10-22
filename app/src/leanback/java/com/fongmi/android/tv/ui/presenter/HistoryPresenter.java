@@ -1,5 +1,6 @@
 package com.fongmi.android.tv.ui.presenter;
 
+import android.text.TextUtils;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -65,6 +66,11 @@ public class HistoryPresenter extends Presenter {
         ViewHolder holder = new ViewHolder(AdapterVodBinding.inflate(LayoutInflater.from(parent.getContext()), parent, false));
         holder.binding.getRoot().getLayoutParams().width = width;
         holder.binding.image.getLayoutParams().height = height;
+        holder.binding.remark.setMaxWidth(width);
+        holder.binding.remark.setEllipsize(TextUtils.TruncateAt.MARQUEE);
+        holder.binding.remark.setMarqueeRepeatLimit(-1);
+        // Long episode names scroll while the card is focused; leanback chains its own focus listener after this one.
+        holder.binding.getRoot().setOnFocusChangeListener((view, focused) -> holder.binding.remark.setSelected(focused));
         return holder;
     }
 
@@ -77,14 +83,29 @@ public class HistoryPresenter extends Presenter {
         holder.binding.name.setText(item.getVodName());
         String source = PosterLabel.source(item.getCid() == VodConfig.getCid() ? item.getSiteName() : "", item.getSiteKey());
         String episode = same ? "" : PosterLabel.history(item.getVodRemarks());
+        String watched = PosterLabel.watched(item.getPosition(), item.getDuration());
+        if (!watched.isEmpty()) episode = episode.isEmpty() ? watched : episode + " · " + watched;
         holder.binding.site.setText(source);
         holder.binding.site.setMaxWidth(width);
         holder.binding.remark.setText(episode);
         holder.binding.site.setVisibility(source.isEmpty() ? View.GONE : View.VISIBLE);
         holder.binding.delete.setVisibility(!delete ? View.GONE : View.VISIBLE);
         holder.binding.remark.setVisibility(delete || episode.isEmpty() ? View.GONE : View.VISIBLE);
+        holder.binding.remark.setSelected(holder.view.hasFocus());
+        setProgress(holder, delete ? 0 : item.getPosition(), item.getDuration());
         holder.view.setContentDescription(item.getVodName() + (episode.isEmpty() ? "" : "，" + episode) + (source.isEmpty() ? "" : "，" + source));
         ImgUtil.load(item.getVodName(), item.getVodPic(), holder.binding.image);
+    }
+
+    /** A thin watched line along the poster's bottom edge; the episode badge sits just above it. */
+    private void setProgress(ViewHolder holder, long position, long duration) {
+        boolean show = duration > 0 && position > 0;
+        holder.binding.progressTrack.setVisibility(show ? View.VISIBLE : View.GONE);
+        holder.binding.progress.setVisibility(show ? View.VISIBLE : View.GONE);
+        ((ViewGroup.MarginLayoutParams) holder.binding.remark.getLayoutParams()).bottomMargin = show ? ResUtil.dp2px(3) : 0;
+        if (!show) return;
+        holder.binding.progress.getLayoutParams().width = (int) (width * Math.min(1f, position / (float) duration));
+        holder.binding.progress.requestLayout();
     }
 
     @Override

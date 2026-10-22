@@ -28,6 +28,8 @@ public final class PluginNoticeCompatibility {
     private static final String REPEATING_NOTICE = ORIGIN + "$1";
     private static final Pattern AD_COUNT = Pattern.compile("^已过滤视频中广告\\([0-9]+条\\)$");
     private static final String BILI_GUEST = "哔哩游客模式，可前往【哔哔】主页扫码登录解锁高分辨率";
+    // The danmaku itself shows that it loaded; the toast covered the picture (user 1.7.4 screenshot).
+    private static final Pattern DANMAKU_LOADED = Pattern.compile("^弹幕【[^】\\n]{1,80}】加载成功$");
 
     public enum Result { INSTALLED, ALREADY_INSTALLED, UNSUPPORTED, ACTIVE_REPEAT, FAILED }
 
@@ -88,7 +90,7 @@ public final class PluginNoticeCompatibility {
     }
 
     static boolean isSilentNotice(String text) {
-        return text != null && (BILI_GUEST.equals(text) || AD_COUNT.matcher(text).matches());
+        return text != null && (BILI_GUEST.equals(text) || AD_COUNT.matcher(text).matches() || DANMAKU_LOADED.matcher(text).matches());
     }
 
     private static boolean matchesArtifact(File artifact) throws Exception {

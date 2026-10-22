@@ -116,6 +116,7 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
     private boolean mTimeBarCenter;
     private final Traffic.Meter mNetSpeedMeter = new Traffic.Meter();
     private final Runnable mNetSpeedTick = this::tickNetSpeed;
+    private boolean mStripFitPending;
     // The playing episode's request, kept so switching danmaku on can fetch it for this episode.
     private Result mDanmakuResult;
     private History mDanmakuHistory;
@@ -290,6 +291,7 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
         setRecyclerView();
         setVideoView();
         setViewModel();
+        setActionStrip();
         checkCast();
         checkId();
     }
@@ -987,11 +989,11 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
     }
 
     private void onOpeningAdd() {
-        setOpening(Math.max(0, Math.max(0, mHistory.getOpening()) + 1000));
+        setOpening(Math.max(0, Math.max(0, mHistory.getLineOpening()) + 1000));
     }
 
     private void onOpeningSub() {
-        setOpening(Math.max(0, Math.max(0, mHistory.getOpening()) - 1000));
+        setOpening(Math.max(0, Math.max(0, mHistory.getLineOpening()) - 1000));
     }
 
     private boolean onOpeningReset() {
@@ -1011,11 +1013,11 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
     }
 
     private void onEndingAdd() {
-        setEnding(Math.max(0, Math.max(0, mHistory.getEnding()) + 1000));
+        setEnding(Math.max(0, Math.max(0, mHistory.getLineEnding()) + 1000));
     }
 
     private void onEndingSub() {
-        setEnding(Math.max(0, Math.max(0, mHistory.getEnding()) - 1000));
+        setEnding(Math.max(0, Math.max(0, mHistory.getLineEnding()) - 1000));
     }
 
     private boolean onEndingReset() {
@@ -1028,10 +1030,49 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
         updateSkipLabels();
     }
 
+    /** 片头/片尾 show a time only once one is set, so the strip stays short. */
     private void updateSkipLabels() {
         if (mHistory == null) return;
-        mBinding.control.action.opening.setText(getString(R.string.vod_opening_time, Util.timeMs(Math.max(0, mHistory.getOpening()))));
-        mBinding.control.action.ending.setText(getString(R.string.vod_ending_time, Util.timeMs(Math.max(0, mHistory.getEnding()))));
+        long opening = Math.max(0, mHistory.getLineOpening()), ending = Math.max(0, mHistory.getLineEnding());
+        mBinding.control.action.opening.setText(opening > 0 ? getString(R.string.vod_opening_time, Util.timeMs(opening)) : getString(R.string.play_op));
+        mBinding.control.action.ending.setText(ending > 0 ? getString(R.string.vod_ending_time, Util.timeMs(ending)) : getString(R.string.play_ed));
+    }
+
+    /** The common strip never needs scrolling: every label change re-fits the controls' side padding. */
+    private void setActionStrip() {
+        ViewGroup row = (ViewGroup) mBinding.control.action.replay.getParent();
+        row.addOnLayoutChangeListener((view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
+            if (mStripFitPending) return;
+            mStripFitPending = true;
+            row.post(this::fitActionStrip);
+        });
+    }
+
+    /** Side padding 12dp, shrunk 1dp at a time down to 4dp until the visible controls fit the strip's width. */
+    private void fitActionStrip() {
+        mStripFitPending = false;
+        View strip = mBinding.control.action.toolbar;
+        ViewGroup row = (ViewGroup) mBinding.control.action.replay.getParent();
+        int available = strip.getWidth() - strip.getPaddingLeft() - strip.getPaddingRight() - row.getPaddingLeft() - row.getPaddingRight();
+        if (available <= 0) return;
+        int pad = ResUtil.dp2px(12);
+        for (int min = ResUtil.dp2px(4); pad > min && stripWidth(row, pad) > available; ) pad -= ResUtil.dp2px(1);
+        for (int i = 0; i < row.getChildCount(); i++) {
+            View child = row.getChildAt(i);
+            if (child.getPaddingLeft() != pad || child.getPaddingRight() != pad) child.setPadding(pad, child.getPaddingTop(), pad, child.getPaddingBottom());
+        }
+    }
+
+    private static int stripWidth(ViewGroup row, int pad) {
+        int total = 0;
+        for (int i = 0; i < row.getChildCount(); i++) {
+            View child = row.getChildAt(i);
+            if (child.getVisibility() == View.GONE) continue;
+            ViewGroup.MarginLayoutParams params = (ViewGroup.MarginLayoutParams) child.getLayoutParams();
+            int content = child instanceof TextView text ? (int) Math.ceil(text.getPaint().measureText(text.getText().toString())) + 2 * pad : child.getMeasuredWidth();
+            total += Math.max(child.getMinimumWidth(), content) + params.leftMargin + params.rightMargin;
+        }
+        return total;
     }
 
     private boolean isScreenInfoEnabled() {
@@ -1262,6 +1303,7 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
 
     private void showControl(View view) {
         updateMoreLabels();
+        updateSkipLabels(); // the line may have changed since the times were last shown
         mBinding.control.getRoot().setVisibility(View.VISIBLE);
         if (service() != null) mBinding.control.action.speed.setText(SpeedSetting.format(player().getSpeed()));
         updateTopInfo();
@@ -1522,7 +1564,7 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
     }
 
     private void onPlay() {
-        if (mHistory != null && isEnded()) controller().seekTo(mHistory.getOpening());
+        if (mHistory != null && isEnded()) controller().seekTo(mHistory.getLineOpening());
         if (!player().isEmpty() && isIdle()) controller().prepare();
         controller().play();
     }

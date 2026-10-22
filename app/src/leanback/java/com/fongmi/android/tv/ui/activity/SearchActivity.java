@@ -19,6 +19,7 @@ import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.bean.Word;
 import com.fongmi.android.tv.databinding.ActivitySearchBinding;
+import com.fongmi.android.tv.discovery.HotRank;
 import com.fongmi.android.tv.model.SearchSuggestionController;
 import com.fongmi.android.tv.ui.adapter.RecordAdapter;
 import com.fongmi.android.tv.ui.adapter.WordAdapter;
@@ -34,10 +35,6 @@ import com.fongmi.android.tv.utils.ZhuToPin;
 import com.github.catvod.net.OkHttp;
 import com.google.android.flexbox.FlexDirection;
 import com.google.android.flexbox.FlexboxLayoutManager;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -45,6 +42,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 import okhttp3.Call;
 import okhttp3.Callback;
 import okhttp3.Response;
@@ -88,9 +86,9 @@ public class SearchActivity extends BaseActivity implements WordAdapter.OnClickL
         mBinding.recordRecycler.setItemAnimator(null);
         mBinding.recordRecycler.setLayoutManager(new FlexboxLayoutManager(this, FlexDirection.ROW));
         mBinding.recordRecycler.setAdapter(mRecordAdapter = new RecordAdapter(this));
-        loadRank(setupWords(mBinding.tvRecycler), 3, 2);
-        loadRank(setupWords(mBinding.movieRecycler), 2, 1);
-        loadRank(setupWords(mBinding.varietyRecycler), 4, 3);
+        loadRank(mBinding.tvRecycler, "tv_real_time_hotest", 3, 2);
+        loadRank(mBinding.movieRecycler, "movie_real_time_hotest", 2, 1);
+        loadRank(mBinding.varietyRecycler, "show_hot", 4, 3);
         String initial = getIntent().getStringExtra("keyword");
         setKeyword(initial == null ? "" : initial);
         getWord(keyword());
@@ -191,34 +189,42 @@ public class SearchActivity extends BaseActivity implements WordAdapter.OnClickL
         });
     }
 
-    private void loadRank(WordAdapter adapter, int requestCategory, int actualCategory) {
+    /** Douban's real-time collection first; 360kan's slower rank only when Douban fails. */
+    private void loadRank(RecyclerView view, String collection, int requestCategory, int actualCategory) {
+        WordAdapter adapter = setupWords(view);
         var cache = getSharedPreferences("search_ranks", MODE_PRIVATE);
         String key = "rank" + actualCategory;
         adapter.setItems(Word.objectFrom(cache.getString(key, "")).getData());
-        Call call = OkHttp.newCall("https://api.web.360kan.com/v1/rank?cat=" + requestCategory, Map.of("Referer", "https://www.360kan.com/rank/general"));
-        rankCalls.add(call);
         rankPending++;
+        Runnable fallback = () -> fetchRank(OkHttp.newCall("https://api.web.360kan.com/v1/rank?cat=" + requestCategory,
+                Map.of("Referer", "https://www.360kan.com/rank/general")), body -> HotRank.from360(body, actualCategory), view, key, null);
+        fetchRank(OkHttp.newCall(HotRank.doubanUrl(collection), HotRank.DOUBAN_HEADERS), HotRank::fromDouban, view, key, fallback);
+    }
+
+    private void fetchRank(Call call, Function<String, String> parse, RecyclerView view, String key, Runnable fallback) {
+        App.post(() -> { if (!destroyed) rankCalls.add(call); else call.cancel(); });
         call.enqueue(new Callback() {
             @Override public void onFailure(@NonNull Call call, @NonNull IOException error) {
-                App.post(() -> { if (destroyed) return; rankPending--; rankFailed = true; updateRankStatus(); });
+                App.post(() -> {
+                    if (destroyed) return;
+                    if (fallback != null) { fallback.run(); return; }
+                    rankPending--;
+                    rankFailed = true;
+                    updateRankStatus();
+                });
             }
             @Override public void onResponse(@NonNull Call call, @NonNull Response response) {
                 try (response) {
                     if (!response.isSuccessful() || response.body() == null) throw new IOException("Rank unavailable");
-                    JsonArray input = JsonParser.parseString(response.body().string()).getAsJsonObject().getAsJsonArray("data");
-                    JsonArray filtered = new JsonArray();
-                    for (JsonElement element : input) {
-                        JsonObject item = element.getAsJsonObject();
-                        if (item.has("cat") && item.get("cat").getAsInt() == actualCategory && filtered.size() < 10) filtered.add(item);
-                    }
-                    if (filtered.isEmpty()) throw new IOException("Empty rank");
-                    JsonObject result = new JsonObject(); result.add("data", filtered);
-                    String json = result.toString();
+                    String json = parse.apply(response.body().string());
+                    if (json.isEmpty()) throw new IOException("Empty rank");
                     List<Word.Data> words = Word.objectFrom(json).getData();
                     App.post(() -> {
                         if (destroyed) return;
-                        adapter.setItems(words);
-                        cache.edit().putString(key, json).apply();
+                        // A diff from the cached words kept the list at its old height (Flexbox), hiding the
+                        // first row when the new words need more rows; lay the new words out from scratch.
+                        setupWords(view, true).setItems(words);
+                        getSharedPreferences("search_ranks", MODE_PRIVATE).edit().putString(key, json).apply();
                         rankPending--;
                         updateRankStatus();
                     });

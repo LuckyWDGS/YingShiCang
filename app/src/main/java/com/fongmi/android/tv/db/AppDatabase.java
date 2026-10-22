@@ -25,7 +25,7 @@ import com.fongmi.android.tv.db.dao.TrackDao;
 @Database(entities = {Keep.class, Site.class, Live.class, Track.class, Config.class, Device.class, History.class}, version = AppDatabase.VERSION)
 public abstract class AppDatabase extends RoomDatabase {
 
-    public static final int VERSION = 35;
+    public static final int VERSION = 36;
     public static final String NAME = "tv";
     public static final String SYMBOL = "@@@";
 

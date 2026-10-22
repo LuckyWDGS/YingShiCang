@@ -93,7 +93,7 @@ final class VodPreloader {
 
     private long getStartPositionMs(Result result) {
         History history = state.getHistory();
-        long opening = history == null ? C.TIME_UNSET : history.getOpening();
+        long opening = history == null ? C.TIME_UNSET : history.getLineOpening();
         long position = result.hasPosition() ? result.getPosition() : C.TIME_UNSET;
         return Math.max(0, Math.max(opening, position));
     }

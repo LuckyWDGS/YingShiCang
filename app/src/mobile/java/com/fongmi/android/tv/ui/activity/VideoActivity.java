@@ -676,8 +676,8 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     @Override
     public void renderHistory(History history) {
         mHistory = history;
-        mBinding.control.action.opening.setText(history.getOpening() <= 0 ? getString(R.string.play_op) : Util.timeMs(history.getOpening()));
-        mBinding.control.action.ending.setText(history.getEnding() <= 0 ? getString(R.string.play_ed) : Util.timeMs(history.getEnding()));
+        mBinding.control.action.opening.setText(history.getLineOpening() <= 0 ? getString(R.string.play_op) : Util.timeMs(history.getLineOpening()));
+        mBinding.control.action.ending.setText(history.getLineEnding() <= 0 ? getString(R.string.play_ed) : Util.timeMs(history.getLineEnding()));
         player().setSpeed(SpeedSetting.getPlayback());
         setScale(getScale());
     }
@@ -1048,7 +1048,7 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
 
     private void setEnding(long ending) {
         mVod.setEnding(ending);
-        mBinding.control.action.ending.setText(ending <= 0 ? getString(R.string.play_ed) : Util.timeMs(mHistory.getEnding()));
+        mBinding.control.action.ending.setText(ending <= 0 ? getString(R.string.play_ed) : Util.timeMs(mHistory.getLineEnding()));
     }
 
     private void onOpening() {
@@ -1066,7 +1066,7 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
 
     private void setOpening(long opening) {
         mVod.setOpening(opening);
-        mBinding.control.action.opening.setText(opening <= 0 ? getString(R.string.play_op) : Util.timeMs(mHistory.getOpening()));
+        mBinding.control.action.opening.setText(opening <= 0 ? getString(R.string.play_op) : Util.timeMs(mHistory.getLineOpening()));
     }
 
     private void onEpisodes() {
@@ -1452,7 +1452,7 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     }
 
     private void onPlay() {
-        if (mHistory != null && isEnded()) controller().seekTo(mHistory.getOpening());
+        if (mHistory != null && isEnded()) controller().seekTo(mHistory.getLineOpening());
         if (!player().isEmpty() && isIdle()) controller().prepare();
         controller().play();
     }

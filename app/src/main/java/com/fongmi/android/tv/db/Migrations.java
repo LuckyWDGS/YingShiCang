@@ -50,6 +50,17 @@ public class Migrations {
         }
     };
 
+    // 片头/片尾 now belong to one line; existing times stay on the line the record was last played on.
+    public static final Migration MIGRATION_35_36 = new Migration(35, 36) {
+        @Override
+        public void migrate(@NonNull SupportSQLiteDatabase database) {
+            database.execSQL("CREATE TABLE History_Backup (`key` TEXT NOT NULL, `vodPic` TEXT, `vodName` TEXT, `vodFlag` TEXT, `vodRemarks` TEXT, `episodeUrl` TEXT, `revSort` INTEGER NOT NULL, `revPlay` INTEGER NOT NULL, `createTime` INTEGER NOT NULL, `opening` INTEGER NOT NULL, `ending` INTEGER NOT NULL, `skipFlag` TEXT, `position` INTEGER NOT NULL, `duration` INTEGER NOT NULL, `speed` REAL NOT NULL, `scale` INTEGER NOT NULL, `cid` INTEGER NOT NULL, PRIMARY KEY(`key`))");
+            database.execSQL("INSERT INTO History_Backup SELECT `key`, `vodPic`, `vodName`, `vodFlag`, `vodRemarks`, `episodeUrl`, `revSort`, `revPlay`, `createTime`, `opening`, `ending`, CASE WHEN `opening` > 0 OR `ending` > 0 THEN `vodFlag` END, `position`, `duration`, `speed`, `scale`, `cid` FROM History");
+            database.execSQL("DROP TABLE History");
+            database.execSQL("ALTER TABLE History_Backup RENAME to History");
+        }
+    };
+
     // Registered by AppDatabase; MigrationsTest fails if a declared migration or a version step is missing here.
-    public static final Migration[] ALL = {MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34, MIGRATION_34_35};
+    public static final Migration[] ALL = {MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34, MIGRATION_34_35, MIGRATION_35_36};
 }

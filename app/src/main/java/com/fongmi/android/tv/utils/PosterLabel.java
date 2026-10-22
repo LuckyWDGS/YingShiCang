@@ -1,5 +1,6 @@
 package com.fongmi.android.tv.utils;
 
+import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -29,10 +30,29 @@ public final class PosterLabel {
         return episode.matches() ? "第" + episode.group(1) + "集" : "";
     }
 
-    /** History also has genuine non-numeric names, such as specials and film editions. */
+    private static final Pattern FILE_EPISODE = Pattern.compile("(?i)(?:S\\d{1,2}\\s*E|(?<![A-Za-z])EP?)\\s*0*([1-9]\\d{0,3})(?!\\d)");
+    private static final Pattern FILE_NOISE = Pattern.compile("^\\s*\\[[^\\]]*]\\s*|\\.(?i:mkv|mp4|ts|avi|rmvb|flv|mov|wmv|m2ts|iso)\\s*$");
+
+    /**
+     * History also has genuine non-numeric names, such as specials and film editions. Cloud-drive file names
+     * ([1.51GB]S01E01.mkv) name the episode as S01E01 or EP01; otherwise drop the size tag and the extension.
+     */
     public static String history(String remarks) {
         String episode = episodes(remarks);
-        return episode.isEmpty() ? remarks == null ? "" : remarks.trim() : episode;
+        if (!episode.isEmpty()) return episode;
+        String note = remarks == null ? "" : remarks.trim();
+        Matcher file = FILE_EPISODE.matcher(note);
+        if (file.find()) return "第" + file.group(1) + "集";
+        String clean = FILE_NOISE.matcher(note).replaceAll("").trim();
+        return clean.isEmpty() ? note : clean;
+    }
+
+    /** Where playback stopped, as 20:19 or 1:02:03; "" before the first minute is watched or after the end. */
+    public static String watched(long position, long duration) {
+        if (position < 60_000 || (duration > 0 && position >= duration - 10_000)) return "";
+        long seconds = position / 1000, hours = seconds / 3600, minutes = seconds / 60 % 60;
+        return hours > 0 ? String.format(Locale.ROOT, "%d:%02d:%02d", hours, minutes, seconds % 60)
+                : String.format(Locale.ROOT, "%02d:%02d", minutes, seconds % 60);
     }
 
     public static String rating(String remarks, String score) {

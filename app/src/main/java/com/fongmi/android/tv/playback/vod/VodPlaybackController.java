@@ -359,7 +359,7 @@ public class VodPlaybackController {
         History history = currentHistory();
         normalizeSkipWindow(history, duration);
         historyPolicy.updateProgress(history, time, position, duration);
-        if (history != null && VodSkipPolicy.shouldAdvance(position, duration, history.getOpening(), history.getEnding())) nextEpisode(false);
+        if (history != null && VodSkipPolicy.shouldAdvance(position, duration, history.getLineOpening(), history.getLineEnding())) nextEpisode(false);
     }
 
     public long startPositionMs() {
@@ -367,7 +367,7 @@ public class VodPlaybackController {
         if (history == null) return C.TIME_UNSET;
         long duration = history.getDuration() > 0 ? history.getDuration() : host.getPlayerDuration();
         normalizeSkipWindow(history, duration);
-        return VodSkipPolicy.startPosition(history.getPosition(), history.getOpening(), history.getEnding(), duration);
+        return VodSkipPolicy.startPosition(history.getPosition(), history.getLineOpening(), history.getLineEnding(), duration);
     }
 
     private History currentHistory() {
@@ -389,21 +389,19 @@ public class VodPlaybackController {
     public void setOpening(long opening) {
         History history = state.getHistory();
         if (history == null) return;
-        VodSkipPolicy.Window window = VodSkipPolicy.normalize(opening, history.getEnding(), effectiveDuration(history));
-        history.setOpening(window.openingMs());
-        history.setEnding(window.endingMs());
+        VodSkipPolicy.Window window = VodSkipPolicy.normalize(opening, history.getLineEnding(), effectiveDuration(history));
+        history.setLineSkip(window.openingMs(), window.endingMs());
     }
 
     public void setEnding(long ending) {
         History history = state.getHistory();
         if (history == null) return;
-        VodSkipPolicy.Window window = VodSkipPolicy.normalize(history.getOpening(), ending, effectiveDuration(history));
-        history.setOpening(window.openingMs());
-        history.setEnding(window.endingMs());
+        VodSkipPolicy.Window window = VodSkipPolicy.normalize(history.getLineOpening(), ending, effectiveDuration(history));
+        history.setLineSkip(window.openingMs(), window.endingMs());
     }
 
     private void normalizeSkipWindow(History history, long duration) {
-        if (history == null || duration <= 0) return;
+        if (history == null || duration <= 0 || !history.isSkipLine()) return;
         VodSkipPolicy.Window window = VodSkipPolicy.normalize(history.getOpening(), history.getEnding(), duration);
         if (history.getOpening() != window.openingMs()) history.setOpening(window.openingMs());
         if (history.getEnding() != window.endingMs()) history.setEnding(window.endingMs());
