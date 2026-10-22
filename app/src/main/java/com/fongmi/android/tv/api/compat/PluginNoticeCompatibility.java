@@ -5,26 +5,29 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
 
-import com.fongmi.android.tv.api.loader.BundledJar;
-
-import java.io.File;
-import java.io.FileInputStream;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
-import java.security.MessageDigest;
-import java.util.Locale;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.regex.Pattern;
 
 import dalvik.system.DexClassLoader;
 
-/** Suppresses only the audited source plugin's selected informational notices. */
+/**
+ * Suppresses only the audited source plugin's selected informational notices.
+ *
+ * The provider ships a new build almost daily and re-obfuscates class names (the ordinary notice callback was
+ * merge.tO on 2026-10-16 and merge.Nl on 2026-10-22), so the plugin is recognised by its exact structure, not
+ * by file hash or class name: InitOrigin's seven fields and public API, the repeating notice InitOrigin$1, and
+ * an ordinary notice callback with exactly the audited synthetic fields SN (Object) and yq (int, 3 = show).
+ * Anything that differs keeps the plugin's own behaviour; only the exact texts below are dropped.
+ */
 public final class PluginNoticeCompatibility {
     private static final String INIT = "com.github.catvod.spider.Init";
     private static final String ORIGIN = "com.github.catvod.spider.InitOrigin";
-    private static final String NOTICE = "com.github.catvod.spider.merge.tO";
     private static final String REPEATING_NOTICE = ORIGIN + "$1";
     private static final Pattern AD_COUNT = Pattern.compile("^已过滤视频中广告\\([0-9]+条\\)$");
     private static final String BILI_GUEST = "哔哩游客模式，可前往【哔哔】主页扫码登录解锁高分辨率";
@@ -40,11 +43,9 @@ public final class PluginNoticeCompatibility {
      * Existing ordinary posts stay on their original queue; no tasks are removed or reposted.
      * An existing repeat task cannot safely change Handler targets, so leave that plugin alone.
      */
-    public static synchronized Result install(ClassLoader outer, File artifact) {
+    public static synchronized Result install(ClassLoader outer) {
         if (outer == null) return Result.UNSUPPORTED;
         try {
-            // Obfuscated callback identities belong to this audited artifact only.
-            if (!matchesArtifact(artifact)) return Result.UNSUPPORTED;
             Class<?> init = Class.forName(INIT, false, outer);
             require(init.getClassLoader() == outer);
             Method loaderMethod = method(init, "loader", DexClassLoader.class, Modifier.PUBLIC | Modifier.STATIC);
@@ -93,22 +94,6 @@ public final class PluginNoticeCompatibility {
         return text != null && (BILI_GUEST.equals(text) || AD_COUNT.matcher(text).matches() || DANMAKU_LOADED.matcher(text).matches());
     }
 
-    private static boolean matchesArtifact(File artifact) throws Exception {
-        if (artifact == null || artifact.length() != 1_281_099) return false;
-        MessageDigest digest = MessageDigest.getInstance("SHA-256");
-        try (FileInputStream input = new FileInputStream(artifact)) {
-            byte[] bytes = new byte[16 * 1024];
-            int count;
-            while ((count = input.read(bytes)) != -1) {
-                if (Thread.currentThread().isInterrupted()) return false;
-                digest.update(bytes, 0, count);
-            }
-        }
-        StringBuilder hash = new StringBuilder();
-        for (byte value : digest.digest()) hash.append(String.format(Locale.ROOT, "%02x", value & 255));
-        return BundledJar.SHA256.contentEquals(hash);
-    }
-
     private static Field field(Class<?> owner, String name, Class<?> type, int modifiers)
             throws ReflectiveOperationException {
         Field field = owner.getDeclaredField(name);
@@ -132,51 +117,66 @@ public final class PluginNoticeCompatibility {
     private static final class UnsupportedShape extends ReflectiveOperationException {}
 
     private static final class NoticeShape {
-        private final Class<?> ordinary;
+        private static final int SYNTHETIC_FINAL = Modifier.PUBLIC | Modifier.FINAL | 0x1000;
+        private final ClassLoader loader;
         private final Class<?> repeating;
-        private final Field ordinaryText;
-        private final Field ordinaryKind;
         private final Field repeatingText;
+        // Other Runnables the plugin posts; checked once each (dispatch runs on the main thread only).
+        private final Set<Class<?>> others = new HashSet<>();
+        private Class<?> ordinary;
+        private Field ordinaryText;
+        private Field ordinaryKind;
 
-        private NoticeShape(Class<?> ordinary, Class<?> repeating, Field ordinaryText, Field ordinaryKind, Field repeatingText) {
-            this.ordinary = ordinary;
+        private NoticeShape(ClassLoader loader, Class<?> repeating, Field repeatingText) {
+            this.loader = loader;
             this.repeating = repeating;
-            this.ordinaryText = ordinaryText;
-            this.ordinaryKind = ordinaryKind;
             this.repeatingText = repeatingText;
         }
 
         private static NoticeShape read(ClassLoader loader) throws ReflectiveOperationException {
-            Class<?> ordinary = Class.forName(NOTICE, false, loader);
             Class<?> repeating = Class.forName(REPEATING_NOTICE, false, loader);
-            require(ordinary.getClassLoader() == loader && repeating.getClassLoader() == loader);
-            require(ordinary.getSuperclass() == Object.class && repeating.getSuperclass() == Object.class);
-            require(ordinary.getModifiers() == (Modifier.PUBLIC | Modifier.FINAL | 0x1000) && ordinary.isSynthetic());
+            require(repeating.getClassLoader() == loader && repeating.getSuperclass() == Object.class);
             require(repeating.getModifiers() == 0);
-            require(ordinary.getInterfaces().length == 1 && ordinary.getInterfaces()[0] == Runnable.class);
             require(repeating.getInterfaces().length == 1 && repeating.getInterfaces()[0] == Runnable.class);
-            require(ordinary.getDeclaredFields().length == 2 && repeating.getDeclaredFields().length == 1);
-            int syntheticFinal = Modifier.PUBLIC | Modifier.FINAL | 0x1000;
-            Field text = field(ordinary, "SN", Object.class, syntheticFinal);
-            Field kind = field(ordinary, "yq", int.class, syntheticFinal);
+            require(repeating.getDeclaredFields().length == 1);
             Field repeatText = field(repeating, "yq", String.class, Modifier.FINAL);
-            Constructor<?> constructor = ordinary.getDeclaredConstructor(Object.class, int.class);
-            require(constructor.getModifiers() == (Modifier.PUBLIC | 0x1000) && constructor.isSynthetic());
             require(repeating.getDeclaredConstructor(String.class).getModifiers() == 0);
-            method(ordinary, "run", void.class, Modifier.PUBLIC | Modifier.FINAL);
             method(repeating, "run", void.class, Modifier.PUBLIC);
-            return new NoticeShape(ordinary, repeating, text, kind, repeatText);
+            return new NoticeShape(loader, repeating, repeatText);
+        }
+
+        /** The ordinary notice callback, matched once by its exact shape; its obfuscated name changes per build. */
+        private boolean isOrdinary(Class<?> type) {
+            if (type == ordinary) return true;
+            if (ordinary != null || type.getClassLoader() != loader || others.contains(type)) return false;
+            try {
+                require(type.getSuperclass() == Object.class && type.getModifiers() == (SYNTHETIC_FINAL) && type.isSynthetic());
+                require(type.getInterfaces().length == 1 && type.getInterfaces()[0] == Runnable.class);
+                require(type.getDeclaredFields().length == 2);
+                Field text = field(type, "SN", Object.class, SYNTHETIC_FINAL);
+                Field kind = field(type, "yq", int.class, SYNTHETIC_FINAL);
+                Constructor<?> constructor = type.getDeclaredConstructor(Object.class, int.class);
+                require(constructor.getModifiers() == (Modifier.PUBLIC | 0x1000) && constructor.isSynthetic());
+                method(type, "run", void.class, Modifier.PUBLIC | Modifier.FINAL);
+                ordinaryText = text;
+                ordinaryKind = kind;
+                ordinary = type;
+                return true;
+            } catch (ReflectiveOperationException | RuntimeException ignored) {
+                others.add(type);
+                return false;
+            }
         }
 
         private boolean suppress(Runnable callback) {
             if (callback == null) return false;
             try {
                 Object text;
-                if (callback.getClass() == ordinary) {
+                if (callback.getClass() == repeating) {
+                    text = repeatingText.get(callback);
+                } else if (isOrdinary(callback.getClass())) {
                     if (ordinaryKind.getInt(callback) != 3) return false;
                     text = ordinaryText.get(callback);
-                } else if (callback.getClass() == repeating) {
-                    text = repeatingText.get(callback);
                 } else return false;
                 return text instanceof String && isSilentNotice((String) text);
             } catch (Throwable ignored) {

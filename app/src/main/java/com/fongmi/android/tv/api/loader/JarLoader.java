@@ -97,7 +97,7 @@ public class JarLoader {
         DexClassLoader loader = new DexClassLoader(file.getAbsolutePath(), cachePath, cachePath, App.get().getClassLoader());
         invokeInit(loader);
         checkCancellation();
-        Log.d("PluginNotice", PluginNoticeCompatibility.install(loader, file).name());
+        Log.d("PluginNotice", PluginNoticeCompatibility.install(loader).name());
         invokeProxy(key, loader);
         checkCancellation();
         loaders.put(key, loader);
