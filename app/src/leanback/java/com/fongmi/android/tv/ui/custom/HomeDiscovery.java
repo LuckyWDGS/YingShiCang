@@ -580,7 +580,8 @@ public final class HomeDiscovery {
             binding.recycler.setContentDescription("片单，共" + items.size() + "部");
             more = batch.more();
             if (!batch.finished()) return;
-            logRound(before, batch.failed() ? "failed" : batch.metadataFailed() ? "metadata_failed" : null);
+            String cause = aiDramaRunner.failure();
+            logRound(before, batch.failed() ? "failed" + (cause.isEmpty() ? "" : ":" + cause) : batch.metadataFailed() ? "metadata_failed" : null);
             busy = false; failed = batch.failed() || batch.metadataFailed();
             if (failed) scheduleAutoRetry(token, retryAttempt, () -> loadAiDrama(true, retryAttempt + 1));
             else cancelAutoRetry();

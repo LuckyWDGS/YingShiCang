@@ -75,7 +75,6 @@ import com.fongmi.android.tv.ui.custom.CustomKeyDownVod;
 import com.fongmi.android.tv.ui.custom.CustomMovement;
 import com.fongmi.android.tv.ui.dialog.ChapterDialog;
 import com.fongmi.android.tv.ui.dialog.ContentDialog;
-import com.fongmi.android.tv.ui.dialog.DanmakuDialog;
 import com.fongmi.android.tv.ui.dialog.EditionDialog;
 import com.fongmi.android.tv.ui.dialog.ParseDialog;
 import com.fongmi.android.tv.ui.dialog.PlayerEngineDialog;
@@ -115,6 +114,12 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
     private Clock mClock;
     private View mFocus1;
     private boolean mTimeBarCenter;
+    private final Traffic.Meter mNetSpeedMeter = new Traffic.Meter();
+    private final Runnable mNetSpeedTick = this::tickNetSpeed;
+    // The playing episode's request, kept so switching danmaku on can fetch it for this episode.
+    private Result mDanmakuResult;
+    private History mDanmakuHistory;
+    private Episode mDanmakuEpisode;
     private static final long PAUSED_HIDE_MS = java.util.concurrent.TimeUnit.MINUTES.toMillis(5);
     private View mFocus2;
     private Runnable mR1;
@@ -336,6 +341,11 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
             updateMoreLabels();
             updateTopInfo();
         });
+        mBinding.control.action.netSpeed.setOnClickListener(view -> {
+            getSharedPreferences("player_overlay", MODE_PRIVATE).edit().putBoolean("speed", !isNetSpeedEnabled()).apply();
+            updateMoreLabels();
+            updateNetSpeed();
+        });
         mBinding.control.action.speed.setOnLongClickListener(view -> onSpeedLong());
         mBinding.control.action.ending.setOnLongClickListener(view -> onEndingReset());
         mBinding.control.action.opening.setOnLongClickListener(view -> onOpeningReset());
@@ -368,6 +378,7 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
     private void setVideoView() {
         PlayerEngineDialog.setText(mBinding.control.action.player);
         mBinding.control.action.danmaku.setVisibility(View.VISIBLE);
+        updateDanmakuLabel();
         updateMoreLabels();
         for (View action : new View[]{mBinding.control.action.next, mBinding.control.action.prev,
                 mBinding.control.action.reset, mBinding.control.action.replay, mBinding.control.action.episodes,
@@ -548,6 +559,9 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
 
     @Override
     public void loadDanmaku(Result result, History history, Episode episode) {
+        mDanmakuResult = result;
+        mDanmakuHistory = history;
+        mDanmakuEpisode = episode;
         VodPlaybackMedia.searchDanmaku(result, history, episode, player().danmakuReceiver(false), player().danmakuReceiver(true));
     }
 
@@ -850,6 +864,7 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
         mBinding.flag.setSelectedPosition(mFlagAdapter.getPosition());
         mKeyDown.setFull(true);
         setFullscreen(true);
+        updateNetSpeed();
         mFocus2 = null;
     }
 
@@ -863,6 +878,7 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
         getFocus1().requestFocus();
         mKeyDown.setFull(false);
         setFullscreen(false);
+        updateNetSpeed();
         mFocus2 = null;
         hideInfo();
     }
@@ -1026,6 +1042,7 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
         moveExtensionActionsToMore();
         mBinding.control.action.render.setText(PlayerSetting.getRender() == 1 ? R.string.vod_render_texture : R.string.vod_render_surface);
         mBinding.control.action.screenInfo.setText(isScreenInfoEnabled() ? R.string.vod_info_on : R.string.vod_info_off);
+        mBinding.control.action.netSpeed.setText(isNetSpeedEnabled() ? R.string.vod_speed_on : R.string.vod_speed_off);
         if (service() != null) mBinding.control.action.player.setText(PlaybackAction.getEngineText(player()).split("[/·]")[0].trim());
         compactMoreGrid();
     }
@@ -1078,6 +1095,29 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
             }
             child.setLayoutParams(params);
         }
+    }
+
+    private boolean isNetSpeedEnabled() {
+        return getSharedPreferences("player_overlay", MODE_PRIVATE).getBoolean("speed", false);
+    }
+
+    /** The live speed shows only in full screen with 网速 on; its own meter so the buffering readout is unaffected. */
+    private void updateNetSpeed() {
+        boolean show = isFullscreen() && isNetSpeedEnabled() && Traffic.isSupported();
+        mBinding.widget.netSpeed.removeCallbacks(mNetSpeedTick);
+        mBinding.widget.netSpeed.setVisibility(show ? View.VISIBLE : View.GONE);
+        if (!show) return;
+        mNetSpeedMeter.reset();
+        mBinding.widget.netSpeed.postDelayed(mNetSpeedTick, 1000);
+    }
+
+    private void tickNetSpeed() {
+        if (!isFullscreen() || !isNetSpeedEnabled()) {
+            updateNetSpeed();
+            return;
+        }
+        mBinding.widget.netSpeed.setText(mNetSpeedMeter.read());
+        mBinding.widget.netSpeed.postDelayed(mNetSpeedTick, 1000);
     }
 
     private void updateTopInfo() {
@@ -1157,9 +1197,24 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
         hideControl();
     }
 
+    // A tap turns danmaku on or off (no picker). Turning it on fetches the playing episode's danmaku at once.
     private void onDanmaku() {
-        DanmakuDialog.create().player(player()).show(this);
-        hideControl();
+        boolean on = !isDanmakuOn();
+        player().enableDanmaku(on);
+        if (on && player().getSelectedDanmakuUri() == null && mDanmakuResult != null && mDanmakuEpisode != null)
+            VodPlaybackMedia.searchDanmaku(mDanmakuResult, mDanmakuHistory, mDanmakuEpisode, player().danmakuReceiver(false), player().danmakuReceiver(true), true);
+        updateDanmakuLabel();
+        setR1Callback();
+    }
+
+    private boolean isDanmakuOn() {
+        return DanmakuSetting.isLoad() && DanmakuSetting.isShow();
+    }
+
+    private void updateDanmakuLabel() {
+        boolean on = isDanmakuOn();
+        mBinding.control.action.danmaku.setText(on ? R.string.danmaku_state_on : R.string.danmaku_state_off);
+        mBinding.control.action.danmaku.setActivated(on);
     }
 
     private void onToggle() {
@@ -1667,6 +1722,7 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
     protected void onStart() {
         super.onStart();
         mClock.stop().start();
+        updateNetSpeed();
     }
 
     @Override
@@ -1683,6 +1739,7 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
         // The activity may stop without being destroyed (home/PiP/another
         // surface). Do not let a queued key seek mutate a hidden player.
         cancelPendingSeek();
+        mBinding.widget.netSpeed.removeCallbacks(mNetSpeedTick);
         super.onStop();
         saveHistory(false);
         if (PlayerSetting.isBackgroundOff()) mClock.stop();

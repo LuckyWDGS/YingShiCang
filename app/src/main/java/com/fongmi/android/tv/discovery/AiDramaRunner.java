@@ -215,8 +215,9 @@ public final class AiDramaRunner {
     /** false loads the first/next page, true retries the failed page without advancing it. */
     public synchronized void load(boolean retry, Consumer<Batch> callback) {
         if (closed || busy) return;
-        if (site == null) { failed = true; publish(null, true, callback); return; }
-        if (!current()) { failed = true; publish(null, true, callback); return; }
+        failure = "";
+        if (site == null) { failure = "no_site"; failed = true; publish(null, true, callback); return; }
+        if (!current()) { failure = "config_changed"; failed = true; publish(null, true, callback); return; }
         boolean metadataOnly = retry && metadataFailed && !failed && !pages.items().isEmpty();
         if (!pages.more() && !metadataOnly) { publish(null, true, callback); return; }
         long token = epoch.incrementAndGet();
@@ -290,11 +291,26 @@ public final class AiDramaRunner {
             outcome = new Outcome(metadata, requested, page, false, !metadata.complete());
         } catch (Exception error) {
             if (error instanceof InterruptedException) Thread.currentThread().interrupt();
+            failure = reason(error);
             work.cancel(); outcome = new Outcome(null, null, null,
                     !work.pageAccepted && !work.metadataOnly, !work.metadataAccepted);
         }
         Outcome result = outcome;
         App.post(() -> apply(work, result, callback));
+    }
+
+    // The last failed round's cause (exception classes and fixed keywords only), for diagnostics.
+    private volatile String failure = "";
+
+    public String failure() {
+        return failure;
+    }
+
+    private static String reason(Throwable error) {
+        Throwable root = error;
+        for (int i = 0; i < 8 && root.getCause() != null && root.getCause() != root; i++) root = root.getCause();
+        String outcome = com.github.catvod.net.NetTrace.reason(error);
+        return root == error ? outcome : outcome + "<" + com.github.catvod.net.NetTrace.reason(root);
     }
 
     /** Each cold lane is consumed when it finishes, independent of the other lane. */

@@ -34,8 +34,6 @@
     <!-- Control -->
     <string name="control_speed">倍速</string>
     <string name="control_network_speed">網速：%1$s</string>
-    <string name="danmaku_state_on">彈幕：開</string>
-    <string name="danmaku_state_off">彈幕：關</string>
     <string name="control_scale">縮放</string>
     <string name="control_track">軌道</string>
     <string name="control_other">其它</string>

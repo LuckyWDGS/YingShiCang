@@ -81,18 +81,22 @@ public final class NetTrace extends EventListener {
     }
 
     /**
-     * A plugin's own Chinese error text (such as why a drive refused a file) is kept, with titles and any
-     * address/token/account-like run replaced by an ellipsis and the length capped; text with no Chinese
-     * (often a raw URL or stack message) is reduced to "other".
+     * A plugin's own error text (such as why a drive refused a file), in any language, with everything that
+     * could identify a person or a request replaced by an ellipsis: URLs, bracketed titles, any 7+ character
+     * run that contains a digit (tokens, phone numbers, ids) and anything with @, = or / (emails, key=value,
+     * paths). A message that is nothing but such parts is "other".
      */
     static String readable(String message) {
         String value = message.trim();
-        if (!value.matches("(?s).*\\p{IsHan}.*")) return "other";
-        // Titles, then anything address- or token-like (a run of 7+ URL characters), become an ellipsis.
-        value = value.replaceAll("《[^》]*》|「[^」]*」|“[^”]*”", "…");
-        value = value.replaceAll("[A-Za-z0-9._~:/?#\\[\\]@!$&'()*+,;=%\\-]{7,}", "…");
+        value = value.replaceAll("(?i)https?://\\S+", "…");
+        value = value.replaceAll("《[^》]*》|「[^」]*」|“[^”]*”|\"[^\"]*\"", "…");
+        value = value.replaceAll("[A-Za-z0-9._~+%-]*[0-9][A-Za-z0-9._~+%-]*", "\u0000$0\u0000");
+        StringBuilder kept = new StringBuilder();
+        for (String part : value.split("\u0000", -1)) kept.append(part.length() >= 7 && part.matches(".*[0-9].*") ? "…" : part);
+        value = kept.toString().replaceAll("\\S*[@=/\\\\]\\S*", "…");
         value = value.replaceAll("\\s+", "_");
-        return value.length() > 40 ? value.substring(0, 40) + "…" : value;
+        if (value.replace("…", "").replace("_", "").trim().isEmpty()) return "other";
+        return value.length() > 60 ? value.substring(0, 60) + "…" : value;
     }
 
     @Override

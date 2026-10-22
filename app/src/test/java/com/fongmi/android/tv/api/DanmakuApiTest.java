@@ -35,6 +35,29 @@ public class DanmakuApiTest {
     }
 
     @Test
+    public void episodeNumbersAreReadFromCommonLabels() {
+        assertEquals(3, DanmakuApi.episodeNumber("第3集"));
+        assertEquals(3, DanmakuApi.episodeNumber("第 03 集"));
+        assertEquals(13, DanmakuApi.episodeNumber("第十三集"));
+        assertEquals(20, DanmakuApi.episodeNumber("第二十话"));
+        assertEquals(7, DanmakuApi.episodeNumber("EP07"));
+        assertEquals(12, DanmakuApi.episodeNumber("S01E12"));
+        assertEquals(5, DanmakuApi.episodeNumber("05"));
+        assertEquals(8, DanmakuApi.episodeNumber("某剧 8集"));
+        assertEquals(-1, DanmakuApi.episodeNumber("正片"));
+        assertEquals(-1, DanmakuApi.episodeNumber(null));
+    }
+
+    @Test
+    public void searchPicksThePlayingEpisodeNotJustTheFirstResult() {
+        List<Danmaku> items = List.of(Danmaku.from("公路求生 第1集", "https://a.example/1"),
+                Danmaku.from("公路求生 第2集", "https://a.example/2"), Danmaku.from("公路求生 第3集", "https://a.example/3"));
+        assertEquals("https://a.example/3", DanmakuApi.pick(items, "第3集").getUrl());
+        assertEquals("https://a.example/1", DanmakuApi.pick(items, "正片").getUrl());
+        assertEquals("https://a.example/1", DanmakuApi.pick(items, "第9集").getUrl());
+    }
+
+    @Test
     public void malformedJsonIsRejectedByParser() {
         assertThrows(JsonSyntaxException.class, () -> DanmakuApi.parseItems("{"));
     }

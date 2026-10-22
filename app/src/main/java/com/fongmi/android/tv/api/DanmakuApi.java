@@ -24,6 +24,8 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import okhttp3.Call;
 import okhttp3.Request;
@@ -49,6 +51,11 @@ public class DanmakuApi {
         return DanmakuSetting.isLoad() && DanmakuSetting.isAuto() && !TextUtils.isEmpty(DanmakuSetting.getEffectiveApiUrl());
     }
 
+    /** A search the user asked for (turning danmaku on) needs only loading enabled and an API. */
+    public static boolean canSearchOnRequest() {
+        return DanmakuSetting.isLoad() && !TextUtils.isEmpty(DanmakuSetting.getEffectiveApiUrl());
+    }
+
     public static void cancel() {
         REQUEST_ID.incrementAndGet();
         OkHttp.cancel(TAG);
@@ -57,7 +64,48 @@ public class DanmakuApi {
     }
 
     public static void search(String name, String episode, Consumer<Danmaku> found) {
-        search(name, episode, items -> items.stream().findFirst().ifPresent(found), error -> {});
+        search(name, episode, items -> { if (!items.isEmpty()) found.accept(pick(items, episode)); }, error -> {});
+    }
+
+    private static final Pattern EPISODE = Pattern.compile("第\\s*([0-9]{1,4}|[零〇一二两三四五六七八九十百]{1,6})\\s*[集话話期回]"
+            + "|(?i)(?<![a-z])ep?\\s*0*([0-9]{1,4})(?![0-9])|([0-9]{1,4})\\s*[集话話]");
+
+    /**
+     * A search may return the whole show; the first item is often episode 1. Prefer the item whose name
+     * carries the playing episode's number, otherwise keep the API's first choice.
+     */
+    static Danmaku pick(List<Danmaku> items, String episode) {
+        int wanted = episodeNumber(episode);
+        if (wanted >= 0) for (Danmaku item : items) if (episodeNumber(item.getName()) == wanted) return item;
+        return items.get(0);
+    }
+
+    /** Episode number in 第3集, 第三集, 3集, EP03 or a bare "03"; -1 when there is none. */
+    static int episodeNumber(String text) {
+        if (text == null || text.trim().isEmpty()) return -1;
+        String value = text.trim();
+        if (value.matches("[0-9]{1,4}")) return Integer.parseInt(value);
+        Matcher matcher = EPISODE.matcher(value);
+        if (!matcher.find()) return -1;
+        for (int group = 1; group <= 3; group++) {
+            String number = matcher.group(group);
+            if (number != null) return number.matches("[0-9]+") ? Integer.parseInt(number) : chinese(number);
+        }
+        return -1;
+    }
+
+    /** 一 … 九百九十九 (with 〇/零 and 两) to an int; -1 when unparsable. */
+    private static int chinese(String text) {
+        String digits = "零一二三四五六七八九";
+        int total = 0, current = 0;
+        for (char c : text.replace('〇', '零').replace('两', '二').toCharArray()) {
+            int digit = digits.indexOf(c);
+            if (digit >= 0) current = digit;
+            else if (c == '十') { total += (current == 0 ? 1 : current) * 10; current = 0; }
+            else if (c == '百') { total += (current == 0 ? 1 : current) * 100; current = 0; }
+            else return -1;
+        }
+        return total + current;
     }
 
     public static void search(String name, String episode, Consumer<List<Danmaku>> success, Consumer<Exception> error) {

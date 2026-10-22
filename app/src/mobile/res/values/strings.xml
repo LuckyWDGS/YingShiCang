@@ -34,8 +34,6 @@
     <!-- Control -->
     <string name="control_speed">Speed</string>
     <string name="control_network_speed">Network speed: %1$s</string>
-    <string name="danmaku_state_on">Danmaku: On</string>
-    <string name="danmaku_state_off">Danmaku: Off</string>
     <string name="control_scale">Scale</string>
     <string name="control_track">Track</string>
     <string name="control_other">Other</string>

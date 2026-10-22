@@ -64195,7 +64195,7 @@ index 0000000..85f05d1
 +  }
 +}
 diff --git a/libraries/ui/src/main/java/androidx/media3/ui/DefaultTimeBar.java b/libraries/ui/src/main/java/androidx/media3/ui/DefaultTimeBar.java
-index ffde6e8..b52eb7f 100644
+index ffde6e8..2845685 100644
 --- a/libraries/ui/src/main/java/androidx/media3/ui/DefaultTimeBar.java
 +++ b/libraries/ui/src/main/java/androidx/media3/ui/DefaultTimeBar.java
 @@ -27,6 +27,7 @@ import android.graphics.Canvas;
@@ -64340,7 +64340,7 @@ index ffde6e8..b52eb7f 100644
      }
      if (adGroupCount == 0) {
        return;
-@@ -929,6 +973,65 @@ public class DefaultTimeBar extends View implements TimeBar {
+@@ -929,6 +973,77 @@ public class DefaultTimeBar extends View implements TimeBar {
      }
    }
  
@@ -64387,8 +64387,20 @@ index ffde6e8..b52eb7f 100644
 +      return;
 +    }
 +    float radius = (bottom - top) / 2f;
-+    barSegmentRect.set(left, top, right, bottom);
++    // Only the track's two outer ends are round. Inner joins (played/buffered/unplayed) meet flush;
++    // rounding every segment left a visible pinch where they met.
++    boolean roundLeft = left <= progressBar.left;
++    boolean roundRight = right >= progressBar.right;
++    if (!roundLeft && !roundRight) {
++      canvas.drawRect(left, top, right, bottom, paint);
++      return;
++    }
++    canvas.save();
++    canvas.clipRect(left, top, right, bottom);
++    barSegmentRect.set(
++        roundLeft ? left : left - 2 * radius, top, roundRight ? right : right + 2 * radius, bottom);
 +    canvas.drawRoundRect(barSegmentRect, radius, radius, paint);
++    canvas.restore();
 +  }
 +
 +  private int getChapterGapLeft(long chapterTimeMs, int gapWidth) {

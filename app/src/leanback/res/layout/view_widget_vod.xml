@@ -49,6 +49,22 @@
 
     </RelativeLayout>
 
+    <!-- 网速 (更多 → 网速 开): live download speed during full-screen playback, below the clock line. -->
+    <com.google.android.material.textview.MaterialTextView
+        android:id="@+id/netSpeed"
+        style="@style/Shadow"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|end"
+        android:layout_marginTop="46dp"
+        android:layout_marginEnd="16dp"
+        android:fontFeatureSettings="tnum"
+        android:textColor="@color/white"
+        android:textSize="16sp"
+        android:visibility="gone"
+        tools:text="1.25 MB/s"
+        tools:visibility="visible" />
+
     <androidx.appcompat.widget.LinearLayoutCompat
         android:id="@+id/error"
         android:layout_width="wrap_content"

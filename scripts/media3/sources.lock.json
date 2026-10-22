@@ -4,7 +4,7 @@
   "archiveRef": "1.11.1",
   "archiveSha256": "992e6e27c5d38c5a22d3ddb23be3f7d477e89c4a422a84441e7fb98371daae23",
   "fongmiRevision": "3c2cbe8ac742c2fe15eff52f03eeb3b1b648848d",
-  "patchSha256": "e37f0934a04f2ea4e4eda2e3cbc426505071fedc74d8642ff4304f2dcdd4b5a4",
+  "patchSha256": "7440f8944543ef84ef5688d611b1d16dbe6e0c0dc0c62a0244a85652bb9097f2",
   "files": {
     ".gitignore": "f1bf74f6d39f1f89279d715a8e0280a29bdd82ec11d89ca9a0198813c08bc3ab",
     "build.gradle.kts": "204d1a0880c99bcc10b2c00881c63582daee6c31c2a7bc89c973db3e85b20917",
@@ -423,7 +423,7 @@
     "libraries/ui/src/main/java/androidx/media3/ui/CanvasSubtitleOutput.java": "115343a2fdd300c0010ceedb8e513f820fab92d8b2efa3845066f80415ee98a0",
     "libraries/ui/src/main/java/androidx/media3/ui/CaptionStyleCompat.java": "ed35562d2330cce001641bc3f6527d700c08b39929283a61db7df0fdc8952526",
     "libraries/ui/src/main/java/androidx/media3/ui/DebugTextView.java": "d9f1c2437bd64cc1f1957f731ecff4f6cb57cc5e6efe9cf8a688bb636a5d4253",
-    "libraries/ui/src/main/java/androidx/media3/ui/DefaultTimeBar.java": "32bdaaa4e8f43ec3af2db1c5c95c0af99d0da0b2c35c611457a4ddbef7cf3c0a",
+    "libraries/ui/src/main/java/androidx/media3/ui/DefaultTimeBar.java": "195a2b23001c271cd0dd1aee17f17ac89b5bf5e9f6a62dc0fc6421d7fef29197",
     "libraries/ui/src/main/java/androidx/media3/ui/DefaultTrackNameProvider.java": "2d39e41c751c601802852853bc7902bcb60d4bfc351f3ac3554a61d2ffc313a3",
     "libraries/ui/src/main/java/androidx/media3/ui/MpvOsdSurfaceBridge.java": "08a999c1724d97546eb59e4ff9375634515dda087091a12080123af79c828baf",
     "libraries/ui/src/main/java/androidx/media3/ui/PlayerDebugView.java": "f7a4a53de3e98ce5af287c80ebabfd2bdbf87d95837f0e52de3e6cb9d719399f",
