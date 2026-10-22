@@ -1,6 +1,5 @@
 package com.fongmi.android.tv.service;
 
-import android.app.Notification;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
@@ -8,20 +7,18 @@ import android.content.ServiceConnection;
 import android.os.Build;
 import android.os.IBinder;
 
-import androidx.core.app.NotificationCompat;
 import androidx.media3.common.C;
 import androidx.media3.common.PlaybackParameters;
 import androidx.media3.common.Player;
 
 import com.fongmi.android.tv.App;
-import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.dlna.CastAction;
 import com.fongmi.android.tv.dlna.DLNAAvTransportImpl;
 import com.fongmi.android.tv.dlna.DLNARenderingControlImpl;
 import com.fongmi.android.tv.dlna.DLNAServiceConfiguration;
 import com.fongmi.android.tv.dlna.RenderState;
 import com.fongmi.android.tv.player.PlayerManager;
-import com.fongmi.android.tv.utils.Notify;
+import com.fongmi.android.tv.utils.StatusNotification;
 import com.fongmi.android.tv.utils.Util;
 
 import org.jupnp.UpnpServiceConfiguration;
@@ -74,8 +71,9 @@ public class DLNARendererService extends AndroidUpnpServiceImpl implements Servi
     @Override
     public void onCreate() {
         super.onCreate();
-        Notification notification = new NotificationCompat.Builder(this, Notify.DEFAULT).setSmallIcon(R.drawable.ic_notification).setContentTitle(getString(R.string.app_name)).setSilent(true).build();
-        startForeground(Notify.ID + 1, notification);
+        // The app's status notification: says casting is available, and shows update progress while one runs.
+        StatusNotification.service(true);
+        startForeground(StatusNotification.ID, StatusNotification.idle(this));
         upnpService.startup();
         registerLocalDevice();
     }
@@ -134,6 +132,7 @@ public class DLNARendererService extends AndroidUpnpServiceImpl implements Servi
 
     @Override
     public void onDestroy() {
+        StatusNotification.service(false);
         unbindPlaybackService();
         super.onDestroy();
     }

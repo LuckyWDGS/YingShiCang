@@ -5,6 +5,7 @@ import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.SystemClock;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -45,7 +46,11 @@ public class UpdateDialog extends BaseAlertDialog {
     private boolean mandatory;
     private String reason;
 
-    private enum Phase { AVAILABLE, CHECKING, DOWNLOADING, VERIFYING, READY, ERROR, MANUAL }
+    private long checkingSince;
+    private final Runnable tick = this::tick;
+
+    // DONE: a manual check found nothing newer; CHECK_FAILED: it could not find out.
+    private enum Phase { AVAILABLE, CHECKING, DOWNLOADING, VERIFYING, READY, ERROR, MANUAL, DONE, CHECK_FAILED }
 
     public static UpdateDialog create() {
         return new UpdateDialog();
@@ -55,6 +60,43 @@ public class UpdateDialog extends BaseAlertDialog {
         this.current = current;
         this.latest = latest;
         return this;
+    }
+
+    /** Opens before anything is known: a manual check shows what it is waiting on instead of a toast. */
+    public UpdateDialog checking(String current) {
+        this.current = current;
+        this.latest = null;
+        phase = Phase.CHECKING;
+        status = "正在获取版本信息…";
+        return this;
+    }
+
+    /** The release the check found, filled into the open dialog. */
+    public void available(String latest, String notes, long size, boolean mandatory, String reason) {
+        this.latest = latest;
+        this.notes = notes;
+        this.size = size;
+        this.mandatory = mandatory;
+        this.reason = reason;
+        phase = Phase.AVAILABLE;
+        status = null;
+        if (binding == null) return;
+        bindHeader();
+        render();
+        binding.getRoot().post(this::fitNotes);
+        binding.confirm.requestFocus();
+    }
+
+    public void setCheckResult(String message) {
+        phase = Phase.DONE;
+        status = message;
+        render();
+    }
+
+    public void setCheckFailed(String message) {
+        phase = Phase.CHECK_FAILED;
+        status = message;
+        render();
     }
 
     public UpdateDialog notes(String notes) {
@@ -116,13 +158,21 @@ public class UpdateDialog extends BaseAlertDialog {
 
     @Override
     protected void initView() {
-        binding.version.setText(String.format(Locale.getDefault(), "当前版本 %1$s  →  新版本 %2$s", current, latest));
-        binding.size.setVisibility(size > 0 ? View.VISIBLE : View.GONE);
-        binding.size.setText("安装包 " + size(size));
-        binding.important.setVisibility(mandatory ? View.VISIBLE : View.GONE);
-        binding.importantText.setText("重要更新：" + (reason == null || reason.isEmpty() ? "当前版本已停止支持，请更新后继续使用" : reason));
-        renderNotes();
+        bindHeader();
         render();
+    }
+
+    /** Header and notes for the known release; only the current version while a check is still running. */
+    private void bindHeader() {
+        boolean known = latest != null;
+        binding.title.setText(known ? "发现新版本" : "检查更新");
+        binding.version.setText(known ? String.format(Locale.getDefault(), "当前版本 %1$s  →  新版本 %2$s", current, latest) : "当前版本 " + current);
+        setVisible(binding.content, known);
+        binding.size.setVisibility(known && size > 0 ? View.VISIBLE : View.GONE);
+        binding.size.setText("安装包 " + size(size));
+        binding.important.setVisibility(known && mandatory ? View.VISIBLE : View.GONE);
+        binding.importantText.setText("重要更新：" + (reason == null || reason.isEmpty() ? "当前版本已停止支持，请更新后继续使用" : reason));
+        if (known && binding.notes.getChildCount() == 0) renderNotes();
     }
 
     private void renderNotes() {
@@ -205,8 +255,13 @@ public class UpdateDialog extends BaseAlertDialog {
 
     /** Retrying the package list after a failed fetch. */
     public void setChecking() {
+        setChecking("正在连接下载服务器…");
+    }
+
+    /** Still checking; the text says which step (or retry) it is waiting on. */
+    public void setChecking(String message) {
         phase = Phase.CHECKING;
-        status = "正在连接下载服务器…";
+        status = message;
         render();
     }
 
@@ -273,22 +328,31 @@ public class UpdateDialog extends BaseAlertDialog {
         binding.transferText.setText(busy ? status : null);
         binding.progressBar.setIndeterminate(phase == Phase.VERIFYING || phase == Phase.CHECKING);
         binding.progressBar.setProgress(progress);
-        setVisible(binding.progressText, phase == Phase.DOWNLOADING);
+        setVisible(binding.progressText, phase == Phase.DOWNLOADING || phase == Phase.CHECKING);
         binding.progressText.setText(progressText());
+        if (phase == Phase.CHECKING) startTicking();
+        else checkingSince = 0;
         // Mandatory: no postponing; continuing for now is offered only after a failed or impossible download.
         boolean fallback = phase == Phase.ERROR || manual;
         boolean cancelVisible = !mandatory || fallback;
+        boolean confirmVisible = phase != Phase.DONE;
         setVisible(binding.cancel, cancelVisible);
+        setVisible(binding.confirm, confirmVisible);
         setMargin(binding.confirm, false, cancelVisible ? ResUtil.dp2px(6) : 0);
+        setMargin(binding.cancel, true, confirmVisible ? ResUtil.dp2px(6) : 0);
         binding.confirmIcon.setVisibility(phase == Phase.AVAILABLE || phase == Phase.ERROR || manual ? View.VISIBLE : View.GONE);
-        binding.confirmText.setText(phase == Phase.READY ? "安装" : phase == Phase.ERROR || manual ? "重试下载" : "下载并安装");
-        binding.cancel.setText(mandatory ? "暂时继续使用" : manual ? "知道了" : phase == Phase.READY || phase == Phase.ERROR ? "关闭" : "暂不更新");
+        binding.confirmText.setText(phase == Phase.READY ? "安装" : phase == Phase.CHECK_FAILED ? "重试" : phase == Phase.ERROR || manual ? "重试下载" : "下载并安装");
+        binding.cancel.setText(mandatory ? "暂时继续使用" : manual || phase == Phase.DONE ? "知道了"
+                : phase == Phase.READY || phase == Phase.ERROR || phase == Phase.CHECK_FAILED ? "关闭" : "暂不更新");
         binding.backHint.setText(mandatory ? "返回键退出应用" : phase == Phase.DOWNLOADING ? "返回键取消下载" : busy ? "返回键取消" : "返回键关闭");
-        binding.descriptionScroll.setNextFocusDownId(busy ? View.NO_ID : R.id.confirm);
+        binding.descriptionScroll.setNextFocusDownId(busy ? View.NO_ID : confirmVisible ? R.id.confirm : R.id.cancel);
         // A dialog opened in touch mode cannot take focus yet; the first remote key restores this default.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) binding.confirm.setFocusedByDefault(true);
-        // Leaving a download, the buttons come back: put the remote on 安装 / 重试下载.
-        if (wasBusy && !busy) binding.confirm.requestFocus();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            binding.confirm.setFocusedByDefault(confirmVisible);
+            binding.cancel.setFocusedByDefault(!confirmVisible);
+        }
+        // Leaving a check or download, the buttons come back: put the remote on the main action.
+        if (wasBusy && !busy) (confirmVisible ? binding.confirm : binding.cancel).requestFocus();
         wasBusy = busy;
     }
 
@@ -308,7 +372,25 @@ public class UpdateDialog extends BaseAlertDialog {
         view.setLayoutParams(params);
     }
 
+    private void startTicking() {
+        if (checkingSince != 0 || binding == null) return;
+        checkingSince = SystemClock.elapsedRealtime();
+        binding.getRoot().removeCallbacks(tick);
+        binding.getRoot().postDelayed(tick, 1000);
+    }
+
+    /** Counts the wait once a second, so a slow network still visibly moves. */
+    private void tick() {
+        if (binding == null || phase != Phase.CHECKING || checkingSince == 0) return;
+        binding.progressText.setText(progressText());
+        binding.getRoot().postDelayed(tick, 1000);
+    }
+
     private String progressText() {
+        if (phase == Phase.CHECKING) {
+            long seconds = checkingSince == 0 ? 0 : (SystemClock.elapsedRealtime() - checkingSince) / 1000;
+            return seconds < 1 ? "" : "已等待 " + seconds + " 秒";
+        }
         if (total > 0 && downloaded >= 0) return String.format(Locale.getDefault(), "%1$d%%  ·  %2$s / %3$s",
                 progress, size(Math.min(downloaded, total)), size(total));
         return String.format(Locale.getDefault(), "%1$d%%", progress);

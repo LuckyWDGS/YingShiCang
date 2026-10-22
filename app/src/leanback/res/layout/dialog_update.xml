@@ -90,6 +90,13 @@
 
     </androidx.appcompat.widget.LinearLayoutCompat>
 
+    <!-- Release notes; hidden while a manual check is still finding out what is available. -->
+    <androidx.appcompat.widget.LinearLayoutCompat
+        android:id="@+id/content"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
     <View
         android:layout_width="match_parent"
         android:layout_height="1dp"
@@ -144,6 +151,8 @@
             android:paddingBottom="4dp" />
 
     </androidx.core.widget.NestedScrollView>
+
+    </androidx.appcompat.widget.LinearLayoutCompat>
 
     <!-- Install/failure messages; download progress itself sits in the action slot below. -->
     <com.google.android.material.textview.MaterialTextView

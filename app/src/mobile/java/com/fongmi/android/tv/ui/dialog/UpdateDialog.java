@@ -30,7 +30,8 @@ public class UpdateDialog extends BaseAlertDialog {
     private boolean focusCancelPending;
     private boolean mandatory;
 
-    private enum Phase { AVAILABLE, CHECKING, DOWNLOADING, VERIFYING, READY, ERROR, MANUAL }
+    // DONE: a manual check found nothing newer; CHECK_FAILED: it could not find out.
+    private enum Phase { AVAILABLE, CHECKING, DOWNLOADING, VERIFYING, READY, ERROR, MANUAL, DONE, CHECK_FAILED }
 
     public static UpdateDialog create() {
         return new UpdateDialog();
@@ -39,6 +40,45 @@ public class UpdateDialog extends BaseAlertDialog {
     public UpdateDialog version(String current, String latest) {
         this.title = "发现新版本 " + latest;
         return this;
+    }
+
+    /** Opens before anything is known: a manual check shows what it is waiting on. */
+    public UpdateDialog checking(String current) {
+        title = "检查更新";
+        desc = "当前版本 " + current;
+        phase = Phase.CHECKING;
+        status = "正在获取版本信息…";
+        return this;
+    }
+
+    /** The release the check found, filled into the open dialog. */
+    public void available(String latest, String notes, long size, boolean mandatory, String reason) {
+        version(null, latest).notes(notes);
+        if (size > 0) packageSize(size);
+        mandatory(mandatory, reason);
+        phase = Phase.AVAILABLE;
+        status = null;
+        if (getDialog() != null) getDialog().setTitle(title);
+        if (binding != null) binding.desc.setText(desc);
+        render();
+    }
+
+    public void setCheckResult(String message) {
+        phase = Phase.DONE;
+        status = message;
+        render();
+    }
+
+    public void setCheckFailed(String message) {
+        phase = Phase.CHECK_FAILED;
+        status = message;
+        render();
+    }
+
+    public void setChecking(String message) {
+        phase = Phase.CHECKING;
+        status = message;
+        render();
     }
 
     public UpdateDialog notes(String notes) {
@@ -174,8 +214,9 @@ public class UpdateDialog extends BaseAlertDialog {
         if (binding == null) return;
         boolean manual = phase == Phase.MANUAL;
         binding.transfer.setVisibility(phase == Phase.AVAILABLE || manual && status == null ? View.GONE : View.VISIBLE);
-        binding.progressBar.setVisibility(manual ? View.GONE : View.VISIBLE);
-        binding.progressText.setVisibility(manual || phase == Phase.CHECKING ? View.GONE : View.VISIBLE);
+        boolean outcome = manual || phase == Phase.DONE || phase == Phase.CHECK_FAILED;
+        binding.progressBar.setVisibility(outcome ? View.GONE : View.VISIBLE);
+        binding.progressText.setVisibility(outcome || phase == Phase.CHECKING ? View.GONE : View.VISIBLE);
         binding.status.setAccessibilityLiveRegion(phase == Phase.ERROR || phase == Phase.READY
                 ? View.ACCESSIBILITY_LIVE_REGION_POLITE : View.ACCESSIBILITY_LIVE_REGION_NONE);
         binding.status.setText(status);
@@ -188,13 +229,13 @@ public class UpdateDialog extends BaseAlertDialog {
         Button cancel = dialog.getButton(AlertDialog.BUTTON_NEGATIVE);
         if (confirm == null || cancel == null) return;
         boolean busy = phase == Phase.CHECKING || phase == Phase.DOWNLOADING || phase == Phase.VERIFYING;
-        confirm.setVisibility(View.VISIBLE);
+        confirm.setVisibility(phase == Phase.DONE ? View.GONE : View.VISIBLE);
         confirm.setEnabled(!busy);
         confirm.setFocusable(!busy);
-        confirm.setText(phase == Phase.READY ? "安装" : phase == Phase.ERROR || manual ? "重试下载"
+        confirm.setText(phase == Phase.READY ? "安装" : phase == Phase.CHECK_FAILED ? "重试" : phase == Phase.ERROR || manual ? "重试下载"
                 : phase == Phase.AVAILABLE ? "下载并安装" : getString(R.string.update_confirm));
         cancel.setVisibility(!mandatory || phase == Phase.ERROR || manual ? View.VISIBLE : View.GONE);
-        cancel.setText(mandatory ? "暂时继续使用" : manual ? "知道了" : phase == Phase.READY || phase == Phase.ERROR ? "关闭"
+        cancel.setText(mandatory ? "暂时继续使用" : manual || phase == Phase.DONE ? "知道了" : phase == Phase.READY || phase == Phase.ERROR || phase == Phase.CHECK_FAILED ? "关闭"
                 : phase == Phase.DOWNLOADING ? "取消下载" : phase == Phase.VERIFYING || phase == Phase.CHECKING ? "取消"
                 : "暂不更新");
         if (focusCancelPending) {

@@ -26,6 +26,7 @@ import androidx.core.app.NotificationManagerCompat;
 import androidx.core.content.ContextCompat;
 
 import com.fongmi.android.tv.App;
+import com.fongmi.android.tv.diagnostics.DiagnosticLog;
 import com.fongmi.android.tv.databinding.ViewProgressBinding;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
@@ -114,9 +115,9 @@ public class Notify {
      * bottom centre, above any dialog already open.
      */
     private boolean showNotice(Activity activity, String text) {
-        if (activity == null || activity.isFinishing() || activity.isDestroyed()) return false;
+        if (activity == null || activity.isFinishing() || activity.isDestroyed()) return fallback("no_activity");
         // Only once the activity window is attached; its WindowManager then supplies the activity token.
-        if (activity.getWindow().getDecorView().getWindowToken() == null) return false;
+        if (activity.getWindow().getDecorView().getWindowToken() == null) return fallback("no_window");
         TextView view = new TextView(activity);
         view.setText(text);
         view.setTextColor(0xFFF2F2F2);
@@ -137,7 +138,7 @@ public class Notify {
         try {
             activity.getWindowManager().addView(view, params);
         } catch (RuntimeException e) {
-            return false;
+            return fallback(e.getClass().getSimpleName());
         }
         mNotice = view;
         mNoticeManager = activity.getWindowManager();
@@ -147,6 +148,12 @@ public class Notify {
             mNoticeOwner.addObserver(mHostObserver);
         }
         return true;
+    }
+
+    /** Why a message went to a system toast instead (a HyperOS device showed toasts where notices were expected). */
+    private static boolean fallback(String reason) {
+        DiagnosticLog.write(App.get(), "notice_fallback", reason);
+        return false;
     }
 
     private void hideNotice() {

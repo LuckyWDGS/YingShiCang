@@ -31,7 +31,12 @@ import okhttp3.Response;
 public class Updater implements UpdateListener {
     private static final AtomicReference<Updater> ACTIVE = new AtomicReference<>();
     private final AtomicBoolean downloading = new AtomicBoolean();
-    private boolean manual, github, waitingPermission, installerOpened;
+    private boolean github, waitingPermission, installerOpened, checkFailed;
+    // Read on the check thread; a manual request may adopt a running launch check.
+    private volatile boolean manual;
+    private volatile String checkingStatus = "正在获取版本信息…";
+    private String endpoint;
+    private final UpdateNotification shade = new UpdateNotification("");
     private final LifecycleEventObserver lifecycle = (source, event) -> onLifecycle(event);
 
     private void onLifecycle(Lifecycle.Event event) {
@@ -48,7 +53,6 @@ public class Updater implements UpdateListener {
     private UpdateDialog dialog;
     private UpdateManifest manifest;
     private volatile GitHubRelease release;
-    private UpdateNotification notification;
     private volatile Call call;
     private volatile boolean canceled;
     private volatile File transfer;
@@ -62,15 +66,54 @@ public class Updater implements UpdateListener {
         // Every launch checks; the launch prompt itself appears only once per version.
         if (!manual && !Setting.getUpdate()) return;
         if (!ACTIVE.compareAndSet(null, this)) {
-            if (manual) Notify.show("更新正在进行，请先完成或关闭更新窗口");
-            return;
+            if (!manual) return;
+            // A manual request joins a check already running (often the launch check on a slow network).
+            Updater running = ACTIVE.get();
+            if (running != null && running.adopt(activity)) return;
+            if (!ACTIVE.compareAndSet(null, this)) {
+                Notify.show("更新正在进行，请先完成或关闭更新窗口");
+                return;
+            }
         }
         owner = new WeakReference<>(activity);
         activity.getLifecycle().addObserver(lifecycle);
-        String endpoint = ServiceSettings.manifestUrl();
+        endpoint = ServiceSettings.manifestUrl();
         github = GitHubRelease.API_URL.equals(endpoint);
-        if (manual) Notify.show("正在检查更新…");
+        if (manual) showChecking(activity);
         MaintenanceTasks.execute(() -> check(endpoint));
+    }
+
+    /** Main thread: a manual request takes over a check that has not shown anything yet. */
+    private boolean adopt(FragmentActivity activity) {
+        if (canceled || dialog != null || activity.isFinishing() || activity.isDestroyed()) return false;
+        FragmentActivity previous = owner.get();
+        if (previous != null) previous.getLifecycle().removeObserver(lifecycle);
+        owner = new WeakReference<>(activity);
+        activity.getLifecycle().addObserver(lifecycle);
+        manual = true;
+        showChecking(activity);
+        return true;
+    }
+
+    /** A manual check opens the dialog at once, showing what it is waiting on. */
+    private void showChecking(FragmentActivity activity) {
+        shade.checking(checkingStatus);
+        if (activity.getSupportFragmentManager().isStateSaved()) {
+            Notify.show("正在检查更新…");
+            return;
+        }
+        dialog = UpdateDialog.create().checking(BuildConfig.VERSION_NAME).listener(this).show(activity);
+        dialog.setChecking(checkingStatus);
+    }
+
+    /** Check thread: the step (or retry) a manual check is waiting on, in the dialog and the notification. */
+    private void checking(String text) {
+        checkingStatus = text;
+        App.post(() -> {
+            if (!manual || host() == null || pending != null || downloading.get()) return;
+            if (dialog != null) dialog.setChecking(text);
+            shade.checking(text);
+        });
     }
 
     private void track(Call current) {
@@ -86,6 +129,7 @@ public class Updater implements UpdateListener {
             } catch (IOException error) {
                 if (canceled || attempt >= 2 || !UpdateHttp.transientFailure(error)) throw error;
                 DiagnosticLog.write(App.get(), "update_fetch_retry", NetTrace.reason(error) + " attempt=" + (attempt + 1));
+                checking("网络较慢，正在第 " + (attempt + 1) + " 次重试…");
                 try {
                     Thread.sleep(1000L * (attempt + 1));
                 } catch (InterruptedException interrupted) {
@@ -103,14 +147,16 @@ public class Updater implements UpdateListener {
             if (expired != null) for (File item : expired)
                 if (System.currentTimeMillis() - item.lastModified() > 86_400_000L) item.delete();
             if (github) {
+                checking("正在获取版本信息…");
                 GitHubRelease release = GitHubRelease.parse(fetch(endpoint, GitHubRelease.MAX_RELEASE_BYTES));
                 if (!UpdateNotice.isNewer(release.versionName())) {
                     UpdateNotice.clear();
-                    result(manual ? "当前已是最新版本（本机 " + BuildConfig.VERSION_NAME + "）" : null);
+                    result("当前已是最新版本（本机 " + BuildConfig.VERSION_NAME + "）", false);
                     return;
                 }
                 UpdateNotice.found(release.versionName());
                 this.release = release;
+                checking("发现新版本 " + release.versionName() + "，正在获取安装包信息…");
                 try {
                     manifest = release.select(fetch(release.manifestUrl(), GitHubRelease.MAX_MANIFEST_BYTES),
                             BuildConfig.APPLICATION_ID, BuildConfig.FLAVOR, Build.VERSION.SDK_INT, Build.SUPPORTED_ABIS);
@@ -121,6 +167,7 @@ public class Updater implements UpdateListener {
                     return;
                 }
             } else {
+                checking("正在获取更新信息…");
                 manifest = UpdateManifest.parse(fetch(endpoint, 65_536));
                 manifest.compatible(BuildConfig.APPLICATION_ID, BuildConfig.FLAVOR, Build.VERSION.SDK_INT, Build.SUPPORTED_ABIS);
             }
@@ -128,22 +175,28 @@ public class Updater implements UpdateListener {
             if (canceled) return;
             if (manifest.versionCode <= BuildConfig.VERSION_CODE) {
                 UpdateNotice.clear();
-                result(manual ? "当前已是最新版本（本机 " + BuildConfig.VERSION_NAME + "）" : null);
+                result("当前已是最新版本（本机 " + BuildConfig.VERSION_NAME + "）", false);
                 return;
             }
             UpdateNotice.found(manifest.versionName);
             boolean mandatory = UpdateNotice.mandatory(manifest.notes, manifest.versionName);
             App.post(() -> {
                 FragmentActivity target = host();
-                if (target == null || target.getSupportFragmentManager().isStateSaved()
-                        || !prompt(manifest.versionName, mandatory)) { close(); return; }
+                if (target == null) return;
+                shade.cancel();
+                if (dialog != null) {
+                    // The manual check's dialog is already open: fill in what it found.
+                    dialog.available(manifest.versionName, manifest.notes, manifest.size, mandatory, ReleaseNotes.importantReason(manifest.notes));
+                    return;
+                }
+                if (target.getSupportFragmentManager().isStateSaved() || !prompt(manifest.versionName, mandatory)) { close(); return; }
                 dialog = UpdateDialog.create().version(BuildConfig.VERSION_NAME, manifest.versionName)
                         .notes(manifest.notes).packageSize(manifest.size).mandatory(mandatory, ReleaseNotes.importantReason(manifest.notes))
                         .listener(this).show(target);
             });
         } catch (Exception error) {
             DiagnosticLog.write(App.get(), "update_check_failed", NetTrace.reason(error));
-            if (!canceled) result(manual ? "检查更新失败：" + reason(error) : null);
+            if (!canceled) result("检查更新失败：" + reason(error), true);
         }
     }
 
@@ -152,8 +205,14 @@ public class Updater implements UpdateListener {
         boolean mandatory = UpdateNotice.mandatory(notes, version);
         App.post(() -> {
             FragmentActivity target = host();
-            if (target == null || target.getSupportFragmentManager().isStateSaved()
-                    || !prompt(version, mandatory)) { close(); return; }
+            if (target == null) return;
+            shade.cancel();
+            if (dialog != null) {
+                dialog.available(version, notes, -1, mandatory, ReleaseNotes.importantReason(notes));
+                dialog.setManual();
+                return;
+            }
+            if (target.getSupportFragmentManager().isStateSaved() || !prompt(version, mandatory)) { close(); return; }
             dialog = UpdateDialog.create().version(BuildConfig.VERSION_NAME, version)
                     .notes(notes).mandatory(mandatory, ReleaseNotes.importantReason(notes)).listener(this).show(target);
             // Manual-install guidance is intentionally left out for now.
@@ -171,9 +230,17 @@ public class Updater implements UpdateListener {
         return canceled || target == null || target.isFinishing() || target.isDestroyed() ? null : target;
     }
 
-    private void result(String text) {
+    /** The check ended without a release to offer; a manual check says so in its dialog. */
+    private void result(String text, boolean failed) {
         App.post(() -> {
-            if (host() != null && text != null) Notify.show(text);
+            shade.cancel();
+            if (manual && host() != null && dialog != null) {
+                checkFailed = failed;
+                if (failed) dialog.setCheckFailed(text);
+                else dialog.setCheckResult(text);
+                return;
+            }
+            if (manual && host() != null) Notify.show(text);
             close();
         });
     }
@@ -191,11 +258,24 @@ public class Updater implements UpdateListener {
     @Override public void onConfirm(View button) {
         FragmentActivity target = host();
         if (target == null) return;
+        if (checkFailed) {
+            // 重试 after a failed check runs the whole check again in the same dialog.
+            checkFailed = false;
+            showCheckingAgain();
+            return;
+        }
         if (manifest == null) { retryManifest(); return; }
         if (pending != null) { install(target); return; }
         if (!downloading.compareAndSet(false, true)) return;
         dialog.setProgress(0, 0, manifest.size);
         MaintenanceTasks.execute(this::download);
+    }
+
+    private void showCheckingAgain() {
+        checkingStatus = "正在获取版本信息…";
+        dialog.setChecking(checkingStatus);
+        shade.checking(checkingStatus);
+        MaintenanceTasks.execute(() -> check(endpoint));
     }
 
     /** 重试下载 after the package list could not be fetched: fetch it again, then download right away. */
@@ -212,7 +292,7 @@ public class Updater implements UpdateListener {
                 if (canceled) return;
                 if (selected.versionCode <= BuildConfig.VERSION_CODE) {
                     UpdateNotice.clear();
-                    result("当前已是最新版本（本机 " + BuildConfig.VERSION_NAME + "）");
+                    result("当前已是最新版本（本机 " + BuildConfig.VERSION_NAME + "）", false);
                     return;
                 }
                 manifest = selected;
@@ -236,8 +316,7 @@ public class Updater implements UpdateListener {
 
     private void download() {
         File file = null;
-        UpdateNotification shade = new UpdateNotification(manifest.versionName);
-        App.post(() -> { if (host() != null) notification = shade; });
+        shade.version(manifest.versionName);
         try {
             File directory = App.get().getCacheDir();
             if (UpdateStorage.availableFor(new File(directory, "ysc-update.apk")) < manifest.size * 2 + 20_000_000L)
@@ -337,7 +416,7 @@ public class Updater implements UpdateListener {
         canceled = true;
         waitingPermission = false;
         if (call != null) call.cancel();
-        if (notification != null) notification.cancel();
+        shade.cancel();
         File partial = transfer;
         if (partial != null) partial.delete();
         // The external installer may still be reading a verified APK after the host is destroyed.
