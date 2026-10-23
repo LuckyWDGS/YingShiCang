@@ -20,8 +20,8 @@ android {
         minSdk libs.versions.minSdk.get().toInteger()
         targetSdk libs.versions.targetSdk.get().toInteger()
         // Publisher GitHub Releases: check, download, verify and install.
-        versionCode providers.gradleProperty('appVersionCode').getOrElse('83').toInteger()
-        versionName providers.gradleProperty('appVersionName').getOrElse('1.8.1')
+        versionCode providers.gradleProperty('appVersionCode').getOrElse('84').toInteger()
+        versionName providers.gradleProperty('appVersionName').getOrElse('1.8.2')
         buildConfigField "String", "UPDATE_MANIFEST_URL", groovy.json.JsonOutput.toJson(providers.gradleProperty("updateManifestUrl").getOrElse(""))
         buildConfigField "String", "LOG_UPLOAD_URL", groovy.json.JsonOutput.toJson(providers.gradleProperty("logUploadUrl").getOrElse(localProps.getProperty("ysc.logUploadUrl", "")))
         javaCompileOptions {
