@@ -1,6 +1,5 @@
 package com.fongmi.android.tv.api.compat;
 
-import com.chaquo.python.Kwarg;
 import com.chaquo.python.PyObject;
 import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.bean.Site;
@@ -60,7 +59,7 @@ public final class AiDramaFilterCompatibility {
             new ArrayBlockingQueue<>(1), BackgroundThreads.factory("ai-topic-metadata"),
             new ThreadPoolExecutor.AbortPolicy());
     private record Category(String id, String slug, int rpc, Map<String, String> choices,
-                            Map<String, String> nativeChoices) {}
+                            Map<String, List<String>> topicIds, Map<String, String> nativeChoices) {}
     private record Catalog(HttpUrl base, Map<String, Category> categories, boolean complete) {}
     private record CachedCatalog(Catalog catalog, long created) {}
 
@@ -297,17 +296,12 @@ public final class AiDramaFilterCompatibility {
         if (primary == null) return null;
         String topic = extend.getOrDefault("topic", "");
         String sort = extend.getOrDefault(AiDramaCatalog.SORT, "");
-        if (!sort.isEmpty()) {
-            if (!AiDramaCatalog.LATEST.equals(sort) || !topic.isEmpty() || page < 1
-                    || !("comic".equals(id) || "ai".equals(id))
-                    || !extend.keySet().stream().allMatch(key -> "topic".equals(key) || AiDramaCatalog.SORT.equals(key)))
-                throw new IOException("AI source latest request unavailable");
-            return nativeLatest(spider, id, page);
-        }
-        if (topic.isEmpty()) return null;
+        if (!sort.isEmpty() && !AiDramaCatalog.LATEST.equals(sort)) throw new IOException("AI source latest request unavailable");
+        if (topic.isEmpty() && sort.isEmpty()) return null;
         if (page < 1 || !("comic".equals(id) || "ai".equals(id))
                 || !extend.keySet().stream().allMatch(key -> "topic".equals(key) || AiDramaCatalog.SORT.equals(key)))
             throw new IOException("AI source filter declaration unavailable");
+        if (!sort.isEmpty() && topic.isEmpty()) return nativeLatest(primary, id, page, List.of());
         HttpUrl base = guardedOrigin(primary);
         Catalog catalog = catalog(site, primary, base, client, calls, false);
         Category category = catalog.categories.get(id);
@@ -315,87 +309,35 @@ public final class AiDramaFilterCompatibility {
             String nativeTopic = topic.substring(NATIVE_TOPIC.length());
             if (!"comic".equals(id) || category == null || !category.nativeChoices.containsKey(nativeTopic))
                 throw new IOException("AI source native filter option unavailable");
+            if (!sort.isEmpty()) return nativeLatest(primary, id, page, List.of(nativeTopic));
             return AiDramaNativeTopics.pageResult(guardedNativeTopicResponse(primary, nativeTopic, page), page, nativeTopic).toString();
+        }
+        // The web topic route has no 最新 order; its declared category ids narrow the native 最新 feed.
+        if (!sort.isEmpty()) {
+            if (category == null || !category.topicIds.containsKey(topic)) throw new IOException("AI source filter option unavailable");
+            return nativeLatest(primary, id, page, category.topicIds.get(topic));
         }
         if (category == null || !category.choices.containsKey(topic)) throw new IOException("AI source filter option unavailable");
         JsonObject data = route(execute(routeUrl(catalog.base, category.slug, topic, page), client, calls), category.slug, category.rpc, topic, page);
         return pageResult(data, page).toString();
     }
 
-    public static String nativeLatest(Spider spider, String id, int page) throws IOException {
+    static String nativeLatest(Spider spider, String id, int page, List<String> themes) throws IOException {
+        JsonObject body = AiDramaNativeTopics.latestRequest(id, page, themes);
+        JsonObject response;
         try {
-            return PythonPluginCompatibility.withRuntimeGate(() -> nativeLatestInternal(spider, id, page));
+            response = PythonPluginCompatibility.withRuntimeGate(() -> nativeLanding(spider, body));
         } catch (IOException error) { throw error; }
         catch (Exception error) { throw new IOException("AI source latest helper unavailable", error); }
-    }
-
-    private static String nativeLatestInternal(Spider spider, String id, int page) throws IOException {
-        if (page < 1 || !("comic".equals(id) || "ai".equals(id))) throw new IOException("AI source latest category unavailable");
-        if (Thread.currentThread().isInterrupted()) throw new java.io.InterruptedIOException("AI source request cancelled");
-        try {
-            NativeHelper nativeHelper = latestHelper(spider);
-            JsonObject config = new JsonObject();
-            config.addProperty("device_id", nativeHelper.instance.get("device_id").toString());
-            config.addProperty("install_id", nativeHelper.instance.get("install_id").toString());
-            if (text(config, "device_id").isEmpty() || text(config, "install_id").isEmpty()) throw new ReflectiveOperationException();
-            PyObject pythonConfig = nativeHelper.json.callAttr("loads", config.toString());
-            PyObject sort = nativeHelper.json.callAttr("loads", "[\"online_time\"]");
-            PyObject response = nativeHelper.helper.call("comic".equals(id) ? "comic_series" : "ai_series", page,
-                    pythonConfig, new Kwarg("sort", sort));
-            List<PyObject> tuple = response.asList();
-            if (tuple.size() != 2 || tuple.get(0) == null || tuple.get(1) == null) throw new ReflectiveOperationException();
-            JsonElement rows = JsonParser.parseString(nativeHelper.json.callAttr("dumps", tuple.get(0)).toString());
-            if (!rows.isJsonArray()) throw new ReflectiveOperationException();
-            if (Thread.currentThread().isInterrupted()) throw new java.io.InterruptedIOException("AI source request cancelled");
-            return nativeLatestResult(rows.getAsJsonArray(), tuple.get(1).toBoolean(), page).toString();
-        } catch (java.io.InterruptedIOException cancelled) { throw cancelled; }
-        catch (ReflectiveOperationException | RuntimeException | LinkageError unavailable) {
-            throw new IOException("AI source latest helper unavailable");
-        }
-    }
-
-    static JsonObject nativeLatestResult(JsonArray rows, boolean more, int page) throws IOException {
-        JsonArray list = new JsonArray();
-        for (JsonElement value : rows) {
-            if (!value.isJsonObject()) throw new IOException("AI source latest row unavailable");
-            JsonObject raw = value.getAsJsonObject();
-            // Keep already-normalized rows usable for fixtures and future helper
-            // revisions which may perform the mapping internally.
-            if (!text(raw, "vod_id").isEmpty() && !text(raw, "vod_name").isEmpty()) {
-                list.add(raw.deepCopy());
-                continue;
-            }
-            JsonObject row = raw.has("video_data") && raw.get("video_data").isJsonObject()
-                    ? raw.getAsJsonObject("video_data") : raw;
-            String id = text(row, "series_id");
-            String name = text(row, "title");
-            if (name.isEmpty()) name = text(row, "series_title");
-            if (name.isEmpty()) name = text(row, "series_name");
-            if (id.isEmpty()) id = text(raw, "keyword");
-            if (id.isEmpty() || name.isEmpty()) throw new IOException("AI source latest identity unavailable");
-            JsonObject item = new JsonObject(); item.addProperty("vod_id", id); item.addProperty("vod_name", name);
-            String cover = text(row, "cover"); if (cover.isEmpty()) cover = text(row, "series_cover");
-            String intro = text(row, "intro"); if (intro.isEmpty()) intro = text(row, "series_intro");
-            item.addProperty("vod_pic", cover); item.addProperty("vod_content", intro);
-            int episodes = integer(row, "episode_cnt");
-            item.addProperty("vod_remarks", episodes > 0 ? "全" + episodes + "集" : "");
-            JsonElement tags = row.get("tags");
-            if (tags != null && tags.isJsonArray()) {
-                List<String> labels = new ArrayList<>();
-                for (JsonElement tag : tags.getAsJsonArray())
-                    if (tag.isJsonPrimitive() && tag.getAsJsonPrimitive().isString()) labels.add(tag.getAsString());
-                item.addProperty("vod_class", String.join("/", labels));
-            }
-            list.add(item);
-        }
-        JsonObject result = new JsonObject(); result.add("list", list); result.addProperty("page", page);
-        result.addProperty("pagecount", more ? 9999 : page); result.addProperty("limit", list.size());
-        // The native helper declares only has_more, not a catalog total.
-        return result;
+        return AiDramaNativeTopics.latestResult(response, page, themes).toString();
     }
 
     /** Reuse the bound provider's transport and signing, without changing its globals. */
     private static JsonObject nativeTopicResponse(Spider spider, String topic, int page) throws IOException {
+        return nativeLanding(spider, AiDramaNativeTopics.request("comic", page, topic));
+    }
+
+    private static JsonObject nativeLanding(Spider spider, JsonObject body) throws IOException {
         if (Thread.currentThread().isInterrupted()) throw new java.io.InterruptedIOException("AI source request cancelled");
         try {
             NativeHelper nativeHelper = latestHelper(spider);
@@ -412,7 +354,6 @@ public final class AiDramaFilterCompatibility {
             config.addProperty("device_id", nativeHelper.instance.get("device_id").toString());
             config.addProperty("install_id", nativeHelper.instance.get("install_id").toString());
             if (text(config, "device_id").isEmpty() || text(config, "install_id").isEmpty()) throw new ReflectiveOperationException();
-            JsonObject body = AiDramaNativeTopics.request("comic", page, topic);
             PyObject response = api.call("/reading/distribution/category/landpage/v",
                     nativeHelper.json.callAttr("loads", body.toString()), nativeHelper.json.callAttr("loads", config.toString()));
             if (Thread.currentThread().isInterrupted()) throw new java.io.InterruptedIOException("AI source request cancelled");
@@ -494,7 +435,10 @@ public final class AiDramaFilterCompatibility {
             String slug = index == 0 ? "comic-drama" : "ai-drama"; int rpc = index == 0 ? 3 : 4;
             JsonObject data = route(pages.get(index), slug, rpc, "", 1);
             Map<String, String> choices = choices(data);
-            categories.put(id, new Category(id, slug, rpc, java.util.Collections.unmodifiableMap(choices), "comic".equals(id) ? nativeChoices : Map.of()));
+            Map<String, List<String>> topicIds = topicIds(data);
+            topicIds.keySet().retainAll(choices.keySet());
+            categories.put(id, new Category(id, slug, rpc, java.util.Collections.unmodifiableMap(choices),
+                    java.util.Collections.unmodifiableMap(topicIds), "comic".equals(id) ? nativeChoices : Map.of()));
         }
         Catalog catalog = new Catalog(base, java.util.Collections.unmodifiableMap(categories), complete);
         synchronized (CACHE) {
@@ -663,6 +607,22 @@ public final class AiDramaFilterCompatibility {
             }
         }
         if (result.isEmpty()) throw new IOException("AI source filter declarations unavailable");
+        return result;
+    }
+    /** Each web topic's declared server category ids (e.g. 脑洞 → 755), used only with 最新. */
+    static Map<String, List<String>> topicIds(JsonObject data) throws IOException {
+        Map<String, List<String>> result = new LinkedHashMap<>();
+        for (JsonElement row : array(data, "selectorList")) {
+            if (!row.isJsonObject()) throw new IOException("AI source selectors unavailable");
+            for (JsonElement value : array(row.getAsJsonObject(), "items")) {
+                if (!value.isJsonObject()) continue;
+                JsonObject item = value.getAsJsonObject();
+                List<String> ids = new ArrayList<>();
+                for (JsonElement declared : array(item, "category_json_ids"))
+                    if (declared.isJsonPrimitive() && declared.getAsString().matches("[1-9][0-9]{0,9}")) ids.add(declared.getAsString());
+                if (!ids.isEmpty() && ids.size() <= 8) result.putIfAbsent(text(item, "selector_item_id"), List.copyOf(ids));
+            }
+        }
         return result;
     }
     static JsonObject pageResult(JsonObject data, int page) throws IOException {

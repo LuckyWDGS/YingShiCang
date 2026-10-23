@@ -10,7 +10,7 @@ import java.util.Map;
 import static org.junit.Assert.*;
 
 public class AiDramaCatalogTest {
-    @Test public void finerComicTopicsRemainExclusiveWithLatestAndCannotLeakIntoAiType() {
+    @Test public void finerComicTopicsCombineWithLatestAndCannotLeakIntoAiType() {
         var sort = new AiDramaCatalog.Group("sort", "排序", "", List.of(option("默认", ""), option("最新", "online_time")));
         var comic = new AiDramaCatalog.Category("comic", "AI漫剧", List.of(
                 topic("", option("全部", ""), option("玄幻", "fantasy"), option("求生", "native:379")), sort));
@@ -20,15 +20,15 @@ public class AiDramaCatalogTest {
         var state = new AiDramaCatalog.State(catalog, "source");
         assertTrue(state.select("sort", "online_time"));
         assertTrue(state.select("topic", "native:379"));
-        assertEquals("", state.value("sort"));
+        assertEquals("online_time", state.value("sort"));
         var restored = new AiDramaCatalog.State(catalog, "source"); restored.restore(state.serialize());
         assertEquals("native:379", restored.value("topic"));
+        assertEquals("online_time", restored.value("sort"));
         assertTrue(restored.select(AiDramaCatalog.CATEGORY, "ai"));
         assertEquals("", restored.value("topic"));
+        // Same option on the new type: the sort choice carries over, the comic-only topic does not.
+        assertEquals("online_time", restored.value("sort"));
         assertFalse(restored.select("topic", "native:379"));
-        assertTrue(state.select("sort", "online_time"));
-        assertEquals("", state.value("topic"));
-        assertTrue(state.select("topic", "native:379"));
         var changed = new AiDramaCatalog.State(new AiDramaCatalog(List.of(
                 new AiDramaCatalog.Category("comic", "AI漫剧", ai.groups))), "source");
         changed.restore(state.serialize());
@@ -69,19 +69,22 @@ public class AiDramaCatalogTest {
         assertEquals("", AiDramaCatalog.typeOnly(null));
     }
 
-    @Test public void latestAndTopicAreMutuallyExclusiveAndPersistOnlyLegalValues() {
+    @Test public void latestAndTopicAreIndependentAndPersistOnlyLegalValues() {
         var state = new AiDramaCatalog.State(sortableCatalog(), "scope");
+        assertTrue(state.select("topic", "romance"));
         assertTrue(state.select(AiDramaCatalog.SORT, AiDramaCatalog.LATEST));
-        assertEquals("", state.value("topic"));
+        assertEquals("romance", state.value("topic"));
+        assertEquals(AiDramaCatalog.LATEST, state.value(AiDramaCatalog.SORT));
+        assertTrue(state.select("topic", ""));
         assertEquals(AiDramaCatalog.LATEST, state.value(AiDramaCatalog.SORT));
         assertTrue(state.select("topic", "romance"));
+        assertTrue(state.select(AiDramaCatalog.SORT, ""));
         assertEquals("romance", state.value("topic"));
-        assertEquals("", state.value(AiDramaCatalog.SORT));
+        assertFalse(state.select(AiDramaCatalog.SORT, "unverified"));
         assertTrue(state.select(AiDramaCatalog.SORT, AiDramaCatalog.LATEST));
-        String saved = state.serialize();
         var restored = new AiDramaCatalog.State(sortableCatalog(), "scope");
-        restored.restore(saved);
-        assertEquals("", restored.value("topic"));
+        restored.restore(state.serialize());
+        assertEquals("romance", restored.value("topic"));
         assertEquals(AiDramaCatalog.LATEST, restored.value(AiDramaCatalog.SORT));
     }
 

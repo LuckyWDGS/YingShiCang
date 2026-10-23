@@ -136,9 +136,13 @@ public class AiDramaNativeTopicsTest {
         assertEquals("脑洞/求生/重生", first.get("vod_class").getAsString());
     }
 
-    @Test public void ignoredFiltersAndConflictingDeclarationsRejectTheWholePage() throws Exception {
-        rejects(() -> AiDramaNativeTopics.pageResult(response(1, true, row("a", tag(379, "求生")),
-                row("b", tag(5549, "冒险求生"))), 1, "379"));
+    @Test public void unrelatedRowsAreDroppedAndConflictingDeclarationsRejectTheWholePage() throws Exception {
+        var mixed = AiDramaNativeTopics.pageResult(response(1, true, row("a", tag(379, "求生")),
+                row("b", tag(5549, "冒险求生"))), 1, "379");
+        assertEquals(1, mixed.getAsJsonArray("list").size());
+        assertEquals("a", mixed.getAsJsonArray("list").get(0).getAsJsonObject().get("vod_id").getAsString());
+        var unrelated = AiDramaNativeTopics.pageResult(response(1, true, row("b", tag(5549, "冒险求生"))), 1, "379");
+        assertEquals(0, unrelated.getAsJsonArray("list").size()); assertEquals(9999, unrelated.get("pagecount").getAsInt());
         rejects(() -> AiDramaNativeTopics.pageResult(response(1, true, row("a", tag(379, "求生")),
                 row("b", tag(379, "另一个名"))), 1, "379"));
         rejects(() -> AiDramaNativeTopics.pageResult(response(1, true), 1, ""));
@@ -182,5 +186,55 @@ public class AiDramaNativeTopicsTest {
         rejects(() -> AiDramaNativeTopics.pageResult(response(1, true, value), 1, "379"));
         var huge = response(1, true); for (int i = 0; i < 19; i++) huge.getAsJsonObject("data").getAsJsonArray("video_data").add(row("x" + i, tag(379, "求生")));
         rejects(() -> AiDramaNativeTopics.choices(huge));
+    }
+
+    private static JsonObject latest(int page, boolean more, JsonObject... rows) {
+        var value = response(page, more, rows);
+        value.getAsJsonObject("data").addProperty("next_offset", page * AiDramaNativeTopics.LATEST_LIMIT);
+        return value;
+    }
+
+    @Test public void latestRequestAsksForALargeOnlineTimeBatchWithOptionalVerifiedThemes() throws Exception {
+        var body = AiDramaNativeTopics.latestRequest("ai", 3, List.of("755"));
+        assertEquals(200, body.get("offset").getAsInt()); assertEquals(100, body.get("limit").getAsInt());
+        assertEquals("ai_series", body.get("req_scene").getAsString());
+        var select = body.getAsJsonObject("select_items");
+        assertEquals("[\"online_time\"]", select.get("sort").toString());
+        assertEquals("[\"ai_series\"]", select.get("genre").toString());
+        assertEquals("[\"755\"]", select.get("category_dim_theme").toString());
+        assertEquals("[]", AiDramaNativeTopics.latestRequest("comic", 1, List.of())
+                .getAsJsonObject("select_items").get("category_dim_theme").toString());
+        rejects(() -> AiDramaNativeTopics.latestRequest("other", 1, List.of()));
+        rejects(() -> AiDramaNativeTopics.latestRequest("comic", 0, List.of()));
+        rejects(() -> AiDramaNativeTopics.latestRequest("comic", 1, List.of("7,8")));
+    }
+
+    @Test public void latestResultOrdersByTheCreationTimeInTheSeriesId() throws Exception {
+        // Real 2026-10-23 ids: 10-22 01:23, 10-23 00:41 and 2026-09-28 (Beijing time).
+        String older = "7699172896433769534", newest = "7699525442960641049", oldest = "7686058150910250009";
+        var result = AiDramaNativeTopics.latestResult(latest(1, true, row(older, tag(379, "求生")),
+                row("legacy", tag(379, "求生")), row(newest, tag(379, "求生")), row(oldest, tag(21, "修真")),
+                row(newest, tag(379, "求生"))), 1, List.of());
+        var ids = new java.util.ArrayList<String>();
+        result.getAsJsonArray("list").forEach(item -> ids.add(item.getAsJsonObject().get("vod_id").getAsString()));
+        assertEquals(List.of(newest, older, oldest, "legacy"), ids);
+        assertEquals(9999, result.get("pagecount").getAsInt());
+        assertTrue(AiDramaNativeTopics.createdSecond(newest) > AiDramaNativeTopics.createdSecond(older));
+        assertEquals(0, AiDramaNativeTopics.createdSecond("legacy"));
+    }
+
+    @Test public void latestResultKeepsOnlyRowsDeclaringARequestedThemeWhenTheSourceIgnoresIt() throws Exception {
+        var result = AiDramaNativeTopics.latestResult(latest(2, false, row("7699172896433769534", tag(755, "脑洞")),
+                row("7699525442960641049", tag(936, "豪门"))), 2, List.of("755"));
+        assertEquals(1, result.getAsJsonArray("list").size());
+        assertEquals("脑洞", result.getAsJsonArray("list").get(0).getAsJsonObject().get("vod_class").getAsString());
+        assertEquals(2, result.get("pagecount").getAsInt());
+        // Nothing matched in this batch: an empty page, not an error, so paging can continue.
+        var empty = AiDramaNativeTopics.latestResult(latest(1, true, row("7699525442960641049", tag(936, "豪门"))), 1, List.of("755"));
+        assertEquals(0, empty.getAsJsonArray("list").size()); assertEquals(9999, empty.get("pagecount").getAsInt());
+        var shifted = latest(1, true, row("a", tag(755, "脑洞"))); shifted.getAsJsonObject("data").addProperty("next_offset", 18);
+        rejects(() -> AiDramaNativeTopics.latestResult(shifted, 1, List.of()));
+        var wrong = row("a", tag(755, "脑洞")); wrong.addProperty("content_type", 1);
+        rejects(() -> AiDramaNativeTopics.latestResult(latest(1, false, wrong), 1, List.of()));
     }
 }

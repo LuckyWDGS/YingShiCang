@@ -124,17 +124,9 @@ public final class AiDramaCatalog {
             if (category == null) return false;
             Group group = category.groups.stream().filter(item -> item.key.equals(key)).findFirst().orElse(null);
             if (group == null || group.option(value) == null || value.equals(values.get(key))) return false;
-            // The audited app endpoint cannot combine online-time ordering with a
-            // topic selector. Keep the two controls mutually exclusive in state so
-            // persisted requests can never describe an unsupported query.
+            // 题材 and 排序 are independent: 最新 within a topic is served by the native feed
+            // narrowed to that topic's category ids (2026-10-23; they used to reset each other).
             values.put(key, value);
-            if (SORT.equals(key) && LATEST.equals(value)) {
-                Group topic = category.groups.stream().filter(item -> "topic".equals(item.key)).findFirst().orElse(null);
-                if (topic != null) values.put(topic.key, topic.defaultValue());
-            } else if ("topic".equals(key) && !value.isEmpty()) {
-                Group sort = category.groups.stream().filter(item -> SORT.equals(item.key)).findFirst().orElse(null);
-                if (sort != null) values.put(sort.key, sort.defaultValue());
-            }
             return true;
         }
 

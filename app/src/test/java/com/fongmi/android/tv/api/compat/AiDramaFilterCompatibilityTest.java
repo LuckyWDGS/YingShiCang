@@ -184,31 +184,14 @@ public class AiDramaFilterCompatibilityTest {
         assertEquals(2, result.get("page").getAsInt()); assertEquals(10, result.get("pagecount").getAsInt()); assertEquals(239, result.get("total").getAsInt());
     }
 
-    @Test public void nativeLatestResultRetainsNativeRowsAndOnlyUsesHasMoreForPagination() throws Exception {
-        var rows = new JsonArray();
-        var first = new JsonObject(); first.addProperty("vod_id", "native-1"); first.addProperty("vod_name", "最新一");
-        first.addProperty("vod_pic", "cover-1"); first.addProperty("vod_remarks", "全12集"); rows.add(first);
-        var second = new JsonObject(); second.addProperty("vod_id", "native-2"); second.addProperty("vod_name", "最新二");
-        second.addProperty("vod_class", "玄幻/冒险"); rows.add(second);
-        var page = AiDramaFilterCompatibility.nativeLatestResult(rows, true, 2);
-        assertEquals(2, page.get("page").getAsInt()); assertEquals(9999, page.get("pagecount").getAsInt());
-        assertEquals("native-1", page.getAsJsonArray("list").get(0).getAsJsonObject().get("vod_id").getAsString());
-        page = AiDramaFilterCompatibility.nativeLatestResult(rows, false, 2);
-        assertEquals(2, page.get("pagecount").getAsInt());
-        var malformed = rows.deepCopy(); malformed.get(0).getAsJsonObject().remove("vod_id");
-        try { AiDramaFilterCompatibility.nativeLatestResult(malformed, false, 1); fail(); }
-        catch (IOException expected) { }
-    }
-    @Test public void nativeLatestResultMapsOriginalAppRowsToVodSchema() throws Exception {
-        var rows = new JsonArray(); var raw = new JsonObject();
-        raw.addProperty("series_id", "app-1"); raw.addProperty("title", "应用最新");
-        raw.addProperty("cover", "cover-app"); raw.addProperty("intro", "简介"); raw.addProperty("episode_cnt", 18);
-        var tags = new JsonArray(); tags.add("玄幻"); raw.add("tags", tags); rows.add(raw);
-        var page = AiDramaFilterCompatibility.nativeLatestResult(rows, true, 1);
-        var item = page.getAsJsonArray("list").get(0).getAsJsonObject();
-        assertEquals("app-1", item.get("vod_id").getAsString()); assertEquals("应用最新", item.get("vod_name").getAsString());
-        assertEquals("cover-app", item.get("vod_pic").getAsString()); assertEquals("全18集", item.get("vod_remarks").getAsString());
-        assertEquals("玄幻", item.get("vod_class").getAsString());
+    @Test public void webTopicsKeepTheirDeclaredServerIdsForLatest() throws Exception {
+        var data = fixture("comic-drama", 3, "", 1);
+        var ids = AiDramaFilterCompatibility.topicIds(data);
+        assertEquals(java.util.List.of("7"), ids.get("fantasy"));
+        assertFalse(ids.containsKey("romance"));
+        var item = data.getAsJsonArray("selectorList").get(0).getAsJsonObject().getAsJsonArray("items").get(0).getAsJsonObject();
+        item.getAsJsonArray("category_json_ids").add("7; drop");
+        assertEquals(java.util.List.of("7"), AiDramaFilterCompatibility.topicIds(data).get("fantasy"));
     }
     @Test public void genuineShortLastPagePreservesServerEndWhileMalformedPagingFails() throws Exception {
         var source = fixture("ai-drama", 4, "fantasy", 10);

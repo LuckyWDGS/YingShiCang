@@ -15,6 +15,8 @@ import java.util.Set;
 /** JSON-only adapter for the audited comic theme endpoint; labels always come from its rows. */
 public final class AiDramaNativeTopics {
     private static final int LIMIT = 18, MAX_PAGE = 500, MAX_SCHEMA = 32768, MAX_TAGS = 64;
+    // 100 rows took ~2.5s against ~1.5s for 18 on LDPlayer; 200 took ~10s.
+    static final int LATEST_LIMIT = 100;
     // Capability IDs verified by native-comic-fine-topic-matrix-safe-summary.json
     // and native-survival-string-filter-safe-summary.json (2026-10-18).
     // This restricts supported operations, rather than supplying display labels.
@@ -71,7 +73,94 @@ public final class AiDramaNativeTopics {
         return body;
     }
 
-    /** An ignored filter is an error, never an apparently successful unfiltered page. */
+    /**
+     * 最新 for either AI type, optionally narrowed to source category ids (a native topic or a web
+     * topic's declared ids). The source's online_time order is a recommendation feed over recent
+     * releases (2026-10-23 LDPlayer: AI短剧 page 1 mixed 09-16 and 10-22 series), so the app asks for a
+     * large batch and orders it itself; see latestResult.
+     */
+    public static JsonObject latestRequest(String id, int page, List<String> themes) throws IOException {
+        page(page);
+        if (!("comic".equals(id) || "ai".equals(id)) || themes == null || themes.size() > 8) throw unavailable();
+        JsonArray theme = new JsonArray();
+        for (String value : themes) {
+            if (value == null || !value.matches("[1-9][0-9]{0,9}")) throw unavailable();
+            theme.add(value);
+        }
+        String genre = "comic".equals(id) ? "comic_series" : "ai_series";
+        JsonObject select = new JsonObject();
+        select.add("category_dim_epoch", new JsonArray());
+        select.add("online_time", new JsonArray());
+        select.add("gender", new JsonArray());
+        select.add("category_dim_role", new JsonArray());
+        JsonArray genres = new JsonArray(); genres.add(genre); select.add("genre", genres);
+        JsonArray sort = new JsonArray(); sort.add("online_time"); select.add("sort", sort);
+        select.add("category_dim_theme", theme);
+        JsonObject body = new JsonObject();
+        body.addProperty("filter_ids", ""); body.addProperty("req_scene", genre);
+        body.addProperty("offset", (page - 1) * LATEST_LIMIT); body.addProperty("need_selector_panel", false);
+        body.addProperty("limit", LATEST_LIMIT); body.add("select_items", select);
+        body.addProperty("session_id", ""); body.addProperty("req_type", "only_content");
+        body.addProperty("client_req_type", 3);
+        return body;
+    }
+
+    /**
+     * Rows newest first by the creation second carried in the series id (its high 32 bits; matched the
+     * series' first video id within hours on every 2026-10-23 row). Only rows declaring one of the
+     * requested ids are kept: with a category the source sometimes returns a batch of merely related
+     * series instead (2026-10-23, offset 100 for 脑洞/剧情/豪门/玄幻 on both types), which becomes an
+     * empty page here; the runner skips up to three of those before it stops.
+     */
+    public static JsonObject latestResult(JsonObject response, int page, List<String> themes) throws IOException {
+        page(page);
+        if (response == null || integer(response, "code") != 0
+                || integer(object(response, "BaseResp"), "StatusCode") != 0) throw unavailable();
+        JsonObject data = object(response, "data");
+        JsonElement more = data.get("has_more"), raw = data.get("video_data");
+        if (more == null || !more.isJsonPrimitive() || !more.getAsJsonPrimitive().isBoolean()
+                || raw == null || !raw.isJsonArray() || raw.getAsJsonArray().size() > LATEST_LIMIT) throw unavailable();
+        if (more.getAsBoolean() && integer(data, "next_offset") != page * LATEST_LIMIT) throw unavailable();
+        List<JsonObject> items = new java.util.ArrayList<>();
+        Map<String, Long> created = new java.util.HashMap<>();
+        for (JsonElement value : raw.getAsJsonArray()) {
+            JsonObject row = row(value);
+            Map<String, String> labels = tags(row);
+            if (!themes.isEmpty() && themes.stream().noneMatch(labels::containsKey)) continue;
+            String id = string(row, "series_id", 128), title = string(row, "title", 1024);
+            if (id.isBlank() || title.isBlank()) throw unavailable();
+            if (created.containsKey(id)) continue;
+            created.put(id, createdSecond(id));
+            JsonObject item = new JsonObject();
+            item.addProperty("vod_id", id); item.addProperty("vod_name", title);
+            item.addProperty("vod_pic", optionalString(row, "cover", 8192));
+            item.addProperty("vod_content", optionalString(row, "video_desc", 65536));
+            int episodes = integer(row, "episode_cnt");
+            item.addProperty("vod_remarks", episodes > 0 ? "全" + episodes + "集" : "");
+            item.addProperty("vod_class", String.join("/", labels.values()));
+            items.add(item);
+        }
+        // Stable: series without a readable id time keep the source order after the dated ones.
+        items.sort((a, b) -> Long.compare(created.get(b.get("vod_id").getAsString()), created.get(a.get("vod_id").getAsString())));
+        JsonArray list = new JsonArray(); items.forEach(list::add);
+        JsonObject output = new JsonObject();
+        output.add("list", list); output.addProperty("page", page);
+        output.addProperty("pagecount", more.getAsBoolean() ? 9999 : page);
+        output.addProperty("limit", LATEST_LIMIT);
+        return output;
+    }
+
+    static long createdSecond(String seriesId) {
+        if (seriesId == null || !seriesId.matches("[1-9][0-9]{15,19}")) return 0;
+        try { return Long.parseUnsignedLong(seriesId) >>> 32; }
+        catch (NumberFormatException ignored) { return 0; }
+    }
+
+    /**
+     * Only rows declaring the topic are shown, never an apparently filtered unrelated page. The source
+     * now mixes related series (e.g. 5549 冒险求生 under 379 求生) into topic pages; rejecting the
+     * whole page then failed 求生 three times in a row on 2026-10-23, so those rows are dropped instead.
+     */
     public static JsonObject pageResult(JsonObject response, int page, String nativeTopic) throws IOException {
         topic(nativeTopic);
         JsonArray source = rows(response, page), result = new JsonArray();
@@ -79,7 +168,7 @@ public final class AiDramaNativeTopics {
         for (JsonElement value : source) {
             JsonObject row = row(value);
             Map<String, String> labels = tags(row); merge(declared, labels);
-            if (!labels.containsKey(nativeTopic)) throw unavailable();
+            if (!labels.containsKey(nativeTopic)) continue;
             String id = string(row, "series_id", 128), title = string(row, "title", 1024);
             if (id.isBlank() || title.isBlank()) throw unavailable();
             JsonObject item = new JsonObject();
