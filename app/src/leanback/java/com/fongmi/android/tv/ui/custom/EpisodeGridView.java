@@ -2,6 +2,8 @@ package com.fongmi.android.tv.ui.custom;
 
 import android.content.Context;
 import android.util.AttributeSet;
+import android.view.KeyEvent;
+import android.view.SoundEffectConstants;
 import android.view.View;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.recyclerview.widget.GridLayoutManager;
@@ -17,6 +19,8 @@ public class EpisodeGridView extends RecyclerView {
     private OnChildViewHolderSelectedListener listener;
     private int columnCount = DEFAULT_COLUMN_COUNT;
     private GridSpacing spacing;
+    // Row the remote is moving to while it is still being laid out; held keys continue from it.
+    private int pendingFocus = NO_POSITION;
 
     public EpisodeGridView(Context context, AttributeSet attrs) {
         super(context, attrs);
@@ -53,6 +57,47 @@ public class EpisodeGridView extends RecyclerView {
         View item = findContainingItemView(focused);
         if (item != null && listener != null) listener.onChildViewHolderSelected(this, getChildViewHolder(item), getChildAdapterPosition(item), 0);
     }
+    /**
+     * Up/Down between rows move focus here, one row per key. Left to the framework, a held Down
+     * outran the layout: the next row was not attached yet, or the focused card was recycled, and
+     * focus fell to the first focusable view, the preview at the top left (user 2026-10-24). The
+     * first row's Up and the last row's Down still use their focus links.
+     */
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        int code = event.getKeyCode();
+        if (code != KeyEvent.KEYCODE_DPAD_DOWN && code != KeyEvent.KEYCODE_DPAD_UP) return super.dispatchKeyEvent(event);
+        View item = getFocusedChild() == null ? null : findContainingItemView(getFocusedChild());
+        int count = getAdapter() == null ? 0 : getAdapter().getItemCount();
+        int from = pendingFocus != NO_POSITION ? pendingFocus : item == null ? NO_POSITION : getChildAdapterPosition(item);
+        if (from == NO_POSITION || from >= count) return super.dispatchKeyEvent(event);
+        boolean down = code == KeyEvent.KEYCODE_DPAD_DOWN;
+        int row = from / columnCount, lastRow = (count - 1) / columnCount;
+        if (down ? row == lastRow : row == 0) return pendingFocus != NO_POSITION || super.dispatchKeyEvent(event);
+        if (event.getAction() != KeyEvent.ACTION_DOWN) return true;
+        int target = down ? Math.min(count - 1, from + columnCount) : from - columnCount;
+        focusPosition(target);
+        playSoundEffect(SoundEffectConstants.getContantForFocusDirection(down ? FOCUS_DOWN : FOCUS_UP));
+        return true;
+    }
+
+    private void focusPosition(int position) {
+        ViewHolder holder = findViewHolderForAdapterPosition(position);
+        if (holder != null && !isLayoutRequested()) {
+            pendingFocus = NO_POSITION;
+            holder.itemView.requestFocus();
+            return;
+        }
+        pendingFocus = position;
+        scrollToPosition(position);
+        post(() -> {
+            if (pendingFocus != position) return;
+            pendingFocus = NO_POSITION;
+            ViewHolder target = findViewHolderForAdapterPosition(position);
+            if (target != null) target.itemView.requestFocus();
+        });
+    }
+
     public void setSelectedPosition(int position) {
         if (position < 0 || getAdapter() == null || position >= getAdapter().getItemCount()) return;
         scrollToPosition(position);

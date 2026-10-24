@@ -110,16 +110,17 @@ public final class HomeDiscovery {
             view.setTextColor(androidx.core.content.ContextCompat.getColorStateList(activity, R.color.home_category_text));
             view.setLayoutParams(new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, ResUtil.dp2px(44), 1f));
             view.setPadding(ResUtil.dp2px(6), 0, ResUtil.dp2px(6), 0);
-            // The filter indicator is a fixed end drawable on every filterable tab, hidden unless the
-            // tab is open: as an inline text span it changed the tab's width each time it appeared or
-            // flipped, so the row jumped on OK and a full row clipped it (user 2026-10-24).
-            if (canFilter(index)) {
-                view.setCompoundDrawablePadding(ResUtil.dp2px(3));
-                view.setCompoundDrawableTintList(androidx.core.content.ContextCompat.getColorStateList(activity, R.color.home_category_text));
-            }
             tabs.add(view);
             binding.categories.addView(view);
             view.setOnClickListener(v -> select(index));
+        }
+        // The filter indicator is a fixed end drawable, hidden unless the tab is open: as an inline text
+        // span it changed the tab's width each time it appeared or flipped, so the row jumped on OK and
+        // a full row clipped it. Every tab, 主页 included, reserves the same end space, so the labels
+        // sit at equal gaps (user 2026-10-24: 主页 was closer to its neighbour than the others).
+        for (TextView tab : tabs) {
+            tab.setCompoundDrawablePadding(ResUtil.dp2px(3));
+            tab.setCompoundDrawableTintList(androidx.core.content.ContextCompat.getColorStateList(activity, R.color.home_category_text));
         }
         binding.categories.addOnLayoutChangeListener((v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
             if (right - left != oldRight - oldLeft) v.post(this::fitTabs);
@@ -170,7 +171,7 @@ public final class HomeDiscovery {
             TextView tab = tabs.get(i);
             text += paint.measureText(names[i]);
             fixed += tab.getPaddingLeft() + tab.getPaddingRight();
-            if (canFilter(i)) fixed += ResUtil.dp2px(FILTER_INDICATOR_DP) + tab.getCompoundDrawablePadding();
+            fixed += ResUtil.dp2px(FILTER_INDICATOR_DP) + tab.getCompoundDrawablePadding();
         }
         // A little slack for glyph rounding, so the row is never exactly full.
         float scale = Math.min(1f, (available - fixed - ResUtil.dp2px(8)) / text);
@@ -350,14 +351,20 @@ public final class HomeDiscovery {
             tab.setLineSpacing(0, 1);
             tab.setPadding(tab.getPaddingLeft(), tab.getPaddingTop(), tab.getPaddingRight(), 0);
             tab.setText(names[i]);
-            if (canFilter(i)) {
-                // Same size open or closed, up or down; only its visibility and direction change.
-                Drawable indicator = androidx.core.content.ContextCompat.getDrawable(activity,
-                        filterable && expanded ? R.drawable.home_filter_chevron_up : R.drawable.home_filter_chevron_down).mutate();
-                int size = ResUtil.dp2px(FILTER_INDICATOR_DP);
-                indicator.setBounds(0, 0, size, size);
-                indicator.setAlpha(filterable ? 255 : 0);
-                tab.setCompoundDrawablesRelative(null, null, indicator, null);
+            // Same size open or closed, up or down, filterable or not; only visibility and direction change.
+            Drawable indicator = androidx.core.content.ContextCompat.getDrawable(activity,
+                    filterable && expanded ? R.drawable.home_filter_chevron_up : R.drawable.home_filter_chevron_down).mutate();
+            int size = ResUtil.dp2px(FILTER_INDICATOR_DP);
+            indicator.setBounds(0, 0, size, size);
+            indicator.setAlpha(filterable ? 255 : 0);
+            tab.setCompoundDrawablesRelative(null, null, indicator, null);
+            int background = filterable ? R.drawable.home_category : R.drawable.home_category_plain;
+            if (!Integer.valueOf(background).equals(tab.getTag(R.id.home_category_background))) {
+                // An inset background would hand its inset to the padding; keep the tab's own.
+                int left = tab.getPaddingLeft(), top = tab.getPaddingTop(), right = tab.getPaddingRight(), bottom = tab.getPaddingBottom();
+                tab.setBackgroundResource(background);
+                tab.setPadding(left, top, right, bottom);
+                tab.setTag(R.id.home_category_background, background);
             }
             tab.setContentDescription(filterable ? names[i] + "，" + (expanded ? "点击收起筛选" : "点击展开筛选") : names[i]);
         }

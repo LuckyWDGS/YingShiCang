@@ -10,7 +10,7 @@ import android.view.ViewConfiguration;
 import androidx.annotation.NonNull;
 
 import com.fongmi.android.tv.App;
-import com.fongmi.android.tv.playback.MediaSeekPolicy;
+import com.fongmi.android.tv.Constant;
 import com.fongmi.android.tv.utils.KeyUtil;
 
 public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener {
@@ -21,6 +21,8 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener {
     private static final int SWIPE_NONE = 0, SWIPE_SEEK = 1, SWIPE_VOLUME = 2;
     // A swipe across the whole height moves the volume through about 15 steps (the usual media range).
     private static final int VOLUME_STEPS_PER_HEIGHT = 15;
+    // Left/Right step 10s; held this long they step 30s, announced once per hold (user 2026-10-24).
+    private static final long LONG_HOLD_MS = 2_000;
 
     private final GestureDetector detector;
     private final Listener listener;
@@ -32,6 +34,7 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener {
     private boolean changeSpeed;
     private boolean full;
     private long holdTime;
+    private boolean longStep;
     private Runnable pendingSeekEnd;
 
     public static CustomKeyDownVod create(Activity activity) {
@@ -117,10 +120,10 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener {
     private void check(KeyEvent event) {
         if (KeyUtil.isActionDown(event) && KeyUtil.isLeftKey(event)) {
             cancelPendingSeekEnd();
-            listener.onSeeking(subTime(event.getRepeatCount()));
+            listener.onSeeking(subTime(event));
         } else if (KeyUtil.isActionDown(event) && KeyUtil.isRightKey(event)) {
             cancelPendingSeekEnd();
-            listener.onSeeking(addTime(event.getRepeatCount()));
+            listener.onSeeking(addTime(event));
         } else if (KeyUtil.isActionUp(event) && (KeyUtil.isLeftKey(event) || KeyUtil.isRightKey(event))) {
             scheduleSeekEnd();
         } else if (KeyUtil.isActionUp(event) && KeyUtil.isUpKey(event)) {
@@ -149,16 +152,20 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener {
         return true;
     }
 
-    private long addTime(int repeatCount) {
-        return holdTime = holdTime + seekStep(repeatCount);
+    private long addTime(KeyEvent event) {
+        return holdTime = holdTime + seekStep(event);
     }
 
-    private long subTime(int repeatCount) {
-        return holdTime = holdTime - seekStep(repeatCount);
+    private long subTime(KeyEvent event) {
+        return holdTime = holdTime - seekStep(event);
     }
 
-    private long seekStep(int repeatCount) {
-        return MediaSeekPolicy.intervalMs(0, repeatCount);
+    private long seekStep(KeyEvent event) {
+        if (event.getRepeatCount() == 0) longStep = false;
+        boolean held = event.getEventTime() - event.getDownTime() >= LONG_HOLD_MS;
+        if (held && !longStep) listener.onLongSeekStep(Constant.INTERVAL_SEEK_LONG);
+        longStep = held;
+        return held ? Constant.INTERVAL_SEEK_LONG : Constant.INTERVAL_SEEK;
     }
 
     /** Shares the directional-key accumulator so rapid presses use one seek. */
@@ -225,6 +232,10 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener {
         void onSingleTap();
 
         void onDoubleTap();
+
+        /** A held Left/Right now moves this far per step. */
+        default void onLongSeekStep(long stepMs) {
+        }
 
         /** A vertical swipe: one volume step up or down. */
         default void onSwipeVolume(boolean raise) {

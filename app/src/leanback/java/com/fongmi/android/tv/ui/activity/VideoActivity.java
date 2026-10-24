@@ -1045,12 +1045,12 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
         updateSkipLabels();
     }
 
-    /** 片头/片尾 show a time only once one is set, so the strip stays short. */
+    /** 片头/片尾 always show their time, 00:00 until one is set (user 2026-10-24). */
     private void updateSkipLabels() {
         if (mHistory == null) return;
         long opening = Math.max(0, mHistory.getLineOpening()), ending = Math.max(0, mHistory.getLineEnding());
-        mBinding.control.action.opening.setText(opening > 0 ? getString(R.string.vod_opening_time, Util.timeMs(opening)) : getString(R.string.play_op));
-        mBinding.control.action.ending.setText(ending > 0 ? getString(R.string.vod_ending_time, Util.timeMs(ending)) : getString(R.string.play_ed));
+        mBinding.control.action.opening.setText(getString(R.string.vod_opening_time, Util.timeMs(opening)));
+        mBinding.control.action.ending.setText(getString(R.string.vod_ending_time, Util.timeMs(ending)));
     }
 
     /** The common strip never needs scrolling: every label change re-fits the controls' side padding. */
@@ -1723,15 +1723,21 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
         player().setSpeed(SpeedSetting.getPlayback());
     }
 
-    // With the controls hidden Up/Down change the volume; OK (pausing), Menu or a tap opens the controls.
+    // With the controls hidden Up/Down open them on the time bar, playback continuing (user 2026-10-24:
+    // volume belongs to the TV remote); a vertical swipe on touch screens still changes the volume.
     @Override
     public void onKeyUp() {
-        adjustVolume(AudioManager.ADJUST_RAISE);
+        showControl(getFocus2());
     }
 
     @Override
     public void onKeyDown() {
-        adjustVolume(AudioManager.ADJUST_LOWER);
+        showControl(getFocus2());
+    }
+
+    @Override
+    public void onLongSeekStep(long stepMs) {
+        Notify.show("快进快退步长已调为 " + stepMs / 1000 + " 秒");
     }
 
     @Override
