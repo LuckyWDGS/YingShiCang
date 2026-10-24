@@ -1,0 +1,20 @@
+[Unit]
+Description=YingShiCang update mirror sync (GitHub Release -> /var/www/ysc-update)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=ysc-update
+Group=ysc-update
+ExecStart=/usr/bin/python3 -I /opt/ysc-update/sync.py
+Nice=19
+IOSchedulingClass=idle
+CPUQuota=50%
+MemoryMax=128M
+TimeoutStartSec=30min
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/www/ysc-update /var/lib/ysc-update

@@ -35,6 +35,8 @@ Debug 仅用于测试。Release 从 `YSC_KEYSTORE/YSC_KEY_ALIAS/YSC_STORE_PASSWO
 
 应用默认从 [GitHub 最新正式 Release](https://github.com/LuckyWDGS/YingShiCang/releases/latest) 检查更新，使用 Release 正文作为更新说明。设置里的自定义更新地址留空即可；已有自定义地址仍沿用单包清单协议。
 
+**更新镜像**：在未跟踪的 `local.properties` 写入 `ysc.updateMirrorUrl` 和 `ysc.updateMirrorPin`（URL 用自定义主机名时再加 `ysc.updateMirrorAddress`）后，构建出的 App 检查更新、取清单和下载安装包都先走自己的服务器，失败再回到 GitHub；版本、清单和安装包仍按 GitHub 声明的 SHA-256 校验。服务器部署见 [service/update_mirror/README.md](../service/update_mirror/README.md)。正式发版构建必须带上这些配置；GitHub 发布完成后执行 `ssh <服务器> systemctl start ysc-update-sync.service` 立即同步。
+
 以上命令对应当前本地源码 1.9.0 / code85；以后每次发版继续递增 `versionCode` 和 `versionName`，沿用相同正式签名。Gradle 构建不会生成 GitHub 聚合清单；将已签名的两个 TV APK 放进新的发布目录，再运行生成器：
 
 ```powershell

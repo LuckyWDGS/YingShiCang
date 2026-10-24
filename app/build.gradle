@@ -23,6 +23,10 @@ android {
         versionCode providers.gradleProperty('appVersionCode').getOrElse('85').toInteger()
         versionName providers.gradleProperty('appVersionName').getOrElse('1.9.0')
         buildConfigField "String", "UPDATE_MANIFEST_URL", groovy.json.JsonOutput.toJson(providers.gradleProperty("updateManifestUrl").getOrElse(""))
+        // Optional update mirror (service/update_mirror): base URL, server IP for its host name and server key SHA-256 (hex), never committed.
+        buildConfigField "String", "UPDATE_MIRROR_URL", groovy.json.JsonOutput.toJson(providers.gradleProperty("updateMirrorUrl").getOrElse(localProps.getProperty("ysc.updateMirrorUrl", "")))
+        buildConfigField "String", "UPDATE_MIRROR_ADDRESS", groovy.json.JsonOutput.toJson(providers.gradleProperty("updateMirrorAddress").getOrElse(localProps.getProperty("ysc.updateMirrorAddress", "")))
+        buildConfigField "String", "UPDATE_MIRROR_PIN", groovy.json.JsonOutput.toJson(providers.gradleProperty("updateMirrorPin").getOrElse(localProps.getProperty("ysc.updateMirrorPin", "")))
         buildConfigField "String", "LOG_UPLOAD_URL", groovy.json.JsonOutput.toJson(providers.gradleProperty("logUploadUrl").getOrElse(localProps.getProperty("ysc.logUploadUrl", "")))
         javaCompileOptions {
             annotationProcessorOptions {

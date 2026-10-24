@@ -121,13 +121,17 @@ public class Updater implements UpdateListener {
         if (canceled) current.cancel();
     }
 
-    /** Small metadata fetches retry twice after a dropped connection, reset or timeout. */
+    /** Small metadata fetches retry after a dropped connection, reset or timeout (twice, or as given). */
     private String fetch(String url, int cap) throws IOException {
+        return fetch(url, cap, 2);
+    }
+
+    private String fetch(String url, int cap, int retries) throws IOException {
         for (int attempt = 0; ; attempt++) {
             try (Response response = UpdateHttp.execute(url, github, this::track, attempt > 0)) {
                 return MaintenanceHttp.text(response, cap);
             } catch (IOException error) {
-                if (canceled || attempt >= 2 || !UpdateHttp.transientFailure(error)) throw error;
+                if (canceled || attempt >= retries || !UpdateHttp.transientFailure(error)) throw error;
                 DiagnosticLog.write(App.get(), "update_fetch_retry", NetTrace.reason(error) + " attempt=" + (attempt + 1));
                 checking("网络较慢，正在第 " + (attempt + 1) + " 次重试…");
                 try {
@@ -140,6 +144,34 @@ public class Updater implements UpdateListener {
         }
     }
 
+    /** The publisher's mirror first (one retry), then GitHub; both answers are GitHub's own release data. */
+    private GitHubRelease latestRelease(String endpoint) throws IOException {
+        if (UpdateMirror.enabled()) try {
+            return GitHubRelease.parse(fetch(UpdateMirror.latestUrl(), GitHubRelease.MAX_RELEASE_BYTES, 1));
+        } catch (IOException error) {
+            if (canceled) throw error;
+            DiagnosticLog.write(App.get(), "update_mirror_failed", "release " + NetTrace.reason(error));
+            checking("正在改用 GitHub 获取版本信息…");
+        }
+        return GitHubRelease.parse(fetch(endpoint, GitHubRelease.MAX_RELEASE_BYTES));
+    }
+
+    /** The package list from the mirror, else GitHub; select() checks it against GitHub's declared size and SHA-256. */
+    private UpdateManifest selectPackage(GitHubRelease current) throws IOException {
+        String copy = UpdateMirror.assetUrl(current.manifestUrl());
+        if (copy != null) try {
+            return select(current, fetch(copy, GitHubRelease.MAX_MANIFEST_BYTES, 1));
+        } catch (IOException error) {
+            if (canceled) throw error;
+            DiagnosticLog.write(App.get(), "update_mirror_failed", "manifest " + NetTrace.reason(error));
+        }
+        return select(current, fetch(current.manifestUrl(), GitHubRelease.MAX_MANIFEST_BYTES));
+    }
+
+    private static UpdateManifest select(GitHubRelease current, String json) throws IOException {
+        return current.select(json, BuildConfig.APPLICATION_ID, BuildConfig.FLAVOR, Build.VERSION.SDK_INT, Build.SUPPORTED_ABIS);
+    }
+
     private void check(String endpoint) {
         try {
             // A process killed by the installer cannot remove its previous verified cache file.
@@ -148,7 +180,7 @@ public class Updater implements UpdateListener {
                 if (System.currentTimeMillis() - item.lastModified() > 86_400_000L) item.delete();
             if (github) {
                 checking("正在获取版本信息…");
-                GitHubRelease release = GitHubRelease.parse(fetch(endpoint, GitHubRelease.MAX_RELEASE_BYTES));
+                GitHubRelease release = latestRelease(endpoint);
                 if (!UpdateNotice.isNewer(release.versionName())) {
                     UpdateNotice.clear();
                     result("当前已是最新版本（本机 " + BuildConfig.VERSION_NAME + "）", false);
@@ -158,8 +190,7 @@ public class Updater implements UpdateListener {
                 this.release = release;
                 checking("发现新版本 " + release.versionName() + "，正在获取安装包信息…");
                 try {
-                    manifest = release.select(fetch(release.manifestUrl(), GitHubRelease.MAX_MANIFEST_BYTES),
-                            BuildConfig.APPLICATION_ID, BuildConfig.FLAVOR, Build.VERSION.SDK_INT, Build.SUPPORTED_ABIS);
+                    manifest = selectPackage(release);
                 } catch (Exception error) {
                     // api.github.com is often reachable where github.com downloads are not (mainland China).
                     DiagnosticLog.write(App.get(), "update_manifest_failed", NetTrace.reason(error));
@@ -286,8 +317,7 @@ public class Updater implements UpdateListener {
         MaintenanceTasks.execute(() -> {
             boolean started = false;
             try {
-                UpdateManifest selected = current.select(fetch(current.manifestUrl(), GitHubRelease.MAX_MANIFEST_BYTES),
-                        BuildConfig.APPLICATION_ID, BuildConfig.FLAVOR, Build.VERSION.SDK_INT, Build.SUPPORTED_ABIS);
+                UpdateManifest selected = selectPackage(current);
                 MaintenanceHttp.validate(selected.url);
                 if (canceled) return;
                 if (selected.versionCode <= BuildConfig.VERSION_CODE) {
@@ -323,42 +353,21 @@ public class Updater implements UpdateListener {
                 throw new IOException("安装空间不足，请清理空间后重试");
             file = File.createTempFile("ysc-update-" + manifest.versionCode + "-", ".apk", directory);
             transfer = file;
-            long total = 0;
-            int progress = -1;
-            try (Response response = UpdateHttp.download(manifest.url, github, this::track)) {
-                if (!response.isSuccessful() || response.body() == null) throw new IOException("下载失败（HTTP " + response.code() + "）");
-                long declared = response.body().contentLength();
-                if (declared >= 0 && declared != manifest.size) throw new IOException("安装包大小与发布清单不符");
-                try (InputStream in = response.body().byteStream(); FileOutputStream out = new FileOutputStream(file)) {
-                    byte[] bytes = new byte[32768];
-                    int n;
-                    while ((n = in.read(bytes)) != -1) {
-                        if (canceled) throw new InterruptedIOException("已取消");
-                        total += n;
-                        if (total > manifest.size) throw new IOException("安装包超过发布大小");
-                        out.write(bytes, 0, n);
-                        int next = (int) (total * 100 / manifest.size);
-                        if (next != progress) {
-                            progress = next;
-                            long received = total;
-                            App.post(() -> {
-                                if (host() == null) return;
-                                if (dialog != null) dialog.setProgress(next, received, manifest.size);
-                                shade.progress(next, received, manifest.size);
-                            });
-                        }
-                    }
-                    out.getFD().sync();
-                }
+            String copy = github ? UpdateMirror.assetUrl(manifest.url) : null;
+            if (copy != null) try {
+                fetchPackage(copy, file);
+            } catch (Exception error) {
+                if (canceled) throw error;
+                // Unreachable, partial or mismatching mirror copy: GitHub's own file is the fallback.
+                DiagnosticLog.write(App.get(), "update_mirror_failed", "download " + NetTrace.reason(error));
+                App.post(() -> {
+                    if (host() == null) return;
+                    if (dialog != null) dialog.setProgress(0, 0, manifest.size);
+                    shade.progress(0, 0, manifest.size);
+                });
+                copy = null;
             }
-            if (canceled) throw new InterruptedIOException("已取消");
-            App.post(() -> {
-                if (host() == null) return;
-                if (dialog != null) dialog.setVerifying();
-                shade.verifying();
-            });
-            ApkVerifier.verify(file, manifest);
-            if (canceled) throw new InterruptedIOException("已取消");
+            if (copy == null) fetchPackage(manifest.url, file);
             File verified = file;
             App.post(() -> {
                 shade.cancel();
@@ -379,6 +388,46 @@ public class Updater implements UpdateListener {
             transfer = null;
             downloading.set(false);
         }
+    }
+
+    /** Downloads into file (replacing earlier bytes) and verifies it against the manifest. */
+    private void fetchPackage(String url, File file) throws Exception {
+        long total = 0;
+        int progress = -1;
+        try (Response response = UpdateHttp.download(url, github, this::track)) {
+            if (!response.isSuccessful() || response.body() == null) throw new IOException("下载失败（HTTP " + response.code() + "）");
+            long declared = response.body().contentLength();
+            if (declared >= 0 && declared != manifest.size) throw new IOException("安装包大小与发布清单不符");
+            try (InputStream in = response.body().byteStream(); FileOutputStream out = new FileOutputStream(file)) {
+                byte[] bytes = new byte[32768];
+                int n;
+                while ((n = in.read(bytes)) != -1) {
+                    if (canceled) throw new InterruptedIOException("已取消");
+                    total += n;
+                    if (total > manifest.size) throw new IOException("安装包超过发布大小");
+                    out.write(bytes, 0, n);
+                    int next = (int) (total * 100 / manifest.size);
+                    if (next != progress) {
+                        progress = next;
+                        long received = total;
+                        App.post(() -> {
+                            if (host() == null) return;
+                            if (dialog != null) dialog.setProgress(next, received, manifest.size);
+                            shade.progress(next, received, manifest.size);
+                        });
+                    }
+                }
+                out.getFD().sync();
+            }
+        }
+        if (canceled) throw new InterruptedIOException("已取消");
+        App.post(() -> {
+            if (host() == null) return;
+            if (dialog != null) dialog.setVerifying();
+            shade.verifying();
+        });
+        ApkVerifier.verify(file, manifest);
+        if (canceled) throw new InterruptedIOException("已取消");
     }
 
     private void install(FragmentActivity activity) {
