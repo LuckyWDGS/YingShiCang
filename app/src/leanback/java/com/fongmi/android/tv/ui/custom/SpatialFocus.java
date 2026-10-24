@@ -2,6 +2,7 @@ package com.fongmi.android.tv.ui.custom;
 
 import android.view.FocusFinder;
 import android.view.KeyEvent;
+import android.view.SoundEffectConstants;
 import android.view.View;
 import android.view.ViewGroup;
 
@@ -23,7 +24,10 @@ public class SpatialFocus implements View.OnKeyListener {
         if (direction == 0 || !(view.getRootView() instanceof ViewGroup)) return false;
         if (event.getAction() != KeyEvent.ACTION_DOWN) return true;
         View next = FocusFinder.getInstance().findNextFocus((ViewGroup) view.getRootView(), view, direction);
-        if (next != null) next.requestFocus(direction);
+        // Consuming the key skips the framework's navigation click, so Left/Right were silent here
+        // while Up/Down clicked (user 2026-10-23); play it the same way the framework does.
+        if (next != null && next.requestFocus(direction))
+            next.playSoundEffect(SoundEffectConstants.getContantForFocusDirection(direction));
         return true;
     }
 }

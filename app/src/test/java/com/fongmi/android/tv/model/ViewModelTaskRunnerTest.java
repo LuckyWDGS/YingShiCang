@@ -70,4 +70,30 @@ public class ViewModelTaskRunnerTest {
             assertEquals("Cancelled task delivered a late callback", 0, callbacks.get());
         } finally { task.release.countDown(); runner.cancelAll(); workers.shutdownNow(); timer.shutdownNow(); }
     }
+
+    @Test public void pausedTimeDoesNotCountAgainstTheTimeout() throws Exception {
+        var workers = MoreExecutors.listeningDecorator(Executors.newSingleThreadExecutor());
+        var timer = Executors.newSingleThreadScheduledExecutor();
+        var runner = new ViewModelTaskRunner<>(Type.class, workers, timer);
+        var task = new BlockingTask();
+        var timedOut = new CountDownLatch(1);
+        long start = System.nanoTime();
+        var resumedAt = new java.util.concurrent.atomic.AtomicLong(-1);
+        // A login dialog shows from the start until resumedAt; that span is paused time.
+        java.util.function.LongSupplier paused = () -> {
+            long end = resumedAt.get();
+            return end >= 0 ? end : TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+        };
+        try {
+            runner.execute(Type.SEARCH, 200, paused, task, result -> fail(), error -> {
+                assertTrue(error instanceof java.util.concurrent.TimeoutException);
+                timedOut.countDown();
+            });
+            assertTrue(task.started.await(1, TimeUnit.SECONDS));
+            assertFalse("Timed out while the dialog was showing", timedOut.await(700, TimeUnit.MILLISECONDS));
+            resumedAt.set(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start));
+            assertTrue(timedOut.await(2, TimeUnit.SECONDS));
+            assertEquals(1, task.closed.get());
+        } finally { task.release.countDown(); runner.cancelAll(); workers.shutdownNow(); timer.shutdownNow(); }
+    }
 }

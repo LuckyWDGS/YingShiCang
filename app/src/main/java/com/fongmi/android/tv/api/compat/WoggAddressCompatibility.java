@@ -16,6 +16,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
+import java.util.function.LongSupplier;
 import java.util.concurrent.locks.ReentrantLock;
 
 /** Retains the audited WoGG instance's address when its synchronous refresh returns an invalid one. */
@@ -43,7 +44,16 @@ public final class WoggAddressCompatibility {
     /** The existing caller's remaining budget includes waiting for this same instance's earlier callback. */
     public static <T> T call(Spider spider, RemainingMillis remaining, CancellationCheck cancellation,
                              Callable<T> operation) throws Exception {
-        return call(spider, remaining, cancellation, operation, false);
+        return call(spider, remaining, () -> 0, cancellation, operation, false);
+    }
+
+    /**
+     * As above, with time the caller reports as paused (monotonic milliseconds, e.g. the source's own
+     * login dialog) extending the deadline; the caller's remaining count must include it too.
+     */
+    public static <T> T call(Spider spider, RemainingMillis remaining, LongSupplier paused, CancellationCheck cancellation,
+                             Callable<T> operation) throws Exception {
+        return call(spider, remaining, paused, cancellation, operation, false);
     }
 
     /**
@@ -53,7 +63,7 @@ public final class WoggAddressCompatibility {
      */
     public static <T> T search(Spider spider, RemainingMillis remaining, CancellationCheck cancellation,
                                Callable<T> operation) throws Exception {
-        return call(spider, remaining, cancellation, operation, true);
+        return call(spider, remaining, () -> 0, cancellation, operation, true);
     }
 
     /** How long this thread's last callback waited for the instance lock, in milliseconds. */
@@ -64,7 +74,7 @@ public final class WoggAddressCompatibility {
 
     private static final ThreadLocal<Long> WAIT = new ThreadLocal<>();
 
-    private static <T> T call(Spider spider, RemainingMillis remaining, CancellationCheck cancellation,
+    private static <T> T call(Spider spider, RemainingMillis remaining, LongSupplier paused, CancellationCheck cancellation,
                               Callable<T> operation, boolean search) throws Exception {
         WAIT.remove();
         Audited audited = audited(spider);
@@ -74,7 +84,7 @@ public final class WoggAddressCompatibility {
         Objects.requireNonNull(operation);
         cancellation.check();
         checkInterrupted();
-        Budget budget = new Budget(remaining);
+        Budget budget = new Budget(remaining, paused);
         State state = state(audited.delegate);
         boolean acquired = false;
         long waitStart = System.nanoTime();
@@ -195,15 +205,19 @@ public final class WoggAddressCompatibility {
 
     private static final class Budget {
         final RemainingMillis caller;
-        final long initial, started;
-        Budget(RemainingMillis caller) throws Exception {
+        final LongSupplier paused;
+        final long initial, started, pausedBase;
+        Budget(RemainingMillis caller, LongSupplier paused) throws Exception {
             this.caller = caller;
+            this.paused = paused;
             this.started = System.nanoTime();
+            this.pausedBase = paused.getAsLong();
             this.initial = caller.get();
             if (initial <= 0) throw deadline();
         }
         long remaining() throws Exception {
-            long elapsed = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
+            // A fixed ceiling bounds even a constant supplier; only reported paused time extends it.
+            long elapsed = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started) - (paused.getAsLong() - pausedBase);
             long left = Math.min(initial - elapsed, caller.get());
             if (left <= 0) throw deadline();
             return left;

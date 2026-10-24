@@ -10,6 +10,7 @@
         android:layout_height="wrap_content"
         android:layout_gravity="center"
         android:indeterminate="true"
+        app:indeterminateAnimatorDurationScale="3"
         app:indicatorColor="@color/white" />
 
     <com.google.android.material.textview.MaterialTextView

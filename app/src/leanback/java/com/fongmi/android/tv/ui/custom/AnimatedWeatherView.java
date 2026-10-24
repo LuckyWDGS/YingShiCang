@@ -142,12 +142,14 @@ public class AnimatedWeatherView extends View {
         if (animating) postInvalidateDelayed(FRAME_MS);
     }
 
+    // Motion is sized to be seen across a room (user 2026-10-23: the icon looked frozen on a TV,
+    // where a 1dp drift every 15s read as still).
     private float cloudDrift(float seconds, float speed) {
-        return (float) Math.sin(seconds * speed + speed * 2.1f) * 1.7f;
+        return (float) Math.sin(seconds * speed * 2.2f + speed * 2.1f) * 4.5f;
     }
 
     private float cloudLift(float seconds, float phase) {
-        return (float) Math.sin(seconds * .52f + phase) * .45f;
+        return (float) Math.sin(seconds * 1.2f + phase) * 1.4f;
     }
 
     private void sunOrMoon(Canvas canvas, float x, float y, float radius, float seconds) {
@@ -168,26 +170,27 @@ public class AnimatedWeatherView extends View {
             path.cubicTo(x - 1, y + 7, x - 3, y - 3, x + 5, y - 11);
             path.close();
             canvas.drawPath(path, paint);
-            float twinkle = .75f + .25f * Math.max(0, (float) Math.sin(seconds * .7f));
+            float twinkle = .45f + .55f * Math.max(0, (float) Math.sin(seconds * 1.6f));
             fill(0xB8BFD9EA);
             paint.setAlpha((int) (180 * twinkle));
             canvas.drawCircle(x + 14, y - 7, 1.3f, paint);
-            paint.setAlpha((int) (130 * (.7f + .3f * Math.max(0, (float) Math.sin(seconds * .53f + 1.3f)))));
+            paint.setAlpha((int) (130 * (.35f + .65f * Math.max(0, (float) Math.sin(seconds * 1.3f + 1.3f)))));
             canvas.drawCircle(x - 13, y - 6, .9f, paint);
-            paint.setAlpha((int) (110 * (.7f + .3f * Math.max(0, (float) Math.sin(seconds * .61f + 2.5f)))));
+            paint.setAlpha((int) (110 * (.35f + .65f * Math.max(0, (float) Math.sin(seconds * 1.45f + 2.5f)))));
             canvas.drawCircle(x + 14, y + 9, .8f, paint);
             canvas.restore();
             return;
         }
-        float breathe = 1f + (float) Math.sin(seconds * .75f) * .018f;
-        float rayBreathe = .35f + .65f * (float) ((Math.sin(seconds * .75f) + 1) * .5f);
+        float breathe = 1f + (float) Math.sin(seconds * 1.6f) * .05f;
+        float rayBreathe = .2f + 1.6f * (float) ((Math.sin(seconds * 1.6f) + 1) * .5f);
         fill(0xFFFFFFFF);
         paint.setShader(sunGlow);
         canvas.drawCircle(x, y, 19 * breathe, paint);
         stroke(0xADF0B65D, 1.2f);
         for (int i = 0; i < 8; i++) {
             canvas.save();
-            canvas.rotate(i * 45f + 22.5f, x, y);
+            // The rays turn slowly, one turn every 18s.
+            canvas.rotate(i * 45f + 22.5f + seconds * 20f, x, y);
             float start = radius + 3.5f;
             canvas.drawLine(x, y - start, x, y - start - 3.2f - rayBreathe, paint);
             canvas.restore();
@@ -221,7 +224,7 @@ public class AnimatedWeatherView extends View {
 
     private void fog(Canvas canvas, float seconds) {
         for (int i = 0; i < 3; i++) {
-            float offset = (float) Math.sin(seconds * .32f + i * 1.5f) * 2.5f;
+            float offset = (float) Math.sin(seconds * .8f + i * 1.5f) * 4f;
             stroke(i == 1 ? 0xA6B7CED8 : 0x749EB8C4, 1.7f);
             path.reset();
             path.moveTo(10 + offset, 34 + i * 5);

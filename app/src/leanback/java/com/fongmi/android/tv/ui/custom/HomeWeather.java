@@ -23,7 +23,6 @@ import com.fongmi.android.tv.weather.WeatherInfo;
 import com.fongmi.android.tv.weather.WeatherLocation;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.permissionx.guolindev.PermissionX;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -68,15 +67,8 @@ public final class HomeWeather {
         this.activity = activity; this.view = view; this.info = info; this.icon = icon;
         prefs = activity.getSharedPreferences("home_weather", Context.MODE_PRIVATE);
         if (prefs.getInt("schema", 0) != 2) prefs.edit().clear().putInt("schema", 2).apply();
-        view.setOnClickListener(v -> {
-            if (hasLocationPermission()) { checkedAt = 0; refresh(); return; }
-            PermissionX.init(activity).permissions(Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION)
-                    .request((all, granted, denied) -> {
-                        if (activity.isFinishing() || activity.isDestroyed()) return;
-                        checkedAt = 0;
-                        if (activity.getLifecycle().getCurrentState().isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) refresh();
-                    });
-        });
+        // Display only (user 2026-10-23): remote focus never stops here. Location is used when already
+        // granted, otherwise the IP estimate.
     }
 
     public void refresh() {
@@ -219,10 +211,10 @@ public final class HomeWeather {
         info.setText((stale ? (cn ? "上次 · " : "Last · ") : "") + text);
         int code = prefs.getInt("weather_code", -1);
         icon.setWeather(code, prefs.getBoolean("is_day", true)); icon.setAlpha(stale ? .6f : 1f);
-        view.setContentDescription(text + "，" + WeatherInfo.describe(code) + (stale ? "，上次天气" : approximate ? "，IP估算位置" : "，设备定位") + "，点按校准位置");
+        view.setContentDescription(text + "，" + WeatherInfo.describe(code) + (stale ? "，上次天气" : approximate ? "，IP估算位置" : "，设备定位"));
     }
     private void unavailable(String description) {
-        info.setText("—°C"); icon.setWeather(-1, true); view.setContentDescription(description + "，点按校准位置");
+        info.setText("—°C"); icon.setWeather(-1, true); view.setContentDescription(description);
     }
     private interface Result { void accept(JsonObject json) throws Exception; }
     private void request(String url, int token, Result result) {
@@ -254,7 +246,7 @@ public final class HomeWeather {
                 Double.longBitsToDouble(prefs.getLong("lon_bits", Double.doubleToLongBits(Double.NaN))))) {
             info.setText(resolvedLocation.displayCity() + "  —°C");
             icon.setWeather(-1, true);
-            view.setContentDescription(resolvedLocation.displayCity() + "，天气暂不可用，点按重试");
+            view.setContentDescription(resolvedLocation.displayCity() + "，天气暂不可用");
             return;
         }
         if (prefs.contains("weather_code")) showCached(true); else unavailable("天气暂不可用");

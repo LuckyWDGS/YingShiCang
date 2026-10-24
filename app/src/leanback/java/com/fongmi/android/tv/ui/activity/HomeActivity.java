@@ -330,15 +330,15 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         for (int i = 0; i < items.size(); i++) {
             Func item = items.get(i);
             var button = com.fongmi.android.tv.databinding.AdapterFuncBinding.inflate(getLayoutInflater(), mBinding.actions, false);
-            var params = new android.widget.LinearLayout.LayoutParams(0, ResUtil.dp2px(36), 1);
+            var params = new android.widget.LinearLayout.LayoutParams(0, ResUtil.dp2px(44), 1);
             button.getRoot().setBackgroundResource(R.drawable.home_shortcut);
-            button.text.setTextSize(13);
+            button.text.setTextSize(16);
             button.text.setTextColor(androidx.core.content.ContextCompat.getColorStateList(this, R.color.tv_shortcut_text));
             button.text.setDuplicateParentStateEnabled(true);
             button.icon.setDuplicateParentStateEnabled(true);
             button.icon.setImageTintList(androidx.core.content.ContextCompat.getColorStateList(this, R.color.tv_shortcut_text));
-            button.icon.getLayoutParams().width = ResUtil.dp2px(18);
-            button.icon.getLayoutParams().height = ResUtil.dp2px(18);
+            button.icon.getLayoutParams().width = ResUtil.dp2px(22);
+            button.icon.getLayoutParams().height = ResUtil.dp2px(22);
             params.setMarginEnd(i == items.size() - 1 ? 0 : ResUtil.dp2px(12));
             button.getRoot().setLayoutParams(params); button.getRoot().setTag(item.getResId());
             button.text.setText(item.getText());

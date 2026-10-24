@@ -3,6 +3,7 @@ package com.fongmi.android.tv.ui.activity;
 import android.app.Activity;
 import android.content.Intent;
 import android.os.Bundle;
+import android.view.View;
 import androidx.leanback.widget.ArrayObjectAdapter;
 import androidx.leanback.widget.ItemBridgeAdapter;
 import androidx.lifecycle.ViewModelProvider;
@@ -110,6 +111,7 @@ public class CollectActivity extends BaseActivity implements VodPresenter.OnClic
         search();
     }
     @Override protected void initEvent() {
+        binding.getRoot().getViewTreeObserver().addOnGlobalFocusChangeListener(this::followSourceFocus);
         binding.results.addOnScrollListener(new androidx.recyclerview.widget.RecyclerView.OnScrollListener() {
             @Override public void onScrolled(androidx.recyclerview.widget.RecyclerView view, int dx, int dy) {
                 if (dy > 0 && !restoringFocus) view.post(() -> { if (!restoringFocus) loadNextPage(false); });
@@ -321,6 +323,36 @@ public class CollectActivity extends BaseActivity implements VodPresenter.OnClic
             binding.results.post(() -> loadNextPage(false));
         });
     }
+    private static final long FOCUS_SELECT_MS = 250;
+    private final Runnable focusSelect = this::selectFocusedSource;
+
+    private boolean isSource(View view) {
+        return view != null && (view.getParent() == binding.allSource || view.getParent() == binding.sources);
+    }
+
+    private void selectFocusedSource() {
+        View focused = getCurrentFocus();
+        if (isSource(focused) && !selected.equals(focused.getTag())) focused.performClick();
+    }
+
+    /**
+     * Remote focus moving between sources shows that source without pressing OK (user 2026-10-23);
+     * keys held across several load only the resting one. Focus arriving from the results lands
+     * on the selected source rather than the nearest row.
+     */
+    private void followSourceFocus(View oldFocus, View newFocus) {
+        binding.results.removeCallbacks(focusSelect);
+        if (oldFocus == null || !isSource(newFocus) || newFocus.isInTouchMode()) return;
+        if (isSource(oldFocus)) {
+            if (!selected.equals(newFocus.getTag())) binding.results.postDelayed(focusSelect, FOCUS_SELECT_MS);
+            return;
+        }
+        View current = binding.allSource.findViewWithTag(selected);
+        if (current == null) current = binding.sources.findViewWithTag(selected);
+        View target = current;
+        if (target != null && target != newFocus) binding.results.post(() -> { if (newFocus.isFocused()) target.requestFocus(); });
+    }
+
     private void updateSourceSelection() {
         for (android.view.ViewGroup group : new android.view.ViewGroup[]{binding.allSource, binding.sources})
             for (int i = 0; i < group.getChildCount(); i++) group.getChildAt(i).setSelected(selected.equals(group.getChildAt(i).getTag()));
@@ -410,5 +442,5 @@ public class CollectActivity extends BaseActivity implements VodPresenter.OnClic
         }
         super.onBackInvoked();
     }
-    @Override protected void onDestroy() { binding.results.removeCallbacks(queuedDisplay); searchSources.cancel(); cancelPage(); model.stopSearch(); super.onDestroy(); }
+    @Override protected void onDestroy() { binding.results.removeCallbacks(queuedDisplay); binding.results.removeCallbacks(focusSelect); searchSources.cancel(); cancelPage(); model.stopSearch(); super.onDestroy(); }
 }

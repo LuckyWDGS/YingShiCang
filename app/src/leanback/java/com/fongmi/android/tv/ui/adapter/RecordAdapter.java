@@ -15,16 +15,32 @@ import com.google.gson.reflect.TypeToken;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.UnaryOperator;
 
 public class RecordAdapter extends RecyclerView.Adapter<RecordAdapter.ViewHolder> {
 
     private final OnClickListener listener;
     private final List<String> mItems;
+    // Display order: the saved recency order, or the arranger's packing of it.
+    private List<String> shown;
+    private UnaryOperator<List<String>> arranger;
 
     public RecordAdapter(OnClickListener listener) {
         this.listener = listener;
         this.mItems = getItems();
+        this.shown = new ArrayList<>(mItems);
         this.listener.onDataChanged(mItems.size());
+    }
+
+    /** Lays the saved records out in another order (e.g. packed rows); the saved order is unchanged. */
+    public void setArranger(UnaryOperator<List<String>> arranger) {
+        this.arranger = arranger;
+        refresh();
+    }
+
+    private void refresh() {
+        shown = arranger == null ? new ArrayList<>(mItems) : arranger.apply(List.copyOf(mItems));
+        notifyDataSetChanged();
     }
 
     public interface OnClickListener {
@@ -48,20 +64,20 @@ public class RecordAdapter extends RecyclerView.Adapter<RecordAdapter.ViewHolder
     public void add(String item) {
         checkToAdd(item);
         Setting.putKeyword(App.gson().toJson(mItems));
-        notifyDataSetChanged();
+        refresh();
         listener.onDataChanged(getItemCount());
     }
 
     public void clear() {
         mItems.clear();
         Setting.putKeyword("[]");
-        notifyDataSetChanged();
+        refresh();
         listener.onDataChanged(0);
     }
 
     @Override
     public int getItemCount() {
-        return mItems.size();
+        return shown.size();
     }
 
     @NonNull
@@ -72,7 +88,7 @@ public class RecordAdapter extends RecyclerView.Adapter<RecordAdapter.ViewHolder
 
     @Override
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
-        String text = mItems.get(position);
+        String text = shown.get(position);
         holder.binding.text.setText(text);
         holder.binding.text.setOnClickListener(v -> listener.onItemClick(text));
     }
@@ -93,12 +109,12 @@ public class RecordAdapter extends RecyclerView.Adapter<RecordAdapter.ViewHolder
             int position = getBindingAdapterPosition();
             if (position == RecyclerView.NO_POSITION) return false;
             RecyclerView parent = (RecyclerView) itemView.getParent();
-            mItems.remove(position);
-            notifyItemRemoved(position);
+            mItems.remove(shown.get(position));
+            refresh();
             listener.onDataChanged(getItemCount());
             Setting.putKeyword(App.gson().toJson(mItems));
-            if (parent != null && !mItems.isEmpty()) parent.post(() -> {
-                RecyclerView.ViewHolder next = parent.findViewHolderForAdapterPosition(Math.min(position, mItems.size() - 1));
+            if (parent != null && !shown.isEmpty()) parent.post(() -> {
+                RecyclerView.ViewHolder next = parent.findViewHolderForAdapterPosition(Math.min(position, shown.size() - 1));
                 if (next != null) next.itemView.requestFocus();
             });
             return true;

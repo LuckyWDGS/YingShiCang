@@ -271,6 +271,18 @@ public class WoggAddressCompatibilityTest {
         }
     }
 
+    @Test public void reportedPausedTimeExtendsTheDeadline() throws Exception {
+        WoGG source = new WoGG(OLD);
+        long start = System.nanoTime();
+        // The source's login dialog shows for the whole callback: none of it counts.
+        java.util.function.LongSupplier paused = () -> TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+        WoggAddressCompatibility.RemainingMillis remaining = () -> 100 + paused.getAsLong()
+                - TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+        assertEquals("ok", WoggAddressCompatibility.call(source, remaining, paused, ACTIVE, () -> { Thread.sleep(300); return "ok"; }));
+        try { WoggAddressCompatibility.call(source, () -> 100, () -> 0, ACTIVE, () -> { Thread.sleep(300); return "late"; }); fail(); }
+        catch (InterruptedIOException expected) { assertTrue(expected.getMessage().contains("deadline")); }
+    }
+
     @Test public void callerCancellationWhileWaitingNeverStartsCallback() throws Exception {
         WoGG source = new WoGG(OLD);
         ExecutorService workers = Executors.newFixedThreadPool(2);

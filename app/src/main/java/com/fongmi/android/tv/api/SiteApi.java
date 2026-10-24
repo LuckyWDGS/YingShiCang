@@ -213,6 +213,15 @@ public class SiteApi {
         return crawlerCall(spider, () -> WoggAddressCompatibility.call(spider, budgetMillis, () -> {}, operation));
     }
 
+    /** Like spiderCall, but time the source spends in its own login dialog does not use up the budget. */
+    private static <T> T loginAwareCall(Spider spider, long budgetMillis, Callable<T> operation) throws Exception {
+        java.util.function.LongSupplier paused = com.fongmi.android.tv.cloudlogin.LoginWait::pausedMillis;
+        long started = System.nanoTime(), base = paused.getAsLong();
+        WoggAddressCompatibility.RemainingMillis remaining = () -> budgetMillis + (paused.getAsLong() - base)
+                - java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
+        return crawlerCall(spider, () -> WoggAddressCompatibility.call(spider, remaining, paused, () -> {}, operation));
+    }
+
     private static long discoveryBudget(Site site) {
         return Math.min(20000, Math.max(5000, site.getTimeout()));
     }
@@ -593,7 +602,7 @@ public class SiteApi {
             long spiderStart = SystemClock.elapsedRealtime();
             String playerContent;
             try {
-                playerContent = spiderCall(spider, Constant.TIMEOUT_VOD,
+                playerContent = loginAwareCall(spider, Constant.TIMEOUT_VOD,
                         () -> spider.playerContent(flag, id, VodConfig.get().getFlags()));
             } finally {
                 SPIDER_MS.set(SystemClock.elapsedRealtime() - spiderStart);

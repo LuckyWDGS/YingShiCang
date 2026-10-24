@@ -86,6 +86,10 @@ public class SearchActivity extends BaseActivity implements WordAdapter.OnClickL
         mBinding.recordRecycler.setItemAnimator(null);
         mBinding.recordRecycler.setLayoutManager(new FlexboxLayoutManager(this, FlexDirection.ROW));
         mBinding.recordRecycler.setAdapter(mRecordAdapter = new RecordAdapter(this));
+        mBinding.recordRecycler.addOnLayoutChangeListener((v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
+            int width = right - left - v.getPaddingLeft() - v.getPaddingRight();
+            if (width > 0 && right - left != oldRight - oldLeft) v.post(() -> mRecordAdapter.setArranger(items -> packRows(items, width)));
+        });
         loadRank(mBinding.tvRecycler, "tv_real_time_hotest", 3, 2);
         loadRank(mBinding.movieRecycler, "movie_real_time_hotest", 2, 1);
         loadRank(mBinding.varietyRecycler, "show_hot", 4, 3);
@@ -189,12 +193,82 @@ public class SearchActivity extends BaseActivity implements WordAdapter.OnClickL
         });
     }
 
+    /**
+     * Each hot list shows exactly two rows of chips (user 2026-10-23: three or four rows depending on
+     * title lengths). Only the titles that fit two rows are submitted, measured with the chip itself;
+     * a Flexbox line limit squeezed the rest into the second row as clipped and empty chips. Every
+     * shown title is complete, and shorter titles go first (user 2026-10-24: longer ones have lower
+     * priority); whatever does not fit the two rows is left out.
+     */
+    private void showRank(RecyclerView view, WordAdapter adapter, List<Word.Data> words) {
+        int width = view.getWidth() - view.getPaddingLeft() - view.getPaddingRight();
+        if (width <= 0) { view.post(() -> { if (!destroyed && view.getAdapter() == adapter) showRank(view, adapter, words); }); return; }
+        adapter.setItems(firstRows(view, words, width, 2));
+    }
+
+    private List<Word.Data> firstRows(RecyclerView view, List<Word.Data> words, int width, int rows) {
+        var chip = com.fongmi.android.tv.databinding.AdapterSearchWordBinding.inflate(getLayoutInflater(), view, false).text;
+        var params = (android.view.ViewGroup.MarginLayoutParams) chip.getLayoutParams();
+        int unspecified = android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED);
+        int limit = Math.min(chip.getMaxWidth(), width - params.leftMargin - params.rightMargin);
+        chip.setMaxWidth(Integer.MAX_VALUE);
+        List<Word.Data> sorted = new java.util.ArrayList<>(words);
+        java.util.Map<Word.Data, Integer> natural = new java.util.IdentityHashMap<>();
+        for (Word.Data word : sorted) {
+            chip.setText(word.getTitle());
+            chip.measure(unspecified, unspecified);
+            natural.put(word, chip.getMeasuredWidth());
+        }
+        // Stable: equal widths keep the source's rank order.
+        sorted.sort(java.util.Comparator.comparingInt(natural::get));
+        List<Word.Data> shown = new java.util.ArrayList<>();
+        int line = 1, used = 0;
+        for (Word.Data word : sorted) {
+            int chipWidth = natural.get(word);
+            if (chipWidth > limit) break; // would be cut off; every later one is at least as wide
+            int need = chipWidth + params.leftMargin + params.rightMargin;
+            if (used > 0 && used + need > width) { if (++line > rows) break; used = 0; }
+            used += need;
+            shown.add(word);
+        }
+        return shown;
+    }
+
+    /**
+     * Search history fills its narrow column row by row: a record that does not fit the rest of a row
+     * lets a later, shorter one take the gap instead of leaving it empty (user 2026-10-24: wide gaps
+     * before a line break). Each row still starts with the most recent record not yet placed.
+     */
+    private List<String> packRows(List<String> items, int width) {
+        var chip = com.fongmi.android.tv.databinding.AdapterSearchRecordBinding.inflate(getLayoutInflater(), mBinding.recordRecycler, false).text;
+        var params = (android.view.ViewGroup.MarginLayoutParams) chip.getLayoutParams();
+        int unspecified = android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED);
+        java.util.Map<String, Integer> need = new java.util.HashMap<>();
+        for (String item : items) {
+            chip.setText(item);
+            chip.measure(unspecified, unspecified);
+            need.put(item, Math.min(chip.getMeasuredWidth(), width) + params.leftMargin + params.rightMargin);
+        }
+        List<String> left = new java.util.ArrayList<>(items), packed = new java.util.ArrayList<>();
+        while (!left.isEmpty()) {
+            int used = 0;
+            for (var it = left.iterator(); it.hasNext(); ) {
+                String item = it.next();
+                if (used > 0 && used + need.get(item) > width) continue;
+                used += need.get(item);
+                packed.add(item);
+                it.remove();
+            }
+        }
+        return packed;
+    }
+
     /** Douban's real-time collection first; 360kan's slower rank only when Douban fails. */
     private void loadRank(RecyclerView view, String collection, int requestCategory, int actualCategory) {
         WordAdapter adapter = setupWords(view);
         var cache = getSharedPreferences("search_ranks", MODE_PRIVATE);
         String key = "rank" + actualCategory;
-        adapter.setItems(Word.objectFrom(cache.getString(key, "")).getData());
+        showRank(view, adapter, Word.objectFrom(cache.getString(key, "")).getData());
         rankPending++;
         Runnable fallback = () -> fetchRank(OkHttp.newCall("https://api.web.360kan.com/v1/rank?cat=" + requestCategory,
                 Map.of("Referer", "https://www.360kan.com/rank/general")), body -> HotRank.from360(body, actualCategory), view, key, null);
@@ -223,7 +297,7 @@ public class SearchActivity extends BaseActivity implements WordAdapter.OnClickL
                         if (destroyed) return;
                         // A diff from the cached words kept the list at its old height (Flexbox), hiding the
                         // first row when the new words need more rows; lay the new words out from scratch.
-                        setupWords(view, true).setItems(words);
+                        showRank(view, setupWords(view, true), words);
                         getSharedPreferences("search_ranks", MODE_PRIVATE).edit().putString(key, json).apply();
                         rankPending--;
                         updateRankStatus();

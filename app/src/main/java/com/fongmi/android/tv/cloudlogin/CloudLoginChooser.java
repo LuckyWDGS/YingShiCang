@@ -88,19 +88,38 @@ public final class CloudLoginChooser {
         @Override
         public void doFrame(long frameTimeNanos) {
             if (requests == 0 && SystemClock.uptimeMillis() > watchUntil) {
+                LoginWait.update(false);
                 watching = false;
                 existing.clear();
                 checked.clear();
                 return;
             }
             try {
-                for (View root : WindowInspector.getGlobalWindowViews()) if (!existing.contains(root)) check(root);
+                boolean dialog = false;
+                for (View root : WindowInspector.getGlobalWindowViews()) {
+                    if (existing.contains(root)) continue;
+                    check(root);
+                    dialog |= isSourceDialog(root);
+                }
+                LoginWait.update(dialog && requests > 0);
             } catch (RuntimeException ignored) {
                 // Never let a plugin dialog's unexpected structure affect playback.
             }
             Choreographer.getInstance().postFrameCallback(this);
         }
     };
+
+    /**
+     * A dialog opened while an address resolves: the source's drive chooser or its QR code. Activity
+     * windows, system windows and the app's untouchable notices are not it.
+     */
+    private static boolean isSourceDialog(View root) {
+        if (!root.isAttachedToWindow() || !root.isShown()) return false;
+        if (!(root.getLayoutParams() instanceof WindowManager.LayoutParams params)) return false;
+        return params.type != WindowManager.LayoutParams.TYPE_BASE_APPLICATION
+                && params.type < WindowManager.LayoutParams.FIRST_SYSTEM_WINDOW
+                && (params.flags & WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE) == 0;
+    }
 
     /** A new window: hide the plugin's chooser before its first draw, then show it restyled. */
     @RequiresApi(Build.VERSION_CODES.Q)

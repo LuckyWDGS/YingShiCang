@@ -4,6 +4,7 @@ import android.app.Application;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
+import android.os.SystemClock;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
@@ -168,6 +169,10 @@ public final class PluginNoticeCompatibility {
             }
         }
 
+        boolean isRepeating(Runnable callback) {
+            return callback != null && callback.getClass() == repeating;
+        }
+
         private boolean suppress(Runnable callback) {
             if (callback == null) return false;
             try {
@@ -199,6 +204,18 @@ public final class PluginNoticeCompatibility {
 
         @Override public void dispatchMessage(Message message) {
             if (!notices.suppress(message.getCallback())) original.dispatchMessage(message);
+        }
+
+        /**
+         * The repeating notice under the plugin's QR code reposts itself on a delay; it came back too
+         * often (user 2026-10-23), so its gap is doubled. The first show and other messages keep theirs.
+         */
+        @Override public boolean sendMessageAtTime(Message message, long uptimeMillis) {
+            if (notices.isRepeating(message.getCallback())) {
+                long delay = uptimeMillis - SystemClock.uptimeMillis();
+                if (delay > 0) uptimeMillis += delay;
+            }
+            return super.sendMessageAtTime(message, uptimeMillis);
         }
     }
 }

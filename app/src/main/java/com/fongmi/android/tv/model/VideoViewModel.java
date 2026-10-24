@@ -114,9 +114,11 @@ public class VideoViewModel extends SiteViewModel implements VodDataSource {
             if (token != (type == TaskType.PLAYBACK ? playbackGeneration : preloadGeneration)) return;
             output.setValue(value);
         });
+        // Waiting on the source's own QR/login dialog is the user scanning, not a slow line.
         requestTasks.execute(
                 type,
                 Constant.TIMEOUT_VOD,
+                com.fongmi.android.tv.cloudlogin.LoginWait::pausedMillis,
                 () -> new PlaybackResult<>(request, SiteApi.playerContent(request.getKey(), request.getFlag(), request.getId())),
                 publish,
                 error -> publish.accept(new PlaybackResult<>(request, handleError(error), error)));

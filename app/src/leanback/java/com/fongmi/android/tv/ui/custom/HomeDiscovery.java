@@ -5,9 +5,6 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.graphics.drawable.Drawable;
 import android.os.SystemClock;
-import android.text.SpannableString;
-import android.text.Spanned;
-import android.text.style.ImageSpan;
 import android.view.KeyEvent;
 import android.view.View;
 import android.widget.HorizontalScrollView;
@@ -98,30 +95,122 @@ public final class HomeDiscovery {
             Runnable action = continueAction;
             if (action != null && !busy) action.run();
         });
-        // Nine entries share one row; reserve the short Home label's spare width
-        // for the longest ranking title and its inline filter indicator.
-        LinearLayout.LayoutParams homeParams = (LinearLayout.LayoutParams) binding.home.getLayoutParams();
-        homeParams.weight = 0.8f;
-        binding.home.setLayoutParams(homeParams);
+        // Nine 20sp entries share one row (user 2026-10-23: 16sp was small on a TV). Each keeps
+        // its own label width and the spare width is spread evenly; equal shares clipped 4-char
+        // labels with the filter indicator. The row's 24dp gutter plus 6dp padding lines the
+        // labels up with the 32dp card gutter.
         tabs.add(binding.home);
         binding.home.setOnClickListener(v -> select(0));
         for (int i = 1; i < names.length; i++) {
             int index = i;
             TextView view = button(names[i]);
-            view.setTextSize(16);
+            view.setTextSize(TAB_TEXT_SP);
             view.setSingleLine(true);
             view.setBackgroundResource(R.drawable.home_category);
             view.setTextColor(androidx.core.content.ContextCompat.getColorStateList(activity, R.color.home_category_text));
-            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, ResUtil.dp2px(40), names[i].length() >= 5 ? 1.2f : 1f);
-            params.setMarginEnd(i == names.length - 1 ? 0 : ResUtil.dp2px(8));
-            view.setLayoutParams(params);
-            int padding = ResUtil.dp2px(names[i].length() >= 5 ? 2 : 8);
-            view.setPadding(padding, 0, padding, 0);
+            view.setLayoutParams(new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, ResUtil.dp2px(44), 1f));
+            view.setPadding(ResUtil.dp2px(6), 0, ResUtil.dp2px(6), 0);
+            // The filter indicator is a fixed end drawable on every filterable tab, hidden unless the
+            // tab is open: as an inline text span it changed the tab's width each time it appeared or
+            // flipped, so the row jumped on OK and a full row clipped it (user 2026-10-24).
+            if (canFilter(index)) {
+                view.setCompoundDrawablePadding(ResUtil.dp2px(3));
+                view.setCompoundDrawableTintList(androidx.core.content.ContextCompat.getColorStateList(activity, R.color.home_category_text));
+            }
             tabs.add(view);
             binding.categories.addView(view);
             view.setOnClickListener(v -> select(index));
         }
+        binding.categories.addOnLayoutChangeListener((v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
+            if (right - left != oldRight - oldLeft) v.post(this::fitTabs);
+        });
+        LinearLayout.LayoutParams homeParams = (LinearLayout.LayoutParams) binding.home.getLayoutParams();
+        homeParams.weight = 1f;
+        binding.home.setLayoutParams(homeParams);
+        // Remote focus moving along the row opens that tab, without pressing OK (user 2026-10-23).
+        // Only tab-to-tab moves count. Focus arriving from elsewhere (cards, shortcuts, title) lands
+        // on the open tab instead of the nearest one, so Left/Right steps from what is showing
+        // (History parks it on 主页). OK on the open tab still toggles filters.
+        binding.categories.getViewTreeObserver().addOnGlobalFocusChangeListener((oldFocus, newFocus) -> {
+            binding.categories.removeCallbacks(focusSelect);
+            binding.categories.removeCallbacks(optionSelect);
+            if (newFocus == null || oldFocus == null || newFocus.isInTouchMode()) return;
+            if (!tabs.contains(newFocus)) { followOptionFocus(oldFocus, newFocus); return; }
+            if (!tabs.contains(oldFocus)) {
+                View current = tabs.get(isHistory() ? 0 : active);
+                if (newFocus != current) binding.categories.post(() -> { if (newFocus.isFocused()) current.requestFocus(); });
+            } else if (tabs.indexOf(newFocus) != active) {
+                binding.categories.postDelayed(focusSelect, FOCUS_SELECT_MS);
+            }
+        });
         select(0);
+    }
+
+    private static final int FILTER_INDICATOR_DP = 10;
+    private static final float TAB_TEXT_SP = 20;
+
+    private static boolean canFilter(int index) {
+        return index == AI_DRAMA || !DiscoveryCatalog.groups(index).isEmpty();
+    }
+
+    /**
+     * Nine tabs must fit one row whatever the device font: a TV with wider system glyphs or a larger
+     * font scale overflowed the 20sp row, and LinearLayout then squeezed the tabs and clipped the
+     * indicator. Shrink every label by the same factor only as far as needed.
+     */
+    private void fitTabs() {
+        int available = binding.categories.getWidth() - binding.categories.getPaddingLeft() - binding.categories.getPaddingRight();
+        if (available <= 0) return;
+        float base = android.util.TypedValue.applyDimension(android.util.TypedValue.COMPLEX_UNIT_SP, TAB_TEXT_SP,
+                activity.getResources().getDisplayMetrics());
+        android.text.TextPaint paint = new android.text.TextPaint(tabs.get(0).getPaint());
+        paint.setTextSize(base);
+        float text = 0, fixed = 0;
+        for (int i = 0; i < tabs.size(); i++) {
+            TextView tab = tabs.get(i);
+            text += paint.measureText(names[i]);
+            fixed += tab.getPaddingLeft() + tab.getPaddingRight();
+            if (canFilter(i)) fixed += ResUtil.dp2px(FILTER_INDICATOR_DP) + tab.getCompoundDrawablePadding();
+        }
+        // A little slack for glyph rounding, so the row is never exactly full.
+        float scale = Math.min(1f, (available - fixed - ResUtil.dp2px(8)) / text);
+        float size = base * Math.max(.75f, scale);
+        for (TextView tab : tabs) if (Math.abs(tab.getTextSize() - size) > .5f) tab.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, size);
+    }
+    // Skips tabs passed over while the remote key is held, so only the resting tab loads.
+    private static final long FOCUS_SELECT_MS = 250;
+    private final Runnable focusSelect = this::selectFocusedTab;
+
+    private final Runnable optionSelect = this::selectFocusedOption;
+
+    private List<TextView> optionRow(View view) {
+        for (List<TextView> row : options.values()) if (row.contains(view)) return row;
+        return null;
+    }
+
+    /**
+     * Filter options follow focus like the tabs (user 2026-10-23): Left/Right within a row applies
+     * the option after the same pause; moving into a row from another row or the tab lands on that
+     * row's selected option, so passing through never changes a filter.
+     */
+    private void followOptionFocus(View oldFocus, View newFocus) {
+        List<TextView> row = optionRow(newFocus);
+        if (row == null || newFocus.isSelected()) return;
+        if (row.contains(oldFocus)) { binding.categories.postDelayed(optionSelect, FOCUS_SELECT_MS); return; }
+        for (TextView view : row) if (view.isSelected()) {
+            binding.categories.post(() -> { if (newFocus.isFocused()) view.requestFocus(); });
+            return;
+        }
+    }
+
+    private void selectFocusedOption() {
+        View focused = binding.filterPanel.findFocus();
+        if (optionRow(focused) != null && !focused.isSelected() && activeScreen) focused.performClick();
+    }
+
+    private void selectFocusedTab() {
+        int index = tabs.indexOf(binding.categories.findFocus());
+        if (index >= 0 && index != active && activeScreen) select(index);
     }
 
     public boolean isHistory() { return active == HISTORY; }
@@ -253,28 +342,24 @@ public final class HomeDiscovery {
         boolean expanded = binding.filterPanel.getVisibility() == View.VISIBLE;
         for (int i = 0; i < tabs.size(); i++) {
             TextView tab = tabs.get(i);
-            boolean filterable = i == active && (i == AI_DRAMA || !DiscoveryCatalog.groups(i).isEmpty());
+            boolean filterable = i == active && canFilter(i);
             tab.setSelected(i == active);
             tab.setSingleLine(true);
             tab.setMaxLines(1);
             tab.setIncludeFontPadding(true);
             tab.setLineSpacing(0, 1);
             tab.setPadding(tab.getPaddingLeft(), tab.getPaddingTop(), tab.getPaddingRight(), 0);
-            if (filterable) {
-                String hint = expanded ? "点击收起筛选" : "点击展开筛选";
-                SpannableString label = new SpannableString(names[i] + "\u2009\uFFFC");
+            tab.setText(names[i]);
+            if (canFilter(i)) {
+                // Same size open or closed, up or down; only its visibility and direction change.
                 Drawable indicator = androidx.core.content.ContextCompat.getDrawable(activity,
-                        expanded ? R.drawable.home_filter_chevron_up : R.drawable.home_filter_chevron_down).mutate();
-                indicator.setTint(tab.getCurrentTextColor());
-                int size = ResUtil.dp2px(12);
+                        filterable && expanded ? R.drawable.home_filter_chevron_up : R.drawable.home_filter_chevron_down).mutate();
+                int size = ResUtil.dp2px(FILTER_INDICATOR_DP);
                 indicator.setBounds(0, 0, size, size);
-                label.setSpan(new ImageSpan(indicator, ImageSpan.ALIGN_BASELINE), label.length() - 1, label.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-                tab.setText(label);
-                tab.setContentDescription(names[i] + "，" + hint);
-            } else {
-                tab.setText(names[i]);
-                tab.setContentDescription(names[i]);
+                indicator.setAlpha(filterable ? 255 : 0);
+                tab.setCompoundDrawablesRelative(null, null, indicator, null);
             }
+            tab.setContentDescription(filterable ? names[i] + "，" + (expanded ? "点击收起筛选" : "点击展开筛选") : names[i]);
         }
     }
 
@@ -388,7 +473,10 @@ public final class HomeDiscovery {
                     // Route the first row explicitly back to the category above the panel.
                     view.setOnKeyListener((v, key, event) -> {
                         if (key != KeyEvent.KEYCODE_DPAD_UP) return false;
-                        if (event.getAction() == KeyEvent.ACTION_DOWN) focusCurrentTab();
+                        if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                            focusCurrentTab();
+                            v.playSoundEffect(android.view.SoundEffectConstants.NAVIGATION_UP);
+                        }
                         return true;
                     });
                 }
