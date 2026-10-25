@@ -51,6 +51,21 @@ public class SearchActivity extends BaseActivity implements WordAdapter.OnClickL
     private ActivitySearchBinding mBinding;
     private RecordAdapter mRecordAdapter;
     private WordAdapter mWordAdapter;
+    // Typed suggestions also list titles from the 短剧漫剧 (AiDj) source (user 2026-10-24: iQIYI's
+    // suggestions only cover TV, film and variety). Its plugin search runs beside the iQIYI request.
+    private static final long DRAMA_DEBOUNCE_MS = 400;
+    private static final int DRAMA_WORDS = 8, DRAMA_AFTER = 6;
+    private final java.util.concurrent.ExecutorService dramaExecutor = java.util.concurrent.Executors.newSingleThreadExecutor(
+            com.fongmi.android.tv.utils.BackgroundThreads.factory("drama-suggest"));
+    private final Map<String, List<Word.Data>> dramaCache = new LinkedHashMap<>(16, .75f, true) {
+        @Override protected boolean removeEldestEntry(Map.Entry<String, List<Word.Data>> eldest) { return size() > 16; }
+    };
+    private final Runnable dramaLookup = this::lookupDrama;
+    private com.fongmi.android.tv.bean.Site dramaSite;
+    private com.fongmi.android.tv.api.SiteApi.SearchTask dramaTask;
+    private java.util.concurrent.Future<?> dramaFuture;
+    private String wordsFor = "", dramaFor = "";
+    private List<Word.Data> baseWords = List.of(), dramaWords = List.of();
     private final List<Call> rankCalls = new ArrayList<>();
     private final Handler handler = new Handler(Looper.getMainLooper());
     private SearchSuggestionController<Word.Data> suggestions;
@@ -91,6 +106,9 @@ public class SearchActivity extends BaseActivity implements WordAdapter.OnClickL
             if (width > 0 && right - left != oldRight - oldLeft) v.post(() -> mRecordAdapter.setArranger(items -> packRows(items, width)));
         });
         com.fongmi.android.tv.api.SiteApi.prewarmSearch(com.fongmi.android.tv.api.config.VodConfig.get().getSites());
+        dramaSite = com.fongmi.android.tv.discovery.AiDramaRunner.site(com.fongmi.android.tv.api.config.VodConfig.get());
+        com.fongmi.android.tv.api.SiteApi.prewarm(dramaSite);
+        com.fongmi.android.tv.discovery.ShortDramaTitles.prepare(dramaSite);
         loadRank(mBinding.tvRecycler, "tv_real_time_hotest", 3, 2);
         loadRank(mBinding.movieRecycler, "movie_real_time_hotest", 2, 1);
         loadRank(mBinding.varietyRecycler, "show_hot", 4, 3);
@@ -169,6 +187,67 @@ public class SearchActivity extends BaseActivity implements WordAdapter.OnClickL
         if (hot) showHotWords();
         else setStatus(""); // Keep current words available while the new query is pending.
         suggestions.update(query);
+        requestDrama(query);
+    }
+
+    /**
+     * Letters (pinyin initials from the TV keyboard) match the local title index at once. Chinese text
+     * also asks the source itself, which knows every title, and its answers join the local ones.
+     */
+    private void requestDrama(String query) {
+        cancelDrama();
+        if (query.isEmpty() || dramaSite == null) return;
+        boolean chinese = query.codePoints().anyMatch(c -> Character.UnicodeScript.of(c) == Character.UnicodeScript.HAN);
+        List<Word.Data> cached = dramaCache.get(query);
+        showDrama(query, withLocal(query, cached == null ? List.of() : cached));
+        if (chinese && cached == null) handler.postDelayed(dramaLookup, DRAMA_DEBOUNCE_MS);
+    }
+
+    private List<Word.Data> withLocal(String query, List<Word.Data> found) {
+        List<Word.Data> words = new ArrayList<>(found);
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        for (Word.Data word : found) seen.add(word.getTitle());
+        for (String title : com.fongmi.android.tv.discovery.ShortDramaTitles.match(query, DRAMA_WORDS))
+            if (words.size() < DRAMA_WORDS && seen.add(title)) words.add(Word.Data.of(title));
+        return words;
+    }
+
+    private void lookupDrama() {
+        String query = inputQuery;
+        if (destroyed || !resumed || query == null || query.isEmpty() || dramaSite == null) return;
+        var task = com.fongmi.android.tv.api.SiteApi.searchTask(dramaSite, query, false, "1");
+        dramaTask = task;
+        dramaFuture = dramaExecutor.submit(() -> {
+            List<Word.Data> words = new ArrayList<>();
+            try (task) {
+                java.util.Set<String> seen = new java.util.HashSet<>();
+                for (com.fongmi.android.tv.bean.Vod vod : task.call().getList()) {
+                    String name = vod == null ? "" : vod.getName().trim();
+                    if (!name.isEmpty() && seen.add(name)) words.add(Word.Data.of(name));
+                    if (words.size() == DRAMA_WORDS) break;
+                }
+            } catch (Exception ignored) {
+                return; // Failures leave the iQIYI words alone; the source logs its own error.
+            }
+            App.post(() -> {
+                if (destroyed || !query.equals(inputQuery)) return;
+                dramaCache.put(query, words);
+                showDrama(query, withLocal(query, words));
+            });
+        });
+    }
+
+    private void showDrama(String query, List<Word.Data> words) {
+        dramaFor = query;
+        dramaWords = words;
+        renderWords(query);
+    }
+
+    private void cancelDrama() {
+        handler.removeCallbacks(dramaLookup);
+        if (dramaTask != null) dramaTask.close();
+        if (dramaFuture != null) dramaFuture.cancel(true);
+        dramaTask = null; dramaFuture = null;
     }
 
     private void showHotWords() {
@@ -182,6 +261,22 @@ public class SearchActivity extends BaseActivity implements WordAdapter.OnClickL
     private void showSuggestions(String query, List<Word.Data> words) {
         if (destroyed || !resumed || !query.equals(keyword())) return;
         if (words.isEmpty()) { if (query.isEmpty()) showHotWords(); return; }
+        wordsFor = query;
+        baseWords = words;
+        renderWords(query);
+    }
+
+    /** iQIYI's first words, then the short-drama titles, then the rest; either part may be missing. */
+    private void renderWords(String query) {
+        if (destroyed || !resumed || !query.equals(keyword())) return;
+        List<Word.Data> base = query.equals(wordsFor) ? baseWords : List.of();
+        List<Word.Data> drama = query.equals(dramaFor) ? dramaWords : List.of();
+        if (base.isEmpty() && drama.isEmpty()) return;
+        List<Word.Data> words = new ArrayList<>();
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        for (Word.Data word : base.subList(0, Math.min(DRAMA_AFTER, base.size()))) if (seen.add(word.getTitle())) words.add(word);
+        for (Word.Data word : drama) if (seen.add(word.getTitle())) words.add(word);
+        for (Word.Data word : base) if (seen.add(word.getTitle())) words.add(word);
         long version = suggestionUiVersion;
         // Diff directly into the visible list; never blank it between typed characters.
         mWordAdapter.setItems(words, () -> {
@@ -360,9 +455,11 @@ public class SearchActivity extends BaseActivity implements WordAdapter.OnClickL
         super.onResume();
         resumed = true;
         if (suggestions != null) suggestions.resume(keyword());
+        if (inputQuery != null) requestDrama(inputQuery);
     }
     @Override protected void onPause() {
         resumed = false;
+        cancelDrama();
         suggestionUiVersion++;
         if (suggestions != null) suggestions.suspend();
         super.onPause();
@@ -374,6 +471,8 @@ public class SearchActivity extends BaseActivity implements WordAdapter.OnClickL
     @Override protected void onDestroy() {
         destroyed = true;
         if (suggestions != null) suggestions.close();
+        cancelDrama();
+        dramaExecutor.shutdownNow();
         handler.removeCallbacksAndMessages(null);
         for (Call call : rankCalls) call.cancel();
         mBinding.mic.destroy();

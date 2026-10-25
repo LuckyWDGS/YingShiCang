@@ -149,14 +149,18 @@ public class SiteApi {
         long revision = VodConfig.getDiscoveryRevision();
         if (sites.isEmpty() || warmedRevision == revision) return;
         warmedRevision = revision;
-        for (Site site : sites) {
-            if (!site.isSearchable() || !isSpider(site) || site.cachedSpider() != null) continue;
-            SEARCH_WARMUP.execute(() -> {
-                if (revision != VodConfig.getDiscoveryRevision() || site.cachedSpider() != null) return;
-                try { withPermit(CRAWLER_INIT_GATE, site::spider); }
-                catch (Throwable ignored) { /* The search reports its own failure. */ }
-            });
-        }
+        for (Site site : sites) if (site.isSearchable()) prewarm(site);
+    }
+
+    /** Starts one plugin in the background unless it is already running. */
+    public static void prewarm(Site site) {
+        long revision = VodConfig.getDiscoveryRevision();
+        if (site == null || !isSpider(site) || site.cachedSpider() != null) return;
+        SEARCH_WARMUP.execute(() -> {
+            if (revision != VodConfig.getDiscoveryRevision() || site.cachedSpider() != null) return;
+            try { withPermit(CRAWLER_INIT_GATE, site::spider); }
+            catch (Throwable ignored) { /* The search reports its own failure. */ }
+        });
     }
 
     private static Spider searchSpider(Site site, SearchRequestScope scope) throws Exception {

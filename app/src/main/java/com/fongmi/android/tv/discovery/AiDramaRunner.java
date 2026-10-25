@@ -168,8 +168,7 @@ public final class AiDramaRunner {
 
     public AiDramaRunner(OkHttpClient client, MetadataCache cache, String savedState) {
         this.client = client; this.cache = cache; this.savedState = savedState;
-        site = config.getSites().stream().filter(candidate -> candidate.getType() == 3
-                && !candidate.getKey().isEmpty() && supportedApi(candidate.getApi())).findFirst().orElse(null);
+        site = site(config);
         signature = site == null ? "" : signature(site);
         // Successful metadata is enough for UI restoration; spider initialization stays off this path.
         Restored restored = site == null ? null : cache.restore(revision, signature, savedState);
@@ -180,6 +179,12 @@ public final class AiDramaRunner {
         return new ThreadPoolExecutor(threads, threads, 0, TimeUnit.SECONDS, new ArrayBlockingQueue<>(queue),
                 BackgroundThreads.factory(name), new ThreadPoolExecutor.AbortPolicy());
     }
+    /** The configured 短剧漫剧 (AiDj) site, or null. */
+    public static Site site(VodConfig config) {
+        return config.getSites().stream().filter(candidate -> candidate.getType() == 3
+                && !candidate.getKey().isEmpty() && supportedApi(candidate.getApi())).findFirst().orElse(null);
+    }
+
     static boolean supportedApi(String api) {
         return "csp_AiDj".equals(api) || "csp_AiDjGuard".equals(api);
     }
