@@ -105,10 +105,7 @@ public class SearchActivity extends BaseActivity implements WordAdapter.OnClickL
             int width = right - left - v.getPaddingLeft() - v.getPaddingRight();
             if (width > 0 && right - left != oldRight - oldLeft) v.post(() -> mRecordAdapter.setArranger(items -> packRows(items, width)));
         });
-        com.fongmi.android.tv.api.SiteApi.prewarmSearch(com.fongmi.android.tv.api.config.VodConfig.get().getSites());
-        dramaSite = com.fongmi.android.tv.discovery.AiDramaRunner.site(com.fongmi.android.tv.api.config.VodConfig.get());
-        com.fongmi.android.tv.api.SiteApi.prewarm(dramaSite);
-        com.fongmi.android.tv.discovery.ShortDramaTitles.prepare(dramaSite);
+        warmSources();
         loadRank(mBinding.tvRecycler, "tv_real_time_hotest", 3, 2);
         loadRank(mBinding.movieRecycler, "movie_real_time_hotest", 2, 1);
         loadRank(mBinding.varietyRecycler, "show_hot", 4, 3);
@@ -194,8 +191,24 @@ public class SearchActivity extends BaseActivity implements WordAdapter.OnClickL
      * Letters (pinyin initials from the TV keyboard) match the local title index at once. Chinese text
      * also asks the source itself, which knows every title, and its answers join the local ones.
      */
+    /**
+     * Starts the 短剧漫剧 plugin first (its title index waits for it), then the search plugins. Opened
+     * right after launch the configuration may still be loading with no sites yet, so typing and
+     * resuming try again until it is there.
+     */
+    private void warmSources() {
+        var config = com.fongmi.android.tv.api.config.VodConfig.get();
+        if (dramaSite == null || config.getSite(dramaSite.getKey()) != dramaSite) {
+            dramaSite = com.fongmi.android.tv.discovery.AiDramaRunner.site(config);
+            com.fongmi.android.tv.api.SiteApi.prewarm(dramaSite);
+            com.fongmi.android.tv.discovery.ShortDramaTitles.prepare(dramaSite);
+        }
+        com.fongmi.android.tv.api.SiteApi.prewarmSearch(config.getSites());
+    }
+
     private void requestDrama(String query) {
         cancelDrama();
+        warmSources();
         if (query.isEmpty() || dramaSite == null) return;
         boolean chinese = query.codePoints().anyMatch(c -> Character.UnicodeScript.of(c) == Character.UnicodeScript.HAN);
         List<Word.Data> cached = dramaCache.get(query);

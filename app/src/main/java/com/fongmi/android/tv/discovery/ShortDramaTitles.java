@@ -33,10 +33,11 @@ public final class ShortDramaTitles {
 
     private static final String PREF = "short_drama_titles";
     private static final int PAGES = 5, MAX_TITLES = 600;
-    private static final long REFRESH_MS = 6 * 60 * 60 * 1000L;
+    private static final long REFRESH_MS = 6 * 60 * 60 * 1000L, RETRY_MS = 8_000;
+    private static final int ATTEMPTS = 3;
     private static final ExecutorService WORKER = Executors.newSingleThreadExecutor(BackgroundThreads.factory("short-drama-titles"));
 
-    private record Entry(String title, String initials, String pinyin) {}
+    private record Entry(String title, String[] initials, String pinyin) {}
 
     private static volatile List<Entry> index;
     private static volatile long loadedAt;
@@ -56,15 +57,27 @@ public final class ShortDramaTitles {
             WORKER.execute(() -> {
                 try {
                     if (index == null) index = build(saved());
-                    List<String> titles = fetch(site);
-                    if (!titles.isEmpty()) {
-                        index = build(titles);
-                        Prefers.put(PREF, App.gson().toJson(titles));
-                        loadedAt = System.currentTimeMillis();
-                        loadedRevision = revision;
+                    // The plugin may still be starting behind the search warm-up; try a few times.
+                    for (int attempt = 1; attempt <= ATTEMPTS && revision == VodConfig.getDiscoveryRevision(); attempt++) {
+                        long start = android.os.SystemClock.elapsedRealtime();
+                        try {
+                            List<String> titles = fetch(site);
+                            log("count=" + titles.size() + " ms=" + (android.os.SystemClock.elapsedRealtime() - start) + " attempt=" + attempt);
+                            if (titles.isEmpty()) break;
+                            index = build(titles);
+                            Prefers.put(PREF, App.gson().toJson(titles));
+                            loadedAt = System.currentTimeMillis();
+                            loadedRevision = revision;
+                            break;
+                        } catch (Throwable error) {
+                            Throwable root = error;
+                            while (root.getCause() != null && root.getCause() != root) root = root.getCause();
+                            log("failed=" + error.getClass().getSimpleName() + "/" + root.getClass().getSimpleName() + " ms=" + (android.os.SystemClock.elapsedRealtime() - start) + " attempt=" + attempt);
+                            Thread.sleep(RETRY_MS);
+                        }
                     }
-                } catch (Throwable ignored) {
-                    // Keep the saved index; the next search page opening retries.
+                } catch (InterruptedException ignored) {
+                    Thread.currentThread().interrupt();
                 } finally {
                     synchronized (ShortDramaTitles.class) { loading = false; }
                 }
@@ -82,7 +95,7 @@ public final class ShortDramaTitles {
         for (Entry entry : entries) {
             int at;
             if (latin) {
-                int initials = position(entry.initials, q), pinyin = position(entry.pinyin, q);
+                int initials = TitleInitials.indexOf(entry.initials, q), pinyin = position(entry.pinyin, q);
                 at = initials < 0 ? pinyin : pinyin < 0 ? initials : Math.min(initials, pinyin);
             } else at = entry.title.toLowerCase(Locale.ROOT).indexOf(q);
             if (at == 0) first.add(entry.title);
@@ -91,6 +104,10 @@ public final class ShortDramaTitles {
         }
         first.addAll(rest);
         return first.subList(0, Math.min(limit, first.size()));
+    }
+
+    private static void log(String detail) {
+        com.fongmi.android.tv.diagnostics.DiagnosticLog.write(App.get(), "short_drama_titles", detail);
     }
 
     private static int position(String text, String query) {
@@ -129,20 +146,12 @@ public final class ShortDramaTitles {
             try { latin = android.icu.text.Transliterator.getInstance("Han-Latin; Latin-ASCII; Lower"); }
             catch (Exception ignored) { /* Chinese text matching still works. */ }
         }
+        android.icu.text.Transliterator reader = latin;
+        java.util.function.Function<String, String> reading = han -> reader == null ? "" : reader.transliterate(han).replaceAll("[^a-z]", "");
         List<Entry> entries = new ArrayList<>(titles.size());
         for (String title : titles) {
-            String initials = "", pinyin = "";
-            if (latin != null) {
-                StringBuilder first = new StringBuilder(), full = new StringBuilder();
-                for (String part : latin.transliterate(title).split("[^a-z0-9]+")) {
-                    if (part.isEmpty()) continue;
-                    first.append(Character.isDigit(part.charAt(0)) ? part : part.substring(0, 1));
-                    full.append(part);
-                }
-                initials = first.toString();
-                pinyin = full.toString();
-            }
-            entries.add(new Entry(title, initials, pinyin));
+            String pinyin = latin == null ? "" : latin.transliterate(title).replaceAll("[^a-z0-9]", "");
+            entries.add(new Entry(title, TitleInitials.slots(title, reading), pinyin));
         }
         return entries;
     }
