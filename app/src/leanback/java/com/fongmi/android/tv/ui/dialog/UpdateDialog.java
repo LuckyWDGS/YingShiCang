@@ -320,9 +320,12 @@ public class UpdateDialog extends BaseAlertDialog {
         boolean manual = phase == Phase.MANUAL;
         // Progress takes the buttons' slot while busy (Back cancels), so the window never resizes.
         setVisible(binding.transfer, busy);
-        setVisible(binding.buttons, !busy);
-        // Not focused by default: a stray remote OK must not cancel a running download.
         setVisible(binding.transferCancel, busy && !mandatory);
+        // Not focused by default: a stray remote OK must not cancel a running download. Hiding the focused
+        // 下载并安装 handed focus to the only focusable left, 取消, so a double OK cancelled the download it
+        // had just started (LDPlayer 2026-10-25); the status text, which does nothing on OK, takes it instead.
+        if (busy && binding.buttons.hasFocus()) binding.transferText.requestFocus();
+        setVisible(binding.buttons, !busy);
         boolean message = !busy && phase != Phase.AVAILABLE && status != null && !status.isEmpty();
         if (setVisible(binding.status, message)) binding.getRoot().post(this::fitNotes);
         binding.status.setText(message ? status : null);

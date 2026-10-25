@@ -30,6 +30,9 @@ import okhttp3.Response;
 /** Publisher Releases and explicit custom manifests share the verified installation path. */
 public class Updater implements UpdateListener {
     private static final AtomicReference<Updater> ACTIVE = new AtomicReference<>();
+    // A mirror copy slower than this after the first seconds gives way to GitHub (user 2026-10-25: a TV on a
+    // poor route to the mirror crawled at 68 KB/s and never fell back, since the mirror kept sending).
+    static final long MIRROR_PROBE_MS = 20_000, MIRROR_MIN_BYTES_PER_SECOND = 128 * 1024;
     private final AtomicBoolean downloading = new AtomicBoolean();
     private boolean github, waitingPermission, installerOpened, checkFailed;
     // Read on the check thread; a manual request may adopt a running launch check.
@@ -354,20 +357,27 @@ public class Updater implements UpdateListener {
             file = File.createTempFile("ysc-update-" + manifest.versionCode + "-", ".apk", directory);
             transfer = file;
             String copy = github ? UpdateMirror.assetUrl(manifest.url) : null;
+            boolean slowMirror = false;
             if (copy != null) try {
-                fetchPackage(copy, file);
+                fetchPackage(copy, file, Source.MIRROR);
             } catch (Exception error) {
                 if (canceled) throw error;
-                // Unreachable, partial or mismatching mirror copy: GitHub's own file is the fallback.
-                DiagnosticLog.write(App.get(), "update_mirror_failed", "download " + NetTrace.reason(error));
-                App.post(() -> {
-                    if (host() == null) return;
-                    if (dialog != null) dialog.setProgress(0, 0, manifest.size);
-                    shade.progress(0, 0, manifest.size);
-                });
+                // Unreachable, partial, mismatching or crawling mirror copy: GitHub's own file is the fallback.
+                slowMirror = error instanceof MirrorTooSlow;
+                DiagnosticLog.write(App.get(), "update_mirror_failed", "download " + (error instanceof MirrorTooSlow slow
+                        ? "slow kbps=" + slow.kbps : NetTrace.reason(error)));
+                resetProgress();
                 copy = null;
             }
-            if (copy == null) fetchPackage(manifest.url, file);
+            if (copy == null) try {
+                fetchPackage(manifest.url, file, github ? Source.GITHUB : Source.CUSTOM);
+            } catch (Exception error) {
+                // A slow mirror still beats an unreachable GitHub (mainland networks): finish it at its own pace.
+                if (canceled || !slowMirror) throw error;
+                DiagnosticLog.write(App.get(), "update_github_failed", "after_slow_mirror " + NetTrace.reason(error));
+                resetProgress();
+                fetchPackage(UpdateMirror.assetUrl(manifest.url), file, Source.MIRROR_UNGUARDED);
+            }
             File verified = file;
             App.post(() -> {
                 shade.cancel();
@@ -390,10 +400,43 @@ public class Updater implements UpdateListener {
         }
     }
 
+    private enum Source {
+        MIRROR("mirror"), MIRROR_UNGUARDED("mirror"), GITHUB("github"), CUSTOM("custom");
+
+        final String label;
+
+        Source(String label) {
+            this.label = label;
+        }
+    }
+
+    private void resetProgress() {
+        App.post(() -> {
+            if (host() == null) return;
+            if (dialog != null) dialog.setProgress(0, 0, manifest.size);
+            shade.progress(0, 0, manifest.size);
+        });
+    }
+
+    private static final class MirrorTooSlow extends IOException {
+        final long kbps;
+
+        MirrorTooSlow(long kbps) {
+            super("更新镜像速度过慢");
+            this.kbps = kbps;
+        }
+    }
+
+    /** True when a mirror download has run long enough to judge and averages below the GitHub fallback speed. */
+    static boolean mirrorTooSlow(long elapsedMs, long bytes) {
+        return elapsedMs >= MIRROR_PROBE_MS && bytes * 1000 < MIRROR_MIN_BYTES_PER_SECOND * elapsedMs;
+    }
+
     /** Downloads into file (replacing earlier bytes) and verifies it against the manifest. */
-    private void fetchPackage(String url, File file) throws Exception {
+    private void fetchPackage(String url, File file, Source source) throws Exception {
         long total = 0;
         int progress = -1;
+        long start = android.os.SystemClock.elapsedRealtime();
         try (Response response = UpdateHttp.download(url, github, this::track)) {
             if (!response.isSuccessful() || response.body() == null) throw new IOException("下载失败（HTTP " + response.code() + "）");
             long declared = response.body().contentLength();
@@ -404,6 +447,8 @@ public class Updater implements UpdateListener {
                 while ((n = in.read(bytes)) != -1) {
                     if (canceled) throw new InterruptedIOException("已取消");
                     total += n;
+                    long elapsed = android.os.SystemClock.elapsedRealtime() - start;
+                    if (source == Source.MIRROR && mirrorTooSlow(elapsed, total)) throw new MirrorTooSlow(kbps(total, elapsed));
                     if (total > manifest.size) throw new IOException("安装包超过发布大小");
                     out.write(bytes, 0, n);
                     int next = (int) (total * 100 / manifest.size);
@@ -420,6 +465,9 @@ public class Updater implements UpdateListener {
                 out.getFD().sync();
             }
         }
+        long ms = android.os.SystemClock.elapsedRealtime() - start;
+        DiagnosticLog.write(App.get(), "update_download", "source=" + source.label
+                + " bytes=" + total + " ms=" + ms + " kbps=" + kbps(total, ms));
         if (canceled) throw new InterruptedIOException("已取消");
         App.post(() -> {
             if (host() == null) return;
@@ -428,6 +476,10 @@ public class Updater implements UpdateListener {
         });
         ApkVerifier.verify(file, manifest);
         if (canceled) throw new InterruptedIOException("已取消");
+    }
+
+    private static long kbps(long bytes, long ms) {
+        return ms <= 0 ? 0 : bytes * 1000 / 1024 / ms;
     }
 
     private void install(FragmentActivity activity) {

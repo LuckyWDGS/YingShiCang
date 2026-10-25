@@ -329,7 +329,7 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
         // The bar gets out of the way once the next or previous episode is chosen (user 2026-10-24).
         mBinding.control.action.next.setOnClickListener(view -> { hideControl(); checkNext(); });
         mBinding.control.action.prev.setOnClickListener(view -> { hideControl(); checkPrev(); });
-        linkStripToTimeBar();
+        keepDownInStrip();
         mBinding.control.action.scale.setOnClickListener(view -> onScale());
         mBinding.control.action.speed.setOnClickListener(view -> onSpeed());
         mBinding.control.action.reset.setOnClickListener(view -> onReset());
@@ -1073,11 +1073,18 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
      * the bar starts right of the position text (user 2026-10-24: the bar could not be reached).
      * 速度/片头/片尾 keep Up/Down for their own values.
      */
-    private void linkStripToTimeBar() {
+    /**
+     * Down on the action strip goes nowhere (user 2026-10-25: Left/Right already seek while the bar is hidden,
+     * so the remote never needs the time bar). Each control names itself as its Down neighbour; 速度/片头/片尾
+     * still read Up/Down for their values first.
+     */
+    private void keepDownInStrip() {
         ViewGroup row = (ViewGroup) mBinding.control.action.replay.getParent();
-        int bar = androidx.media3.ui.R.id.exo_progress;
-        for (int i = 0; i < row.getChildCount(); i++) row.getChildAt(i).setNextFocusDownId(bar);
-        mBinding.control.action.more.setNextFocusDownId(bar);
+        for (int i = 0; i < row.getChildCount(); i++) {
+            View child = row.getChildAt(i);
+            if (child.getId() != View.NO_ID) child.setNextFocusDownId(child.getId());
+        }
+        mBinding.control.action.more.setNextFocusDownId(mBinding.control.action.more.getId());
     }
 
     /** Side padding 12dp, shrunk 1dp at a time down to 4dp until the visible controls fit the strip's width. */
@@ -1748,17 +1755,29 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
         player().setSpeed(SpeedSetting.getPlayback());
     }
 
-    // With the controls hidden Up/Down open them on the time bar, playback continuing (user 2026-10-24:
-    // volume belongs to the TV remote); a vertical swipe on touch screens still changes the volume.
-    // They always land on the time bar, not on the control used last (user 2026-10-24: it opened on 下集).
+    // With the controls hidden Up/Down open them, playback continuing (user 2026-10-24: volume belongs to the
+    // TV remote); a vertical swipe on touch screens still changes the volume. They land on 下集 in the action
+    // strip, not on the time bar (user 2026-10-25: Left/Right already seek while the bar is hidden); without
+    // a next episode, on the first visible strip control. OK-pause still opens on the time bar, whose OK plays.
     @Override
     public void onKeyUp() {
-        showControl(timeBar());
+        showControl(stripFocus());
     }
 
     @Override
     public void onKeyDown() {
-        showControl(timeBar());
+        showControl(stripFocus());
+    }
+
+    private View stripFocus() {
+        View next = mBinding.control.action.next;
+        if (next.getVisibility() == View.VISIBLE && next.isEnabled()) return next;
+        ViewGroup row = (ViewGroup) mBinding.control.action.replay.getParent();
+        for (int i = 0; i < row.getChildCount(); i++) {
+            View child = row.getChildAt(i);
+            if (child.getVisibility() == View.VISIBLE && child.isFocusable()) return child;
+        }
+        return timeBar();
     }
 
     @Override

@@ -197,6 +197,8 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:ellipsize="end"
+                android:focusable="true"
+                android:focusableInTouchMode="false"
                 android:singleLine="true"
                 android:textColor="@color/tv_theme_text"
                 android:textSize="14sp"
