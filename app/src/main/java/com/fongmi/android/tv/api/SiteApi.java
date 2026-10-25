@@ -133,6 +133,32 @@ public class SiteApi {
         return cached != null ? cached : withPermit(CRAWLER_INIT_GATE, site::spider);
     }
 
+    private static final java.util.concurrent.ThreadPoolExecutor SEARCH_WARMUP = new java.util.concurrent.ThreadPoolExecutor(4, 4,
+            30, TimeUnit.SECONDS, new java.util.concurrent.LinkedBlockingQueue<>(), com.fongmi.android.tv.utils.BackgroundThreads.factory("search-warmup"));
+    static { SEARCH_WARMUP.allowCoreThreadTimeOut(true); }
+    private static volatile long warmedRevision = Long.MIN_VALUE;
+
+    /**
+     * Starts the search plugins while the keyword is still being typed (user 2026-10-24: search felt
+     * slow). A plugin started inside a search shares its 15 s deadline with the four-permit init
+     * gate, so on a slow TV the last ones were interrupted mid-start every time and began again on
+     * the next search. Started here, they finish once and stay cached; a search that arrives first
+     * waits for the same start-up instead of running a second one. Once per configuration.
+     */
+    public static void prewarmSearch(List<Site> sites) {
+        long revision = VodConfig.getDiscoveryRevision();
+        if (sites.isEmpty() || warmedRevision == revision) return;
+        warmedRevision = revision;
+        for (Site site : sites) {
+            if (!site.isSearchable() || !isSpider(site) || site.cachedSpider() != null) continue;
+            SEARCH_WARMUP.execute(() -> {
+                if (revision != VodConfig.getDiscoveryRevision() || site.cachedSpider() != null) return;
+                try { withPermit(CRAWLER_INIT_GATE, site::spider); }
+                catch (Throwable ignored) { /* The search reports its own failure. */ }
+            });
+        }
+    }
+
     private static Spider searchSpider(Site site, SearchRequestScope scope) throws Exception {
         Spider cached = site.cachedSpider();
         return cached != null ? cached : withPermit(CRAWLER_INIT_GATE, scope, site::spider);

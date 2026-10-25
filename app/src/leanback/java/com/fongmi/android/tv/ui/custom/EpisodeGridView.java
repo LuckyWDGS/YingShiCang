@@ -81,9 +81,20 @@ public class EpisodeGridView extends RecyclerView {
         return true;
     }
 
+    /**
+     * Focuses the card at position in this frame when it can. A card one row past the edge is not
+     * laid out yet; scrolling one row lays it out at once, where scrollToPosition waited for the next
+     * layout, during which focus returned to the card it had left and lit it again (user 2026-10-24).
+     */
     private void focusPosition(int position) {
-        ViewHolder holder = findViewHolderForAdapterPosition(position);
-        if (holder != null && !isLayoutRequested()) {
+        ViewHolder holder = hasPendingAdapterUpdates() ? null : findViewHolderForAdapterPosition(position);
+        if (holder == null && !hasPendingAdapterUpdates() && getFocusedChild() != null) {
+            View from = getFocusedChild();
+            int step = getLayoutManager().getDecoratedMeasuredHeight(from);
+            scrollBy(0, position > getChildAdapterPosition(from) ? step : -step);
+            holder = findViewHolderForAdapterPosition(position);
+        }
+        if (holder != null) {
             pendingFocus = NO_POSITION;
             holder.itemView.requestFocus();
             return;
@@ -98,10 +109,15 @@ public class EpisodeGridView extends RecyclerView {
         });
     }
 
+    /**
+     * Shows the playing card. Focus follows only when the grid already has it: picking a line selects
+     * that line's episode, and pulling focus down to it moved the remote off the lines (user
+     * 2026-10-24).
+     */
     public void setSelectedPosition(int position) {
         if (position < 0 || getAdapter() == null || position >= getAdapter().getItemCount()) return;
         scrollToPosition(position);
-        if (!isInTouchMode()) post(() -> {
+        if (!isInTouchMode() && hasFocus()) post(() -> {
             ViewHolder holder = findViewHolderForAdapterPosition(position);
             if (holder != null) holder.itemView.requestFocus();
         });

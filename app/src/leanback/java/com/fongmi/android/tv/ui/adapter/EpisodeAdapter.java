@@ -237,6 +237,13 @@ public class EpisodeAdapter extends RecyclerView.Adapter<EpisodeAdapter.ViewHold
             setMarquee(binding.size, false, 0);
         }
 
+        /**
+         * A single-line label scrolls horizontally: its text sits in the middle of a line a million
+         * pixels wide and the view's scroll brings it into sight. Resetting that scroll left cards
+         * revealed while the list scrolled up blank until focused (user 2026-10-24, measured on
+         * LDPlayer: scrollX 0 against text at x 524176). A resting label does not scroll at all, so
+         * its line is the card's width and scroll 0 is right.
+         */
         private void setMarquee(TextView text, boolean active, int repeat) {
             if (active) {
                 // A changed pass limit only applies to a restarted marquee.
@@ -244,10 +251,12 @@ public class EpisodeAdapter extends RecyclerView.Adapter<EpisodeAdapter.ViewHold
                     text.setSelected(false);
                     text.setMarqueeRepeatLimit(repeat);
                 }
+                text.setHorizontallyScrolling(true);
                 text.setEllipsize(TextUtils.TruncateAt.MARQUEE);
                 text.setSelected(true);
             } else {
                 text.setSelected(false);
+                text.setHorizontallyScrolling(false);
                 text.setEllipsize(TextUtils.TruncateAt.END);
                 text.scrollTo(0, 0);
             }

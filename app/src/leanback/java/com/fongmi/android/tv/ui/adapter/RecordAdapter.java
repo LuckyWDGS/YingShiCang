@@ -30,6 +30,7 @@ public class RecordAdapter extends RecyclerView.Adapter<RecordAdapter.ViewHolder
         this.mItems = getItems();
         this.shown = new ArrayList<>(mItems);
         this.listener.onDataChanged(mItems.size());
+        setHasStableIds(true);
     }
 
     /** Lays the saved records out in another order (e.g. packed rows); the saved order is unchanged. */
@@ -62,8 +63,22 @@ public class RecordAdapter extends RecyclerView.Adapter<RecordAdapter.ViewHolder
     }
 
     public void add(String item) {
+        remember(item);
+        show();
+    }
+
+    /**
+     * Saves a search without reordering the visible chips: moving the clicked record to the front
+     * while it still had focus dropped focus onto 清空 before the results opened (user 2026-10-24).
+     * The caller shows the new order once the screen is hidden.
+     */
+    public void remember(String item) {
         checkToAdd(item);
         Setting.putKeyword(App.gson().toJson(mItems));
+    }
+
+    public void show() {
+        if (shown.equals(arranger == null ? mItems : arranger.apply(List.copyOf(mItems)))) return;
         refresh();
         listener.onDataChanged(getItemCount());
     }
@@ -73,6 +88,11 @@ public class RecordAdapter extends RecyclerView.Adapter<RecordAdapter.ViewHolder
         Setting.putKeyword("[]");
         refresh();
         listener.onDataChanged(0);
+    }
+
+    @Override
+    public long getItemId(int position) {
+        return shown.get(position).hashCode();
     }
 
     @Override

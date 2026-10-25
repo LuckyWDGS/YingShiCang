@@ -128,21 +128,16 @@ public final class HomeDiscovery {
         LinearLayout.LayoutParams homeParams = (LinearLayout.LayoutParams) binding.home.getLayoutParams();
         homeParams.weight = 1f;
         binding.home.setLayoutParams(homeParams);
-        // Remote focus moving along the row opens that tab, without pressing OK (user 2026-10-23).
-        // Only tab-to-tab moves count. Focus arriving from elsewhere (cards, shortcuts, title) lands
-        // on the open tab instead of the nearest one, so Left/Right steps from what is showing
-        // (History parks it on 主页). OK on the open tab still toggles filters.
+        // Remote focus resting on a tab opens it, without pressing OK (user 2026-10-23). Focus
+        // arriving from elsewhere (cards, shortcuts, title) stays on the tab it reached: moving it
+        // on to the open tab afterwards flashed the reached tab first (user 2026-10-24, Up from 设置
+        // lit 短剧漫剧 and then jumped to 主页). OK on the open tab still toggles filters.
         binding.categories.getViewTreeObserver().addOnGlobalFocusChangeListener((oldFocus, newFocus) -> {
             binding.categories.removeCallbacks(focusSelect);
             binding.categories.removeCallbacks(optionSelect);
             if (newFocus == null || oldFocus == null || newFocus.isInTouchMode()) return;
             if (!tabs.contains(newFocus)) { followOptionFocus(oldFocus, newFocus); return; }
-            if (!tabs.contains(oldFocus)) {
-                View current = tabs.get(isHistory() ? 0 : active);
-                if (newFocus != current) binding.categories.post(() -> { if (newFocus.isFocused()) current.requestFocus(); });
-            } else if (tabs.indexOf(newFocus) != active) {
-                binding.categories.postDelayed(focusSelect, FOCUS_SELECT_MS);
-            }
+            if (tabs.indexOf(newFocus) != active) binding.categories.postDelayed(focusSelect, FOCUS_SELECT_MS);
         });
         select(0);
     }
@@ -192,7 +187,9 @@ public final class HomeDiscovery {
     /**
      * Filter options follow focus like the tabs (user 2026-10-23): Left/Right within a row applies
      * the option after the same pause; moving into a row from another row or the tab lands on that
-     * row's selected option, so passing through never changes a filter.
+     * row's selected option, so passing through never changes a filter. Up/Down between rows go
+     * straight to that option (rowStep); the redirect here only covers other ways in, e.g. a mouse
+     * wheel, and would flash the first-reached option.
      */
     private void followOptionFocus(View oldFocus, View newFocus) {
         List<TextView> row = optionRow(newFocus);
@@ -202,6 +199,31 @@ public final class HomeDiscovery {
             binding.categories.post(() -> { if (newFocus.isFocused()) view.requestFocus(); });
             return;
         }
+    }
+
+    /** Up/Down from an option row lands on the selected option of the neighbouring row directly. */
+    private boolean rowStep(View view, int key, KeyEvent event) {
+        if (key != KeyEvent.KEYCODE_DPAD_UP && key != KeyEvent.KEYCODE_DPAD_DOWN) return false;
+        List<List<TextView>> rows = new ArrayList<>(options.values());
+        int index = rows.indexOf(optionRow(view));
+        if (index < 0) return false;
+        boolean up = key == KeyEvent.KEYCODE_DPAD_UP;
+        if (up && index == 0) {
+            if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                focusCurrentTab();
+                view.playSoundEffect(android.view.SoundEffectConstants.NAVIGATION_UP);
+            }
+            return true;
+        }
+        if (!up && index == rows.size() - 1) return false;
+        TextView target = null;
+        for (TextView option : rows.get(index + (up ? -1 : 1))) if (option.isSelected()) target = option;
+        if (target == null) return false;
+        if (event.getAction() == KeyEvent.ACTION_DOWN) {
+            target.requestFocus();
+            view.playSoundEffect(up ? android.view.SoundEffectConstants.NAVIGATION_UP : android.view.SoundEffectConstants.NAVIGATION_DOWN);
+        }
+        return true;
     }
 
     private void selectFocusedOption() {
@@ -474,19 +496,10 @@ public final class HomeDiscovery {
                 TextView view = controls.get(i);
                 view.setNextFocusLeftId(controls.get(Math.max(0, i - 1)).getId());
                 view.setNextFocusRightId(controls.get(Math.min(controls.size() - 1, i + 1)).getId());
-                if (options.isEmpty()) {
-                    view.setNextFocusUpId(tabs.get(active).getId());
-                    // A tall ScrollView searches for Up targets inside itself first.
-                    // Route the first row explicitly back to the category above the panel.
-                    view.setOnKeyListener((v, key, event) -> {
-                        if (key != KeyEvent.KEYCODE_DPAD_UP) return false;
-                        if (event.getAction() == KeyEvent.ACTION_DOWN) {
-                            focusCurrentTab();
-                            v.playSoundEffect(android.view.SoundEffectConstants.NAVIGATION_UP);
-                        }
-                        return true;
-                    });
-                }
+                // A tall ScrollView searches for Up targets inside itself first, so the first row
+                // routes Up explicitly back to the category above the panel (rowStep).
+                if (options.isEmpty()) view.setNextFocusUpId(tabs.get(active).getId());
+                view.setOnKeyListener(this::rowStep);
             }
             options.put(group.key, controls);
             binding.filters.addView(row);

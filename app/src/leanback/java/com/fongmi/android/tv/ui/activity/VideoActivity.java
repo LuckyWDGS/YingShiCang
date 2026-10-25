@@ -1820,6 +1820,9 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
             hideMore();
         } else if (isVisible(mBinding.control.getRoot())) {
             hideControl();
+            // Paused, the bar is up because of the pause rather than to be used: one Back leaves
+            // full screen (user 2026-10-24: it took two presses).
+            if (isFullscreen() && controller() != null && !controller().getPlayWhenReady()) exitFullscreen();
         } else if (isVisible(mBinding.widget.center)) {
             hideCenter();
         } else if (isFullscreen()) {

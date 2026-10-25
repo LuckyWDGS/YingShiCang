@@ -1,6 +1,11 @@
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:state_focused="true"><shape><solid android:color="@color/tv_theme_selected"/><corners android:radius="4dp"/><stroke android:width="2dp" android:color="@color/tv_theme_focus_border"/></shape></item>
-    <item android:state_selected="true"><shape><solid android:color="@color/tv_theme_selected"/><corners android:radius="4dp"/><stroke android:width="1dp" android:color="#008FFF"/></shape></item>
+    <!-- The playing episode: the theme's selected fill and left mark, as in the search source list
+         (user 2026-10-24: the blue frame did not belong to the black and white theme). -->
+    <item android:state_selected="true"><layer-list>
+        <item><shape><solid android:color="@color/tv_theme_selected"/><corners android:radius="4dp"/></shape></item>
+        <item android:width="3dp" android:gravity="left" android:top="12dp" android:bottom="12dp"><shape><solid android:color="@color/tv_theme_text"/><corners android:radius="2dp"/></shape></item>
+    </layer-list></item>
     <item android:state_pressed="true"><shape><solid android:color="@color/tv_theme_selected"/><corners android:radius="4dp"/></shape></item>
     <item><shape><solid android:color="@color/tv_theme_control"/><corners android:radius="4dp"/></shape></item>
 </selector>

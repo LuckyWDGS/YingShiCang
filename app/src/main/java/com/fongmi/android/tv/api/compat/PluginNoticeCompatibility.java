@@ -30,6 +30,7 @@ public final class PluginNoticeCompatibility {
     private static final String INIT = "com.github.catvod.spider.Init";
     private static final String ORIGIN = "com.github.catvod.spider.InitOrigin";
     private static final String REPEATING_NOTICE = ORIGIN + "$1";
+    static final long REPEAT_GAP_FACTOR = 3;
     private static final Pattern AD_COUNT = Pattern.compile("^已过滤视频中广告\\([0-9]+条\\)$");
     private static final String BILI_GUEST = "哔哩游客模式，可前往【哔哔】主页扫码登录解锁高分辨率";
     // The danmaku itself shows that it loaded; the toast covered the picture (user 1.7.4 screenshot).
@@ -208,12 +209,13 @@ public final class PluginNoticeCompatibility {
 
         /**
          * The repeating notice under the plugin's QR code reposts itself on a delay; it came back too
-         * often (user 2026-10-23), so its gap is doubled. The first show and other messages keep theirs.
+         * often, so its gap is doubled (user 2026-10-23) and then lengthened 1.5 times more (user
+         * 2026-10-24): three times the plugin's own. The first show and other messages keep theirs.
          */
         @Override public boolean sendMessageAtTime(Message message, long uptimeMillis) {
             if (notices.isRepeating(message.getCallback())) {
                 long delay = uptimeMillis - SystemClock.uptimeMillis();
-                if (delay > 0) uptimeMillis += delay;
+                if (delay > 0) uptimeMillis += delay * (REPEAT_GAP_FACTOR - 1);
             }
             return super.sendMessageAtTime(message, uptimeMillis);
         }

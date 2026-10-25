@@ -51,6 +51,9 @@ public class CollectActivity extends BaseActivity implements VodPresenter.OnClic
     private boolean displayQueued;
     private long lastDisplay;
     private final Map<String, Site> sources = new LinkedHashMap<>();
+    // Sources with at least one card; only these get a sidebar row (user 2026-10-24: sources that
+    // found nothing or failed were listed for nothing).
+    private final Set<String> listed = new HashSet<>();
     private final Map<String, Integer> pages = new HashMap<>();
     private final Set<String> exhausted = new HashSet<>();
     private final Map<String, Integer> pageRetryAttempts = new HashMap<>();
@@ -226,7 +229,7 @@ public class CollectActivity extends BaseActivity implements VodPresenter.OnClic
     @Override protected void onNewIntent(Intent intent) { super.onNewIntent(intent); setIntent(intent); search(); }
     private void search() {
         cancelPage(); failedPages.clear(); pageRetryAttempts.clear();
-        model.resetSearch(); items.clear(); identities.clear(); ranks.clear(); sources.clear(); pages.clear(); exhausted.clear(); selected = ""; loadingKey = null;
+        model.resetSearch(); items.clear(); identities.clear(); ranks.clear(); sources.clear(); listed.clear(); pages.clear(); exhausted.clear(); selected = ""; loadingKey = null;
         emptyPageScans = 0; searchComplete = false;
         String title = Objects.toString(getIntent().getStringExtra(EXTRA_TARGET_TITLE), "");
         target = title.isEmpty() ? null : SearchResultRanker.target(title, expectedYear());
@@ -265,9 +268,10 @@ public class CollectActivity extends BaseActivity implements VodPresenter.OnClic
                 if (ResourceHealth.isSearchCard(item) && (target == null || target.accepts(rank))) {
                     items.add(item);
                     ranks.put(item, rank);
+                    if (listed.add(item.getSiteKey())) sourceChanged = true;
                 }
             }
-            if (!sources.containsKey(item.getSiteKey())) { sources.put(item.getSiteKey(), item.getSite()); sourceChanged = true; }
+            sources.putIfAbsent(item.getSiteKey(), item.getSite());
         }
         // Stable sorting lets slow exact hits rise above unrelated fast-source
         // rows while retaining arrival order for equally relevant resources.
@@ -299,6 +303,7 @@ public class CollectActivity extends BaseActivity implements VodPresenter.OnClic
         if (sources.isEmpty()) binding.sources.removeAllViews();
         if (binding.allSource.getChildCount() == 0) addSource(binding.allSource, "", "全部来源");
         for (var source : sources.entrySet()) {
+            if (!listed.contains(source.getKey())) continue;
             if (binding.sources.findViewWithTag(source.getKey()) == null) addSource(binding.sources, source.getKey(), source.getValue().getName());
         }
         updateSourceSelection();
@@ -330,21 +335,38 @@ public class CollectActivity extends BaseActivity implements VodPresenter.OnClic
         return view != null && (view.getParent() == binding.allSource || view.getParent() == binding.sources);
     }
 
+    private boolean focusPending;
+
     private void selectFocusedSource() {
+        focusPending = false;
         View focused = getCurrentFocus();
         if (isSource(focused) && !selected.equals(focused.getTag())) focused.performClick();
     }
 
+    private void markSelected(View source) {
+        for (android.view.ViewGroup group : new android.view.ViewGroup[]{binding.allSource, binding.sources})
+            for (int i = 0; i < group.getChildCount(); i++) group.getChildAt(i).setSelected(group.getChildAt(i) == source);
+    }
+
     /**
      * Remote focus moving between sources shows that source without pressing OK (user 2026-10-23);
-     * keys held across several load only the resting one. Focus arriving from the results lands
-     * on the selected source rather than the nearest row.
+     * keys held across several load only the resting one. The selected mark moves with focus at
+     * once (user 2026-10-24: the previous source stayed marked until the new one loaded); leaving
+     * for the results before the pause shows the source that was marked. Focus arriving from the
+     * results lands on the selected source rather than the nearest row.
      */
     private void followSourceFocus(View oldFocus, View newFocus) {
+        boolean pending = focusPending;
+        focusPending = false;
         binding.results.removeCallbacks(focusSelect);
+        if (pending && isSource(oldFocus) && !isSource(newFocus) && !selected.equals(oldFocus.getTag())) oldFocus.performClick();
         if (oldFocus == null || !isSource(newFocus) || newFocus.isInTouchMode()) return;
         if (isSource(oldFocus)) {
-            if (!selected.equals(newFocus.getTag())) binding.results.postDelayed(focusSelect, FOCUS_SELECT_MS);
+            if (!selected.equals(newFocus.getTag())) {
+                markSelected(newFocus);
+                focusPending = true;
+                binding.results.postDelayed(focusSelect, FOCUS_SELECT_MS);
+            } else updateSourceSelection();
             return;
         }
         View current = binding.allSource.findViewWithTag(selected);
@@ -354,6 +376,7 @@ public class CollectActivity extends BaseActivity implements VodPresenter.OnClic
     }
 
     private void updateSourceSelection() {
+        if (focusPending && isSource(getCurrentFocus())) { markSelected(getCurrentFocus()); return; }
         for (android.view.ViewGroup group : new android.view.ViewGroup[]{binding.allSource, binding.sources})
             for (int i = 0; i < group.getChildCount(); i++) group.getChildAt(i).setSelected(selected.equals(group.getChildAt(i).getTag()));
     }
@@ -441,6 +464,26 @@ public class CollectActivity extends BaseActivity implements VodPresenter.OnClic
                     .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP));
         }
         super.onBackInvoked();
+    }
+    /**
+     * Left from the results goes straight to the selected source. Moving focus there after it had
+     * reached the nearest row first flashed that row (the same flash the home tabs had).
+     */
+    @Override public boolean dispatchKeyEvent(android.view.KeyEvent event) {
+        if (event.getKeyCode() == android.view.KeyEvent.KEYCODE_DPAD_LEFT && event.getAction() == android.view.KeyEvent.ACTION_DOWN) {
+            View focused = getCurrentFocus();
+            if (focused != null && !isSource(focused)) {
+                View next = android.view.FocusFinder.getInstance().findNextFocus((android.view.ViewGroup) binding.getRoot(), focused, View.FOCUS_LEFT);
+                View current = binding.allSource.findViewWithTag(selected);
+                if (current == null) current = binding.sources.findViewWithTag(selected);
+                if (isSource(next) && current != null && current != next) {
+                    current.requestFocus();
+                    focused.playSoundEffect(android.view.SoundEffectConstants.NAVIGATION_LEFT);
+                    return true;
+                }
+            }
+        }
+        return super.dispatchKeyEvent(event);
     }
     @Override protected void onDestroy() { binding.results.removeCallbacks(queuedDisplay); binding.results.removeCallbacks(focusSelect); searchSources.cancel(); cancelPage(); model.stopSearch(); super.onDestroy(); }
 }

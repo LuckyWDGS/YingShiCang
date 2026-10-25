@@ -90,6 +90,7 @@ public class SearchActivity extends BaseActivity implements WordAdapter.OnClickL
             int width = right - left - v.getPaddingLeft() - v.getPaddingRight();
             if (width > 0 && right - left != oldRight - oldLeft) v.post(() -> mRecordAdapter.setArranger(items -> packRows(items, width)));
         });
+        com.fongmi.android.tv.api.SiteApi.prewarmSearch(com.fongmi.android.tv.api.config.VodConfig.get().getSites());
         loadRank(mBinding.tvRecycler, "tv_real_time_hotest", 3, 2);
         loadRank(mBinding.movieRecycler, "movie_real_time_hotest", 2, 1);
         loadRank(mBinding.varietyRecycler, "show_hot", 4, 3);
@@ -343,7 +344,7 @@ public class SearchActivity extends BaseActivity implements WordAdapter.OnClickL
         if (text.isEmpty()) { Notify.show("请输入要搜索的内容"); return; }
         suggestions.suspend();
         suggestionUiVersion++;
-        mRecordAdapter.add(text);
+        mRecordAdapter.remember(text);
         Util.hideKeyboard(mBinding.keyword);
         boolean returnHome = getIntent().getBooleanExtra(CollectActivity.EXTRA_RETURN_HOME, false);
         CollectActivity.start(this, text, returnHome);
@@ -365,6 +366,10 @@ public class SearchActivity extends BaseActivity implements WordAdapter.OnClickL
         suggestionUiVersion++;
         if (suggestions != null) suggestions.suspend();
         super.onPause();
+    }
+    @Override protected void onStop() {
+        super.onStop();
+        mRecordAdapter.show();
     }
     @Override protected void onDestroy() {
         destroyed = true;
