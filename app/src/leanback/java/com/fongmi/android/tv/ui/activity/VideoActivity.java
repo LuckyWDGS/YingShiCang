@@ -113,6 +113,9 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
     private CustomKeyDownVod mKeyDown;
     private Clock mClock;
     private View mFocus1;
+    // Opening a title puts the remote on its episode (the remembered one, else the first) once the episodes
+    // are shown, not on the preview (user 2026-10-25).
+    private boolean mEpisodeFocusPending;
     private boolean mTimeBarCenter;
     private final Traffic.Meter mNetSpeedMeter = new Traffic.Meter();
     private final Runnable mNetSpeedTick = this::tickNetSpeed;
@@ -592,6 +595,7 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
         mBinding.progressLayout.showContent();
         mBinding.name.setText(item.getName());
         mBinding.video.requestFocus();
+        mEpisodeFocusPending = true;
         App.removeCallbacks(mR4);
         setArtwork(item.getPic());
         checkKeepImg();
@@ -647,6 +651,20 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
     public void renderEpisodeSelection(Episode item) {
         mBinding.episode.post(mEpisodeAdapter::refreshSelection);
         mBinding.episode.setSelectedPosition(mEpisodeAdapter.getPosition());
+    }
+
+    /**
+     * Runs after the detail's synchronous render calls, so it sees the episode the history restored (an
+     * already selected episode is never re-rendered as a selection), else the first one. Only while the
+     * remote still rests on the preview where renderDetail put it, never in full screen.
+     */
+    private void focusEpisodeIfPending() {
+        mBinding.episode.post(() -> {
+            if (!mEpisodeFocusPending || mEpisodeAdapter.getItemCount() == 0) return;
+            mEpisodeFocusPending = false;
+            if (isFullscreen() || getCurrentFocus() != mBinding.video) return;
+            mBinding.episode.setSelectedPosition(mEpisodeAdapter.getPosition(), true);
+        });
     }
 
     @Override
@@ -829,6 +847,7 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
         mBinding.episode.setColumnCount(columns);
         mEpisodeAdapter.addAll(items);
         setR2Callback();
+        focusEpisodeIfPending();
     }
 
     @Override

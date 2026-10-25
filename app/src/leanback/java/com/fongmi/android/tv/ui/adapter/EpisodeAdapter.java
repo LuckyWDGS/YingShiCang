@@ -157,7 +157,8 @@ public class EpisodeAdapter extends RecyclerView.Adapter<EpisodeAdapter.ViewHold
             holder.binding.size.setText(desc);
             holder.binding.name.setText(name);
         }
-        holder.binding.name.setMaxWidth(maxWidth);
+        // setMaxWidth relays the card out even when unchanged; binds run for every row a fast scroll reveals.
+        if (holder.binding.name.getMaxWidth() != maxWidth) holder.binding.name.setMaxWidth(maxWidth);
         bindFocus(holder, position);
         holder.binding.getRoot().setOnClickListener(v -> mListener.onItemClick(item));
         bindSelection(holder, item);

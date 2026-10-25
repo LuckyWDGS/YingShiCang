@@ -71,7 +71,7 @@ public class ExoUtil {
     }
 
     static DecodeTrackSelector buildTrackSelector(int decode) {
-        DecodeTrackSelector trackSelector = new DecodeTrackSelector(App.get());
+        DecodeTrackSelector trackSelector = new HardwareFirstTrackSelector(App.get());
         DefaultTrackSelector.Parameters.Builder builder = trackSelector.buildUponParameters();
         if (DecodeSetting.isPreferAAC()) builder.setPreferredAudioMimeType(MimeTypes.AUDIO_AAC);
         builder.setPreferredTextLanguages(LangUtil.getPreferredTextLanguages());
@@ -87,6 +87,7 @@ public class ExoUtil {
         int audioDecode = isAudioSoftwareDecode(decode) ? PlayerEngine.SOFT : PlayerEngine.HARD;
         int videoDecode = isVideoSoftwareDecode(decode) ? PlayerEngine.SOFT : PlayerEngine.HARD;
         trackSelector.setRendererDecodePreferences(audioDecode, videoDecode);
+        if (trackSelector instanceof HardwareFirstTrackSelector selector) selector.setHardwareVideo(videoDecode == PlayerEngine.HARD);
     }
 
     private static boolean isAudioSoftwareDecode(int decode) {

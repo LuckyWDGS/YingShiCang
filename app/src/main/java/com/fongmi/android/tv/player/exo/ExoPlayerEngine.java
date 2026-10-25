@@ -297,7 +297,7 @@ public class ExoPlayerEngine implements PlayerEngine, AnalyticsListener {
         Format format = diagnosticFormat;
         float displayRefreshHz = PlaybackDisplayDiagnostics.getRefreshRate(App.get());
         float sourceFrameRate = format == null ? Format.NO_VALUE : format.frameRate;
-        String video = format == null ? "" : " mime=" + format.sampleMimeType + " fps=" + format.frameRate
+        String video = format == null ? "" : " mime=" + format.sampleMimeType + " codecs=" + HardwareFirstTrackSelector.safe(format.codecs) + " fps=" + format.frameRate
                 + " width=" + format.width + " height=" + format.height;
         String counts = "";
         if (counters != null) {

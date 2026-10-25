@@ -1,6 +1,7 @@
 package com.fongmi.android.tv.ui.custom;
 
 import android.content.Context;
+import android.graphics.Rect;
 import android.util.AttributeSet;
 import android.view.KeyEvent;
 import android.view.SoundEffectConstants;
@@ -21,10 +22,18 @@ public class EpisodeGridView extends RecyclerView {
     private GridSpacing spacing;
     // Row the remote is moving to while it is still being laid out; held keys continue from it.
     private int pendingFocus = NO_POSITION;
+    // A held Up/Down key: rows scroll into view at once instead of animating, since the next repeat
+    // arrives before a smooth scroll ends and the two fought (user 2026-10-25: fast scrolling stuttered).
+    private boolean held;
 
     public EpisodeGridView(Context context, AttributeSet attrs) {
         super(context, attrs);
-        setLayoutManager(new GridLayoutManager(context, columnCount));
+        setLayoutManager(new GridLayoutManager(context, columnCount) {
+            @Override
+            public boolean requestChildRectangleOnScreen(RecyclerView parent, View child, Rect rect, boolean immediate, boolean focusedChildVisible) {
+                return super.requestChildRectangleOnScreen(parent, child, rect, immediate || held, focusedChildVisible);
+            }
+        });
         setItemAnimator(null);
         // Keep a small visual separation without wasting a full card-height
         // gap between rows. The taller item layout gives the two metadata
@@ -72,6 +81,7 @@ public class EpisodeGridView extends RecyclerView {
         int from = pendingFocus != NO_POSITION ? pendingFocus : item == null ? NO_POSITION : getChildAdapterPosition(item);
         if (from == NO_POSITION || from >= count) return super.dispatchKeyEvent(event);
         boolean down = code == KeyEvent.KEYCODE_DPAD_DOWN;
+        held = event.getRepeatCount() > 0;
         int row = from / columnCount, lastRow = (count - 1) / columnCount;
         if (down ? row == lastRow : row == 0) return pendingFocus != NO_POSITION || super.dispatchKeyEvent(event);
         if (event.getAction() != KeyEvent.ACTION_DOWN) return true;
@@ -115,9 +125,14 @@ public class EpisodeGridView extends RecyclerView {
      * 2026-10-24).
      */
     public void setSelectedPosition(int position) {
+        setSelectedPosition(position, false);
+    }
+
+    /** takeFocus moves the remote onto the card even when the grid does not have focus yet. */
+    public void setSelectedPosition(int position, boolean takeFocus) {
         if (position < 0 || getAdapter() == null || position >= getAdapter().getItemCount()) return;
         scrollToPosition(position);
-        if (!isInTouchMode() && hasFocus()) post(() -> {
+        if (!isInTouchMode() && (takeFocus || hasFocus())) post(() -> {
             ViewHolder holder = findViewHolderForAdapterPosition(position);
             if (holder != null) holder.itemView.requestFocus();
         });

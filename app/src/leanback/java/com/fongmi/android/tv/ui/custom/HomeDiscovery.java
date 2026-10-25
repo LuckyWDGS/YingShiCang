@@ -7,6 +7,7 @@ import android.graphics.drawable.Drawable;
 import android.os.SystemClock;
 import android.view.KeyEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -366,8 +367,7 @@ public final class HomeDiscovery {
         pendingRefresh = false;
         boolean headerFocused = binding.actions.hasFocus() || binding.toolbar.hasFocus();
         if (headerFocused && !isHome()) focusCurrentTab();
-        binding.topHeader.setExpanded(isHome(), activeScreen);
-        binding.shortcutHeader.setExpanded(isHome(), activeScreen);
+        setHeadersExpanded(isHome(), activeScreen);
         for (int i = 0; i < binding.actions.getChildCount(); i++) {
             View action = binding.actions.getChildAt(i);
             action.setSelected(isHistory() && Integer.valueOf(R.string.home_recent).equals(action.getTag()));
@@ -382,18 +382,77 @@ public final class HomeDiscovery {
         load(0);
     }
 
+    private static final long HEADER_SLIDE_MS = 220;
+
+    /**
+     * Shows the Home-only header rows (title/weather/clock and the shortcuts) on 主页 and hides them on the
+     * other tabs. The rows used to grow or shrink frame by frame, which laid the whole page out, cards
+     * included, on every frame of the 280ms change; on the user's TV that stuttered each time the remote
+     * left or reached 主页 (2026-10-25). Now the page is laid out once at its final size and the rows
+     * below slide from where they were to where they are, a translation the render thread draws cheaply.
+     */
+    private void setHeadersExpanded(boolean expanded, boolean animate) {
+        ViewGroup column = (ViewGroup) binding.topHeader.getParent();
+        boolean changed = binding.topHeader.getVisibility() != (expanded ? View.VISIBLE : View.GONE)
+                || binding.shortcutHeader.getVisibility() != (expanded ? View.VISIBLE : View.GONE);
+        endHeaderSlide();
+        int[] before = new int[column.getChildCount()];
+        for (int i = 0; i < before.length; i++) before[i] = column.getChildAt(i).getTop();
+        binding.topHeader.setExpanded(expanded, false);
+        binding.shortcutHeader.setExpanded(expanded, false);
+        if (!changed || !animate || !column.isLaidOut()) return;
+        column.getViewTreeObserver().addOnPreDrawListener(new android.view.ViewTreeObserver.OnPreDrawListener() {
+            @Override
+            public boolean onPreDraw() {
+                column.getViewTreeObserver().removeOnPreDrawListener(this);
+                android.view.animation.Interpolator ease = new android.view.animation.PathInterpolator(0.2f, 0f, 0f, 1f);
+                for (int i = 0; i < before.length && i < column.getChildCount(); i++) {
+                    View child = column.getChildAt(i);
+                    if (child.getVisibility() != View.VISIBLE) continue;
+                    if (child == binding.topHeader || child == binding.shortcutHeader) {
+                        child.setAlpha(0f);
+                        child.animate().alpha(1f).setDuration(HEADER_SLIDE_MS).setInterpolator(ease).start();
+                    }
+                    int offset = before[i] - child.getTop();
+                    if (offset == 0) continue;
+                    child.setTranslationY(offset);
+                    child.animate().translationY(0f).setDuration(HEADER_SLIDE_MS).setInterpolator(ease).start();
+                }
+                return true;
+            }
+        });
+    }
+
+    private void endHeaderSlide() {
+        ViewGroup column = (ViewGroup) binding.topHeader.getParent();
+        for (int i = 0; i < column.getChildCount(); i++) {
+            View child = column.getChildAt(i);
+            child.animate().cancel();
+            child.setTranslationY(0f);
+            if (child == binding.topHeader || child == binding.shortcutHeader) child.setAlpha(1f);
+        }
+    }
+
     private void updateTabs() {
         boolean expanded = binding.filterPanel.getVisibility() == View.VISIBLE;
         for (int i = 0; i < tabs.size(); i++) {
             TextView tab = tabs.get(i);
             boolean filterable = i == active && canFilter(i);
             tab.setSelected(i == active);
-            tab.setSingleLine(true);
-            tab.setMaxLines(1);
-            tab.setIncludeFontPadding(true);
-            tab.setLineSpacing(0, 1);
-            tab.setPadding(tab.getPaddingLeft(), tab.getPaddingTop(), tab.getPaddingRight(), 0);
-            tab.setText(names[i]);
+            // Every change below relays the tab out; on a slow TV re-applying all of it to nine tabs on
+            // each switch was part of the lag (2026-10-25), so only a changed state is applied.
+            String state = filterable + "/" + expanded;
+            if (state.equals(tab.getTag(R.id.home_category_state))) continue;
+            boolean first = tab.getTag(R.id.home_category_state) == null;
+            tab.setTag(R.id.home_category_state, state);
+            if (first) {
+                tab.setSingleLine(true);
+                tab.setMaxLines(1);
+                tab.setIncludeFontPadding(true);
+                tab.setLineSpacing(0, 1);
+                tab.setPadding(tab.getPaddingLeft(), tab.getPaddingTop(), tab.getPaddingRight(), 0);
+                tab.setText(names[i]);
+            }
             // Same size open or closed, up or down, filterable or not; only visibility and direction change.
             Drawable indicator = androidx.core.content.ContextCompat.getDrawable(activity,
                     filterable && expanded ? R.drawable.home_filter_chevron_up : R.drawable.home_filter_chevron_down).mutate();
@@ -401,6 +460,9 @@ public final class HomeDiscovery {
             indicator.setBounds(0, 0, size, size);
             indicator.setAlpha(filterable ? 255 : 0);
             tab.setCompoundDrawablesRelative(null, null, indicator, null);
+            // The arrow fades in on the tab that just opened instead of popping up (user 2026-10-25).
+            if (filterable && !first && !Boolean.TRUE.equals(tab.getTag(R.id.home_category_arrow))) fadeIn(tab, indicator);
+            tab.setTag(R.id.home_category_arrow, filterable);
             int background = filterable ? R.drawable.home_category : R.drawable.home_category_plain;
             if (!Integer.valueOf(background).equals(tab.getTag(R.id.home_category_background))) {
                 // An inset background would hand its inset to the padding; keep the tab's own.
@@ -411,6 +473,16 @@ public final class HomeDiscovery {
             }
             tab.setContentDescription(filterable ? names[i] + "，" + (expanded ? "点击收起筛选" : "点击展开筛选") : names[i]);
         }
+    }
+
+    private static void fadeIn(TextView tab, Drawable indicator) {
+        android.animation.ValueAnimator fade = android.animation.ValueAnimator.ofInt(0, 255);
+        fade.setDuration(180);
+        fade.addUpdateListener(animation -> {
+            indicator.setAlpha((int) animation.getAnimatedValue());
+            tab.invalidate();
+        });
+        fade.start();
     }
 
     private void showFilters(boolean visible) {
@@ -911,6 +983,7 @@ public final class HomeDiscovery {
         if (!value) {
             binding.topHeader.finishAnimation();
             binding.shortcutHeader.finishAnimation();
+            endHeaderSlide();
         }
         if (autoRetry != null) {
             App.removeCallbacks(autoRetry);

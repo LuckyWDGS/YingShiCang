@@ -10,6 +10,8 @@ import com.github.catvod.utils.Prefers;
 
 public class DanmakuSetting {
 
+    private static final long TV_MIN_DURATION_MS = 12000L;
+    private static final float TV_MIN_TEXT_SCALE = 1.3f;
     private static final float MIN_TEXT_SCALE = 0.5f;
     private static final float MAX_TEXT_SCALE = 3.0f;
     private static final float MIN_TRANSPARENCY = 0.0f;
@@ -350,11 +352,15 @@ public class DanmakuSetting {
     /**
      * The TV player has no danmaku settings panel, so it keeps comments to the top of the picture: scrolling
      * comments in the top quarter (at most 4 lines), at most 2 pinned top lines, no bottom-pinned comments over
-     * subtitles, and at least 15% transparency.
+     * subtitles, and at least 15% transparency. Comments cross the screen in at least 12s (the 8s default
+     * raced past on a TV) and draw at least 1.3x (14sp was small from the sofa; 4 lines still fit the top
+     * quarter), user 2026-10-25.
      */
     private static DanmakuConfig.Builder tv(DanmakuConfig.Builder builder) {
         if (!"leanback".equals(BuildConfig.FLAVOR)) return builder;
         return builder.setScrollAreaRatio(Math.min(getScrollAreaRatio(), 0.25f))
+                .setDurationMs(Math.max(getDurationMs(), TV_MIN_DURATION_MS))
+                .setTextScale(Math.max(getTextScale(), TV_MIN_TEXT_SCALE))
                 .setMaxScrollLines(cap(getMaxScrollLines(), 4))
                 .setMaxTopLines(cap(getMaxTopLines(), 2))
                 .setShowBottom(false)

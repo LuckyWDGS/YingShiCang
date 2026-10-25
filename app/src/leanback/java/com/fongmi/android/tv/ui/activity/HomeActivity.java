@@ -640,7 +640,12 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         if (KeyUtil.isActionDown(event)) cancelHistoryFocus(true);
         if (KeyUtil.isMenuKey(event)) showDialog();
         if (discovery != null && discovery.upFromCards(event)) return true;
-        if (KeyUtil.isActionDown(event) && KeyUtil.isDownKey(event) && getCurrentFocus() == mBinding.title && mBinding.recycler.getChildCount() > 0) return mBinding.recycler.getChildAt(0).requestFocus();
+        // Down from the title lands on the open tab (主页 where the title shows), not the first card (user 2026-10-25).
+        if (KeyUtil.isActionDown(event) && KeyUtil.isDownKey(event) && getCurrentFocus() == mBinding.title && discovery != null) {
+            discovery.focusCurrentTab();
+            mBinding.title.playSoundEffect(android.view.SoundEffectConstants.NAVIGATION_DOWN);
+            return true;
+        }
         return super.dispatchKeyEvent(event);
     }
 

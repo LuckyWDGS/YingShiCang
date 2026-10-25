@@ -30,27 +30,27 @@ python scripts/ui.py
 Debug 仅用于测试。Release 从 `YSC_KEYSTORE/YSC_KEY_ALIAS/YSC_STORE_PASSWORD/YSC_KEY_PASSWORD` 环境变量或 `ysc.*` 本地配置读取签名；配置缺失时不能将未签名包当正式版本发布。
 
 ```powershell
-.\gradlew.bat :app:assembleLeanbackRelease "-PappVersionCode=89" "-PappVersionName=3.0.1"
+.\gradlew.bat :app:assembleLeanbackRelease "-PappVersionCode=90" "-PappVersionName=3.1.0"
 ```
 
 应用默认从 [GitHub 最新正式 Release](https://github.com/LuckyWDGS/YingShiCang/releases/latest) 检查更新，使用 Release 正文作为更新说明。设置里的自定义更新地址留空即可；已有自定义地址仍沿用单包清单协议。
 
 **更新镜像**：在未跟踪的 `local.properties` 写入 `ysc.updateMirrorUrl` 和 `ysc.updateMirrorPin`（URL 用自定义主机名时再加 `ysc.updateMirrorAddress`）后，构建出的 App 检查更新、取清单和下载安装包都先走自己的服务器，失败再回到 GitHub；版本、清单和安装包仍按 GitHub 声明的 SHA-256 校验。服务器部署见 [service/update_mirror/README.md](../service/update_mirror/README.md)。正式发版构建必须带上这些配置；GitHub 发布完成后执行 `ssh <服务器> systemctl start ysc-update-sync.service` 立即同步。
 
-以上命令对应当前本地源码 3.0.1 / code89；以后每次发版继续递增 `versionCode` 和 `versionName`，沿用相同正式签名。Gradle 构建不会生成 GitHub 聚合清单；将已签名的两个 TV APK 放进新的发布目录，再运行生成器：
+以上命令对应当前本地源码 3.1.0 / code90；以后每次发版继续递增 `versionCode` 和 `versionName`，沿用相同正式签名。Gradle 构建不会生成 GitHub 聚合清单；将已签名的两个 TV APK 放进新的发布目录，再运行生成器：
 
 ```powershell
-New-Item -ItemType Directory -Path Release/3.0.1
-Copy-Item -LiteralPath app/build/outputs/apk/leanback/release/leanback-arm64_v8a.apk -Destination Release/3.0.1/YingShiCang-3.0.1-tv-arm64-v8a.apk
-Copy-Item -LiteralPath app/build/outputs/apk/leanback/release/leanback-armeabi_v7a.apk -Destination Release/3.0.1/YingShiCang-3.0.1-tv-armeabi-v7a.apk
-python scripts/github_release_manifest.py --arm64 Release/3.0.1/YingShiCang-3.0.1-tv-arm64-v8a.apk --armv7 Release/3.0.1/YingShiCang-3.0.1-tv-armeabi-v7a.apk --output Release/3.0.1/release-manifest.json
+New-Item -ItemType Directory -Path Release/3.1.0
+Copy-Item -LiteralPath app/build/outputs/apk/leanback/release/leanback-arm64_v8a.apk -Destination Release/3.1.0/YingShiCang-3.1.0-tv-arm64-v8a.apk
+Copy-Item -LiteralPath app/build/outputs/apk/leanback/release/leanback-armeabi_v7a.apk -Destination Release/3.1.0/YingShiCang-3.1.0-tv-armeabi-v7a.apk
+python scripts/github_release_manifest.py --arm64 Release/3.1.0/YingShiCang-3.1.0-tv-arm64-v8a.apk --armv7 Release/3.1.0/YingShiCang-3.1.0-tv-armeabi-v7a.apk --output Release/3.1.0/release-manifest.json
 ```
 
 生成器需要 Python 3.10+、Java 和 Android SDK build-tools。默认从 `ANDROID_HOME` / `ANDROID_SDK_ROOT` 选择最新稳定 build-tools，从 `JAVA_HOME` / `PATH` 找 Java；可用 `--sdk` 或 `--aapt`、`--apksigner-jar`、`--java` 显式指定工具。它实际检查包名、两个 TV 架构、正式签名及非 debug、相同版本与最低系统要求，读取真实大小和 SHA-256，只生成本地清单。默认拒绝覆盖已有清单；仅重新生成尚未发布的本地清单时使用 `--overwrite`。APK 在生成清单后不得修改或改名。
 
 GitHub 发版流程：
 
-1. 新建草稿 Release，标签使用与 APK `versionName` 对应的 `v版本号`，例如 `v3.0.1`，不要添加 alpha 等后缀。Release 正文填写本版更新内容，App 直接使用正文显示更新说明。
+1. 新建草稿 Release，标签使用与 APK `versionName` 对应的 `v版本号`，例如 `v3.1.0`，不要添加 alpha 等后缀。Release 正文填写本版更新内容，App 直接使用正文显示更新说明。
 2. 上传上述两个 APK 和 **release-manifest.json**。不能只上传 APK，也不能上传旧单包格式的清单。清单读取附件的实际文件名，不要求固定 APK 名称。
 3. 等全部附件上传完成后，发布为正式版本，并标记 **Latest**。不要勾选预发布。已发布附件保持不变；修复安装包时递增版本重新发版。
 
@@ -65,7 +65,7 @@ GitHub 发版流程：
 
 所有附件名（包括额外说明文件）只能使用 ASCII 字母、数字、点、下划线、连字符，首字符必须是字母或数字，总长不超过200，且不能含 `..`。附件必须非空、上传完成，单文件不超过300MB；例如可用 `INSTALL.txt`，不要使用中文附件名。
 
-提交代码或 `git push` 本身不会发布 APK。仓库没有自动发布流程；需要按上述流程在 [GitHub Releases](https://github.com/LuckyWDGS/YingShiCang/releases) 发布，也可以用 GitHub CLI：`gh release create v3.0.1 --verify-tag --title "影视仓 3.0.1" --notes-file Release/3.0.1/RELEASE_NOTES.md --latest` 后面加两个 APK 和 `release-manifest.json`。此聚合生成器面向 TV `leanback`，不能用作手机版更新清单。
+提交代码或 `git push` 本身不会发布 APK。仓库没有自动发布流程；需要按上述流程在 [GitHub Releases](https://github.com/LuckyWDGS/YingShiCang/releases) 发布，也可以用 GitHub CLI：`gh release create v3.1.0 --verify-tag --title "影视仓 3.1.0" --notes-file Release/3.1.0/RELEASE_NOTES.md --latest` 后面加两个 APK 和 `release-manifest.json`。此聚合生成器面向 TV `leanback`，不能用作手机版更新清单。
 
 首次需安装包含此更新功能的1.0.7或后续版本。设备按支持的 ABI 顺序选择附件；发现更高 `versionCode` 才提示更新。用户确认后显示下载进度，核验 APK 的版本、包名、大小、SHA-256、系统要求及当前签名，再由 Android 系统确认安装。Android 8 及以上首次更新可能需要允许此应用安装未知来源，返回应用后继续。
 
