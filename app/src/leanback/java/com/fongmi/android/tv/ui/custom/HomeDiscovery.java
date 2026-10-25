@@ -236,6 +236,27 @@ public final class HomeDiscovery {
         if (index >= 0 && index != active && activeScreen) select(index);
     }
 
+    /**
+     * Up from the cards to the tab row lands on the open tab. Landing on the tab above a card opened that
+     * tab and dropped the list being browsed (found 2026-10-24 after 2.1.0 let focus stay where it
+     * landed). Decided before focus moves, so nothing flashes; the Home shortcuts and the title still
+     * land on the tab above them.
+     */
+    public boolean upFromCards(KeyEvent event) {
+        if (event.getAction() != KeyEvent.ACTION_DOWN || event.getKeyCode() != KeyEvent.KEYCODE_DPAD_UP) return false;
+        View focused = activity.getCurrentFocus();
+        if (focused == null || focused.isInTouchMode() || binding.recycler.canScrollVertically(-1)) return false;
+        boolean inCards = false;
+        for (android.view.ViewParent parent = focused.getParent(); parent != null; parent = parent.getParent()) if (parent == binding.recycler) inCards = true;
+        if (!inCards) return false;
+        View next = android.view.FocusFinder.getInstance().findNextFocus((android.view.ViewGroup) binding.getRoot(), focused, View.FOCUS_UP);
+        View open = tabs.get(isHistory() ? 0 : active);
+        if (!tabs.contains(next) || next == open) return false;
+        open.requestFocus();
+        focused.playSoundEffect(android.view.SoundEffectConstants.NAVIGATION_UP);
+        return true;
+    }
+
     public boolean isHistory() { return active == HISTORY; }
     public boolean isHome() { return active == 0; }
     public boolean isAiDrama() { return active == AI_DRAMA; }

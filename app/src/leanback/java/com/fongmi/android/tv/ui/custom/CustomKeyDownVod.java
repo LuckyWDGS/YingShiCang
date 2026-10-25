@@ -23,6 +23,10 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener {
     private static final int VOLUME_STEPS_PER_HEIGHT = 15;
     // Left/Right step 10s; held this long they step 30s, announced once per hold (user 2026-10-24).
     private static final long LONG_HOLD_MS = 2_000;
+    // Presses closer together than this add up to one seek with the bubble kept up. At 250ms ordinary
+    // taps committed one by one: the bubble hid, the buffering spinner flashed and the shown time lagged
+    // behind the presses (user 2026-10-24: the time in the middle looked odd).
+    private static final long SEEK_COMMIT_MS = 700;
 
     private final GestureDetector detector;
     private final Listener listener;
@@ -183,7 +187,7 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener {
             pendingSeekEnd = null;
             listener.onSeekEnd(time);
         };
-        App.post(pendingSeekEnd, 250);
+        App.post(pendingSeekEnd, SEEK_COMMIT_MS);
     }
 
     /** Commits the delayed seek before a pause or another state-changing action. */

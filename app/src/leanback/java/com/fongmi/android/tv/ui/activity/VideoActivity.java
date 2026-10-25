@@ -123,6 +123,8 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
     private Episode mDanmakuEpisode;
     private static final long PAUSED_HIDE_MS = java.util.concurrent.TimeUnit.MINUTES.toMillis(5);
     private View mFocus2;
+    // Playback position at the first press of a run of seek keys; -1 when no seek is being built.
+    private long mSeekBase = -1;
     private Runnable mR1;
     private Runnable mR2;
     private Runnable mR3;
@@ -324,8 +326,10 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
         mBinding.control.action.ending.setDownListener(this::onEndingSub);
         mBinding.control.action.opening.setUpListener(this::onOpeningAdd);
         mBinding.control.action.opening.setDownListener(this::onOpeningSub);
-        mBinding.control.action.next.setOnClickListener(view -> checkNext());
-        mBinding.control.action.prev.setOnClickListener(view -> checkPrev());
+        // The bar gets out of the way once the next or previous episode is chosen (user 2026-10-24).
+        mBinding.control.action.next.setOnClickListener(view -> { hideControl(); checkNext(); });
+        mBinding.control.action.prev.setOnClickListener(view -> { hideControl(); checkPrev(); });
+        linkStripToTimeBar();
         mBinding.control.action.scale.setOnClickListener(view -> onScale());
         mBinding.control.action.speed.setOnClickListener(view -> onSpeed());
         mBinding.control.action.reset.setOnClickListener(view -> onReset());
@@ -985,6 +989,7 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
 
     private void cancelPendingSeek() {
         if (mKeyDown != null) mKeyDown.cancelPendingSeek();
+        mSeekBase = -1;
     }
 
     private void onReplay() {
@@ -1061,6 +1066,18 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
             mStripFitPending = true;
             row.post(this::fitActionStrip);
         });
+    }
+
+    /**
+     * Down from any control reaches the time bar. Left to spatial search, 下集 found nothing below it:
+     * the bar starts right of the position text (user 2026-10-24: the bar could not be reached).
+     * 速度/片头/片尾 keep Up/Down for their own values.
+     */
+    private void linkStripToTimeBar() {
+        ViewGroup row = (ViewGroup) mBinding.control.action.replay.getParent();
+        int bar = androidx.media3.ui.R.id.exo_progress;
+        for (int i = 0; i < row.getChildCount(); i++) row.getChildAt(i).setNextFocusDownId(bar);
+        mBinding.control.action.more.setNextFocusDownId(bar);
     }
 
     /** Side padding 12dp, shrunk 1dp at a time down to 4dp until the visible controls fit the strip's width. */
@@ -1691,17 +1708,25 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
         return MediaSeekPolicy.intervalMs(event.getEventTime() - event.getDownTime(), event.getRepeatCount());
     }
 
+    /**
+     * Steps count from where playback was at the first press, so the bubble moves exactly one step per
+     * press and the seek lands on the time it showed; counted from the moving position the shown time
+     * crept ahead by the seconds played meanwhile (user 2026-10-24: the time looked odd).
+     */
     @Override
     public void onSeeking(long time) {
+        if (mSeekBase < 0) mSeekBase = player().getPosition();
         mBinding.widget.center.setVisibility(View.VISIBLE);
         mBinding.widget.duration.setText(player().getDurationTime());
-        mBinding.widget.position.setText(player().getPositionTime(time));
+        mBinding.widget.position.setText(Util.timeMs(Math.clamp(mSeekBase + time, 0, Math.max(0, player().getDuration()))));
         mBinding.widget.action.setImageResource(time > 0 ? R.drawable.ic_widget_forward : R.drawable.ic_widget_rewind);
         hideProgress();
     }
 
     @Override
     public void onSeekEnd(long time) {
+        if (mSeekBase >= 0 && time != 0) time = mSeekBase + time - player().getPosition();
+        mSeekBase = -1;
         if (time == 0 || controller() == null || !hasPlaybackSource() || isScrubbing()) {
             mKeyDown.reset();
             hideCenter();
@@ -1725,14 +1750,15 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
 
     // With the controls hidden Up/Down open them on the time bar, playback continuing (user 2026-10-24:
     // volume belongs to the TV remote); a vertical swipe on touch screens still changes the volume.
+    // They always land on the time bar, not on the control used last (user 2026-10-24: it opened on 下集).
     @Override
     public void onKeyUp() {
-        showControl(getFocus2());
+        showControl(timeBar());
     }
 
     @Override
     public void onKeyDown() {
-        showControl(getFocus2());
+        showControl(timeBar());
     }
 
     @Override
@@ -1762,7 +1788,7 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
         if (controller().getPlayWhenReady()) {
             // Pausing shows the controls, so remotes without a Menu key can still reach them.
             onPaused();
-            showControl(getFocus2());
+            showControl(timeBar());
             return;
         }
         if (player().isEmpty()) onRefresh();

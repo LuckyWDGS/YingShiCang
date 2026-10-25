@@ -639,6 +639,7 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
     public boolean dispatchKeyEvent(KeyEvent event) {
         if (KeyUtil.isActionDown(event)) cancelHistoryFocus(true);
         if (KeyUtil.isMenuKey(event)) showDialog();
+        if (discovery != null && discovery.upFromCards(event)) return true;
         if (KeyUtil.isActionDown(event) && KeyUtil.isDownKey(event) && getCurrentFocus() == mBinding.title && mBinding.recycler.getChildCount() > 0) return mBinding.recycler.getChildAt(0).requestFocus();
         return super.dispatchKeyEvent(event);
     }
