@@ -255,7 +255,13 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
     }
 
     private void setTitle() {
-        List<String> items = Arrays.asList(getHome().getName(), getConfig().getName(), getString(R.string.app_name));
+        // Until the config loads there is no home site, so the title showed the config's name and
+        // switched to the site's a few seconds later (user 2026-10-25: the text changed on entering
+        // Home). The site name this config showed last time fills the gap.
+        String key = "home_title_" + getConfig().getId(), home = getHome().getName();
+        if (!TextUtils.isEmpty(home)) com.github.catvod.utils.Prefers.put(key, home);
+        else home = com.github.catvod.utils.Prefers.getString(key);
+        List<String> items = Arrays.asList(home, getConfig().getName(), getString(R.string.app_name));
         Optional<String> optional = items.stream().filter(s -> !TextUtils.isEmpty(s)).findFirst();
         optional.ifPresent(s -> mBinding.title.setText(s));
     }

@@ -855,6 +855,9 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
         if (shouldEnterFullscreen(item)) return;
         cancelPendingSeek();
         mVod.selectEpisode(item);
+        // Picking an episode plays it full screen at once (user 2026-10-25); the first OK used to
+        // switch only the preview and a second OK opened full screen.
+        if (!isFullscreen()) enterFullscreen();
     }
 
     private int findFocusDown(int index) {

@@ -124,7 +124,7 @@ public final class HomeDiscovery {
             tab.setCompoundDrawableTintList(androidx.core.content.ContextCompat.getColorStateList(activity, R.color.home_category_text));
         }
         binding.categories.addOnLayoutChangeListener((v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
-            if (right - left != oldRight - oldLeft) v.post(this::fitTabs);
+            if (right - left != oldRight - oldLeft) fitBeforeDraw();
         });
         LinearLayout.LayoutParams homeParams = (LinearLayout.LayoutParams) binding.home.getLayoutParams();
         homeParams.weight = 1f;
@@ -155,9 +155,27 @@ public final class HomeDiscovery {
      * font scale overflowed the 20sp row, and LinearLayout then squeezed the tabs and clipped the
      * indicator. Shrink every label by the same factor only as far as needed.
      */
-    private void fitTabs() {
+    // Fitting after a posted frame showed the labels at 20sp first and shrank them a frame later (user
+    // 2026-10-25: the text changed size on entering Home); now the frame that would show them is skipped.
+    private void fitBeforeDraw() {
+        if (fitPending) return;
+        fitPending = true;
+        binding.categories.getViewTreeObserver().addOnPreDrawListener(new android.view.ViewTreeObserver.OnPreDrawListener() {
+            @Override
+            public boolean onPreDraw() {
+                binding.categories.getViewTreeObserver().removeOnPreDrawListener(this);
+                fitPending = false;
+                return !fitTabs();
+            }
+        });
+    }
+
+    private boolean fitPending;
+
+    /** True when the label size changed, so the coming frame would still show the old one. */
+    private boolean fitTabs() {
         int available = binding.categories.getWidth() - binding.categories.getPaddingLeft() - binding.categories.getPaddingRight();
-        if (available <= 0) return;
+        if (available <= 0) return false;
         float base = android.util.TypedValue.applyDimension(android.util.TypedValue.COMPLEX_UNIT_SP, TAB_TEXT_SP,
                 activity.getResources().getDisplayMetrics());
         android.text.TextPaint paint = new android.text.TextPaint(tabs.get(0).getPaint());
@@ -172,7 +190,13 @@ public final class HomeDiscovery {
         // A little slack for glyph rounding, so the row is never exactly full.
         float scale = Math.min(1f, (available - fixed - ResUtil.dp2px(8)) / text);
         float size = base * Math.max(.75f, scale);
-        for (TextView tab : tabs) if (Math.abs(tab.getTextSize() - size) > .5f) tab.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, size);
+        boolean changed = false;
+        for (TextView tab : tabs) {
+            if (Math.abs(tab.getTextSize() - size) <= .5f) continue;
+            tab.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, size);
+            changed = true;
+        }
+        return changed;
     }
     // Skips tabs passed over while the remote key is held, so only the resting tab loads.
     private static final long FOCUS_SELECT_MS = 250;

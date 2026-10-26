@@ -7,9 +7,9 @@
       <LinearLayout android:layout_width="wrap_content" android:layout_height="36dp" android:gravity="center_vertical" android:orientation="horizontal">
         <LinearLayout android:id="@+id/weather" android:layout_width="wrap_content" android:layout_height="36dp" android:gravity="center_vertical" android:focusable="false" android:clickable="false" android:background="@drawable/home_shortcut" android:paddingHorizontal="6dp">
           <com.fongmi.android.tv.ui.custom.AnimatedWeatherView android:id="@+id/weatherIcon" android:layout_width="36dp" android:layout_height="28dp" android:importantForAccessibility="no" />
-          <TextView android:id="@+id/weatherInfo" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="—°C" android:textColor="@color/tv_theme_text_secondary" android:textSize="12sp" android:layout_marginStart="3dp" android:maxWidth="160dp" android:singleLine="true" android:ellipsize="end" />
+          <TextView android:id="@+id/weatherInfo" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="—°C" android:textColor="@color/tv_theme_text_secondary" android:textSize="14sp" android:layout_marginStart="3dp" android:maxWidth="200dp" android:singleLine="true" android:ellipsize="end" />
         </LinearLayout>
-        <com.google.android.material.textview.MaterialTextView android:id="@+id/clock" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:singleLine="true" android:textColor="@color/tv_theme_text_secondary" android:fontFeatureSettings="tnum" android:textSize="12sp" tools:text="2026年9月27日 20:18" />
+        <com.google.android.material.textview.MaterialTextView android:id="@+id/clock" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:singleLine="true" android:textColor="@color/tv_theme_text_secondary" android:fontFeatureSettings="tnum" android:textSize="16sp" tools:text="2026年9月27日 20:18" />
       </LinearLayout>
     </androidx.appcompat.widget.LinearLayoutCompat>
     </com.fongmi.android.tv.ui.custom.HomeHeaderRow>

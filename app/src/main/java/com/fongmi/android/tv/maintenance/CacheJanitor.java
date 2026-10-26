@@ -38,8 +38,41 @@ public final class CacheJanitor {
         // Only the main process knows which plugins it loaded; the crash screen's process must not clean.
         if (Build.VERSION.SDK_INT >= 28 && !BuildConfig.APPLICATION_ID.equals(Application.getProcessName())) return;
         Context app = context.getApplicationContext();
+        MaintenanceTasks.execute(() -> removeInstalledUpdates(app));
         App.post(() -> MaintenanceTasks.execute(() -> run(app)), DELAY_MS);
     }
+
+    /**
+     * Update packages this version already installed (user 2026-10-25). The installer ends the old process,
+     * so the ~85 MB package used to stay in the cache until a later update check found it a day old, and
+     * forever with update checks off. Packages of a newer version (an update not installed yet) stay.
+     */
+    private static void removeInstalledUpdates(Context context) {
+        long freed = 0;
+        int count = 0;
+        for (File file : installedUpdates(context.getCacheDir(), BuildConfig.VERSION_CODE)) {
+            long size = file.length();
+            if (file.delete()) { freed += size; count++; }
+        }
+        if (count > 0) DiagnosticLog.write(context, "cache_cleanup", "update_apk files=" + count + " freedKb=" + freed / 1024);
+    }
+
+    /** ysc-update-<versionCode>-<random>.apk files whose version is not newer than the running one. */
+    static List<File> installedUpdates(File dir, int versionCode) {
+        List<File> installed = new ArrayList<>();
+        for (File file : Path.list(dir)) {
+            java.util.regex.Matcher name = UPDATE_APK.matcher(file.getName());
+            if (!file.isFile() || !name.matches()) continue;
+            try {
+                if (Integer.parseInt(name.group(1)) <= versionCode) installed.add(file);
+            } catch (NumberFormatException ignored) {
+                // Not a version number: the update check's one-day rule still removes it.
+            }
+        }
+        return installed;
+    }
+
+    private static final java.util.regex.Pattern UPDATE_APK = java.util.regex.Pattern.compile("ysc-update-(\\d+)-.*\\.apk");
 
     private static void run(Context context) {
         long now = System.currentTimeMillis();
