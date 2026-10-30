@@ -918,7 +918,7 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
         mBinding.video.setLayoutParams(mFrameParams);
         mBinding.detail.setVisibility(View.VISIBLE);
         mBinding.scroll.setVisibility(View.VISIBLE);
-        getFocus1().requestFocus();
+        restoreFocus1();
         mKeyDown.setFull(false);
         setFullscreen(false);
         updateNetSpeed();
@@ -1648,6 +1648,17 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
 
     private View getFocus1() {
         return mFocus1 == null || mFocus1.getVisibility() != View.VISIBLE ? mBinding.video : mFocus1;
+    }
+
+    /**
+     * Back from full screen returns to the episode playing now: the remembered card is the one picked before
+     * full screen, which is stale once playback moved on to the next episode (user 2026-10-30: 22 stayed
+     * focused after 23 played).
+     */
+    private void restoreFocus1() {
+        View focus = getFocus1();
+        if (focus.getParent() == mBinding.episode && mEpisodeAdapter.getItemCount() > 0) mBinding.episode.focusAfterLayout(mEpisodeAdapter.getPosition());
+        else focus.requestFocus();
     }
 
     private View getFocus2() {

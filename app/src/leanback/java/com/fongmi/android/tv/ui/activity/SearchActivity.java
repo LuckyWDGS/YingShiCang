@@ -81,7 +81,7 @@ public class SearchActivity extends BaseActivity implements WordAdapter.OnClickL
                 .putExtra(CollectActivity.EXTRA_RETURN_HOME, activity instanceof HomeActivity));
     }
     public static void start(Activity activity, String keyword) {
-        if (activity instanceof HomeActivity) { CollectActivity.start(activity, keyword); return; }
+        if (activity instanceof HomeActivity) { CollectActivity.startEntered(activity, keyword); return; }
         activity.startActivity(new Intent(activity, SearchActivity.class).putExtra("keyword", keyword));
     }
     private String keyword() { return mBinding.keyword.getText().toString().trim(); }

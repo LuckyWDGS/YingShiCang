@@ -36,6 +36,9 @@ public class PosterLabelTest {
         assertEquals("第12集", PosterLabel.history("某剧.S02E12.2160p.mkv"));
         assertEquals("第7集", PosterLabel.history("EP07"));
         assertEquals("第4集", PosterLabel.history("第4集"));
+        assertEquals("第22集", PosterLabel.history("22"));
+        assertEquals("第22集", PosterLabel.history("[1.20GB]22.mp4"));
+        assertEquals("第3集", PosterLabel.history("03.mkv"));
         assertEquals("某电影.2023.HEVC", PosterLabel.history("[2.10GB]某电影.2023.HEVC.mkv"));
         assertEquals("HD中字", PosterLabel.history("HD中字"));
         assertEquals("E.T.", PosterLabel.history("E.T."));

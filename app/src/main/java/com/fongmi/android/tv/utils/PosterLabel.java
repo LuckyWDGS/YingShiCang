@@ -44,7 +44,10 @@ public final class PosterLabel {
         Matcher file = FILE_EPISODE.matcher(note);
         if (file.find()) return "第" + file.group(1) + "集";
         String clean = FILE_NOISE.matcher(note).replaceAll("").trim();
-        return clean.isEmpty() ? note : clean;
+        if (clean.isEmpty()) return note;
+        // A bare number left after the size tag and extension ([1.2GB]22.mp4) is still an episode.
+        String named = episodes(clean);
+        return named.isEmpty() ? clean : named;
     }
 
     /** Where playback stopped, as 20:19 or 1:02:03; "" before the first minute is watched or after the end. */

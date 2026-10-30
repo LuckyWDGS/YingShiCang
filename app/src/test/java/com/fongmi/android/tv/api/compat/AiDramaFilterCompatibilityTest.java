@@ -201,6 +201,23 @@ public class AiDramaFilterCompatibilityTest {
         source.getAsJsonObject("pagination").addProperty("pageNum", 10); source.getAsJsonObject("pagination").addProperty("totalPages", 0);
         try { AiDramaFilterCompatibility.pageResult(source, 10); fail(); } catch (IOException expected) {}
     }
+    @Test public void unrecognisedAiDjKeepsItsOwnAiTypesAndFilters() throws Exception {
+        String raw = "{\"class\":[{\"type_id\":\"comic\",\"type_name\":\"AI漫剧\"},{\"type_id\":\"ai\",\"type_name\":\"AI真人剧\"},"
+                + "{\"type_id\":\"hot\",\"type_name\":\"热播\"}],\"filters\":{\"comic\":[{\"key\":\"category_dim_theme\",\"name\":\"全部主题\","
+                + "\"value\":[{\"n\":\"全部\",\"v\":\"\"},{\"n\":\"求生\",\"v\":\"cate_1168\"}]}],\"hot\":[]}}";
+        JsonObject home = JsonParser.parseString(AiDramaFilterCompatibility.plain(raw)).getAsJsonObject();
+        assertEquals(2, home.getAsJsonArray("class").size());
+        assertEquals("cate_1168", home.getAsJsonObject("filters").getAsJsonArray("comic").get(0).getAsJsonObject()
+                .getAsJsonArray("value").get(1).getAsJsonObject().get("v").getAsString());
+        assertFalse(home.getAsJsonObject("filters").has("hot"));
+        String other = "{\"class\":[{\"type_id\":\"genre|short_play\",\"type_name\":\"短剧\"}]}";
+        assertSame(other, AiDramaFilterCompatibility.plain(other));
+        // Only AiDj, bare or behind a guard, is narrowed; unrelated plugins keep their whole home.
+        assertTrue(AiDramaFilterCompatibility.isAiDj(new BaseSpiderGuard(new AiDj())));
+        assertFalse(AiDramaFilterCompatibility.isAiDj(new BaseSpiderGuard(new Spider() {})));
+        assertSame(raw, AiDramaFilterCompatibility.classes(null, new Spider() {}, raw, null, null));
+    }
+
     @Test public void originalDefaultApiAndUnrelatedSourcesKeepOriginalBehavior() throws Exception {
         assertNull(AiDramaFilterCompatibility.page(null, new AiDj(), "ai", 1, Map.of("topic", ""), null, null));
         assertNull(AiDramaFilterCompatibility.page(null, new Spider() {}, "other", 1,

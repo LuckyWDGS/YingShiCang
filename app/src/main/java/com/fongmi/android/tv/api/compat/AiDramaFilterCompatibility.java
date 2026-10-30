@@ -89,6 +89,26 @@ public final class AiDramaFilterCompatibility {
         return null;
     }
 
+    /** AiDj itself or behind the provider's guards, whatever its implementation. */
+    static boolean isAiDj(Spider spider) {
+        IdentityHashMap<Spider, Boolean> seen = new IdentityHashMap<>();
+        for (int depth = 0; spider != null && depth < 8; depth++) {
+            if (seen.put(spider, Boolean.TRUE) != null) return false;
+            if (AI_DJ.equals(spider.getClass().getName())) return true;
+            Spider next = null;
+            try {
+                for (Class<?> type = spider.getClass(); type != null && type != Spider.class; type = type.getSuperclass())
+                    for (Field field : type.getDeclaredFields()) {
+                        if (Modifier.isStatic(field.getModifiers()) || !Spider.class.isAssignableFrom(field.getType())) continue;
+                        if (next != null) return false;
+                        field.setAccessible(true); next = (Spider) field.get(spider);
+                    }
+            } catch (ReflectiveOperationException | RuntimeException error) { return false; }
+            spider = next;
+        }
+        return false;
+    }
+
     /** Only the proven instance's Python function globals supply the origin; no configured domain is invented. */
     static HttpUrl origin(Spider primary) throws IOException {
         try {
@@ -208,7 +228,7 @@ public final class AiDramaFilterCompatibility {
     }
 
     private static String nativeClassesInternal(Spider spider, String raw) throws IOException {
-        if (audited(spider) == null) throw new IOException("AI source native runtime unavailable");
+        if (audited(spider) == null) return plain(raw);
         JsonObject home = object(raw); JsonArray clean = new JsonArray();
         JsonObject filters = new JsonObject();
         boolean latest = supportsLatest(spider);
@@ -221,6 +241,26 @@ public final class AiDramaFilterCompatibility {
         }
         if (clean.isEmpty()) throw new IOException("AI source native categories unavailable");
         home.add("class", clean); home.add("filters", filters);
+        return home.toString();
+    }
+
+    /**
+     * A provider build this class does not recognise (10-29: AiDj rewritten in plain Java, no Python
+     * bridge) keeps its own AI types, filters and category pages; only the audited build gains the web
+     * topics and 最新 here. Failing instead left 短剧漫剧 empty (user 2026-10-30).
+     */
+    static String plain(String raw) throws IOException {
+        JsonObject home = object(raw); JsonArray clean = new JsonArray();
+        for (JsonElement value : array(home, "class"))
+            if (value.isJsonObject() && ("comic".equals(text(value.getAsJsonObject(), "type_id")) || "ai".equals(text(value.getAsJsonObject(), "type_id")))) clean.add(value);
+        if (clean.isEmpty()) return raw;
+        JsonObject filters = home.has("filters") && home.get("filters").isJsonObject() ? home.getAsJsonObject("filters") : new JsonObject();
+        JsonObject kept = new JsonObject();
+        for (JsonElement value : clean) {
+            String id = text(value.getAsJsonObject(), "type_id");
+            if (filters.has(id)) kept.add(id, filters.get(id));
+        }
+        home.add("class", clean); home.add("filters", kept);
         return home.toString();
     }
 
@@ -248,7 +288,7 @@ public final class AiDramaFilterCompatibility {
 
     private static String classesInternal(Site site, Spider spider, String raw, OkHttpClient client, Consumer<Call> calls) throws IOException {
         Spider primary = audited(spider);
-        if (primary == null) return raw;
+        if (primary == null) return isAiDj(spider) ? plain(raw) : raw;
         JsonObject home = object(raw);
         HttpUrl base = guardedOrigin(primary);
         Catalog catalog = catalog(site, primary, base, client, calls, true);

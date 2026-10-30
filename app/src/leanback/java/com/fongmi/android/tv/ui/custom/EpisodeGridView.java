@@ -6,6 +6,7 @@ import android.util.AttributeSet;
 import android.view.KeyEvent;
 import android.view.SoundEffectConstants;
 import android.view.View;
+import android.view.ViewTreeObserver;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.leanback.widget.OnChildViewHolderSelectedListener;
@@ -126,6 +127,30 @@ public class EpisodeGridView extends RecyclerView {
      */
     public void setSelectedPosition(int position) {
         setSelectedPosition(position, false);
+    }
+
+    /**
+     * Focuses the card at position once the grid is laid out (it may have been hidden in full screen, so its
+     * holders are stale); the frame waits for the move so the old card never draws focused.
+     */
+    public void focusAfterLayout(int position) {
+        if (position < 0 || getAdapter() == null || position >= getAdapter().getItemCount()) return;
+        ViewHolder holder = findViewHolderForAdapterPosition(position);
+        if (holder != null && !isLayoutRequested()) {
+            holder.itemView.requestFocus();
+            return;
+        }
+        scrollToPosition(position);
+        getViewTreeObserver().addOnPreDrawListener(new ViewTreeObserver.OnPreDrawListener() {
+            @Override
+            public boolean onPreDraw() {
+                getViewTreeObserver().removeOnPreDrawListener(this);
+                ViewHolder target = findViewHolderForAdapterPosition(position);
+                if (target == null) return true;
+                target.itemView.requestFocus();
+                return false;
+            }
+        });
     }
 
     /** takeFocus moves the remote onto the card even when the grid does not have focus yet. */

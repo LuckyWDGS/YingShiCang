@@ -37,6 +37,9 @@ public class CollectActivity extends BaseActivity implements VodPresenter.OnClic
     // Progressive search batches are merged into at most one diff per interval.
     private static final long DISPLAY_INTERVAL_MS = 150L;
     static final String EXTRA_RETURN_HOME = "return_home_from_search";
+    // Only a keyword the user entered goes into search history; titles searched for a card, 快速搜索 or a
+    // favorite do not (user 2026-10-30). The search page saves its own typed keywords.
+    static final String EXTRA_RECORD = "record";
     static final String EXTRA_EXPECTED_YEAR = "expected_year";
     static final String EXTRA_TARGET_TITLE = "target_title";
     private ActivityCollectBinding binding;
@@ -77,6 +80,11 @@ public class CollectActivity extends BaseActivity implements VodPresenter.OnClic
     static void start(Activity activity, String keyword, boolean returnHome) {
         activity.startActivity(new Intent(activity, CollectActivity.class)
                 .putExtra("keyword", keyword).putExtra(EXTRA_RETURN_HOME, returnHome));
+    }
+    /** A keyword entered outside the search page (phone push, voice), saved to search history. */
+    static void startEntered(Activity activity, String keyword) {
+        activity.startActivity(new Intent(activity, CollectActivity.class)
+                .putExtra("keyword", keyword).putExtra(EXTRA_RETURN_HOME, activity instanceof HomeActivity).putExtra(EXTRA_RECORD, true));
     }
     public static void startForCard(Activity activity, String keyword, String expectedYear, boolean returnHome) {
         activity.startActivity(new Intent(activity, CollectActivity.class)
@@ -234,7 +242,7 @@ public class CollectActivity extends BaseActivity implements VodPresenter.OnClic
         String title = Objects.toString(getIntent().getStringExtra(EXTRA_TARGET_TITLE), "");
         target = title.isEmpty() ? null : SearchResultRanker.target(title, expectedYear());
         queryRanker = SearchResultRanker.query(keyword());
-        com.fongmi.android.tv.setting.Setting.putKeyword(saveKeyword());
+        if (getIntent().getBooleanExtra(EXTRA_RECORD, false)) com.fongmi.android.tv.setting.Setting.putKeyword(saveKeyword());
         searchSources.search(this::startSearch);
     }
     private void startSearch(List<Site> sites) {

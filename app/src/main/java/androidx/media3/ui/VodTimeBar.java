@@ -6,6 +6,7 @@ import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.util.AttributeSet;
+import android.view.KeyEvent;
 import android.view.MotionEvent;
 
 import androidx.annotation.Nullable;
@@ -23,6 +24,9 @@ import java.util.Arrays;
 public class VodTimeBar extends DefaultTimeBar {
 
     private static final int STYLE_POINTER = 0;
+    // Remote scrubbing lands this long after the last Left/Right is released; Media3 waits a full second
+    // after every press (user 2026-10-30: a press took long to take effect).
+    private static final long KEY_COMMIT_MS = 400;
 
     private final boolean dotStyle;
     private final Paint chapterPaint;
@@ -37,6 +41,8 @@ public class VodTimeBar extends DefaultTimeBar {
     private long[] chapters = new long[0];
     private long mediaDuration;
     private long position;
+    private boolean scrubbing;
+    private final Runnable keyCommit = this::commitKeyScrub;
 
     public VodTimeBar(Context context, @Nullable AttributeSet attrs) {
         super(context, attrs);
@@ -60,6 +66,49 @@ public class VodTimeBar extends DefaultTimeBar {
         chapterOutlinePaint.setStrokeWidth(density);
         chapterOutlinePaint.setStrokeJoin(Paint.Join.ROUND);
         chapterPointer = new Path();
+        addListener(new OnScrubListener() {
+            @Override
+            public void onScrubStart(TimeBar timeBar, long position) {
+                scrubbing = true;
+            }
+
+            @Override
+            public void onScrubMove(TimeBar timeBar, long position) {
+            }
+
+            @Override
+            public void onScrubStop(TimeBar timeBar, long position, boolean canceled) {
+                scrubbing = false;
+                removeCallbacks(keyCommit);
+            }
+        });
+    }
+
+    @Override
+    public boolean onKeyDown(int keyCode, KeyEvent event) {
+        if (isSeekKey(keyCode)) removeCallbacks(keyCommit);
+        return super.onKeyDown(keyCode, event);
+    }
+
+    @Override
+    public boolean onKeyUp(int keyCode, KeyEvent event) {
+        if (isSeekKey(keyCode) && scrubbing) postDelayed(keyCommit, KEY_COMMIT_MS);
+        return super.onKeyUp(keyCode, event);
+    }
+
+    private static boolean isSeekKey(int keyCode) {
+        return keyCode == KeyEvent.KEYCODE_DPAD_LEFT || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT;
+    }
+
+    /** OK while scrubbing is Media3's own way to stop and commit, the same as its timeout. */
+    private void commitKeyScrub() {
+        if (scrubbing) super.onKeyDown(KeyEvent.KEYCODE_DPAD_CENTER, new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_CENTER));
+    }
+
+    @Override
+    protected void onDetachedFromWindow() {
+        removeCallbacks(keyCommit);
+        super.onDetachedFromWindow();
     }
 
     @Override

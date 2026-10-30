@@ -25,8 +25,9 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener {
     private static final long LONG_HOLD_MS = 2_000;
     // Presses closer together than this add up to one seek with the bubble kept up. At 250ms ordinary
     // taps committed one by one: the bubble hid, the buffering spinner flashed and the shown time lagged
-    // behind the presses (user 2026-10-24: the time in the middle looked odd).
-    private static final long SEEK_COMMIT_MS = 700;
+    // behind the presses (user 2026-10-24: the time in the middle looked odd). 700ms made a single press
+    // feel slow to land (user 2026-10-30).
+    private static final long SEEK_COMMIT_MS = 400;
 
     private final GestureDetector detector;
     private final Listener listener;
