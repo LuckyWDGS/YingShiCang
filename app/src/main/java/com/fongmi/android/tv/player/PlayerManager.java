@@ -237,12 +237,14 @@ public class PlayerManager implements ParseCallback {
         return spec != null && spec.getSelectedDanmaku() != null;
     }
 
+    // 片头 is set in the first half and 片尾 in the second; the old 3/6/10-minute windows ignored OK
+    // without a word anywhere else (user 2026-10-31: OK on 片头/片尾 did nothing).
     public boolean canSetOpening(long position, long duration) {
-        return position > 0 && duration > 0 && position <= Constant.getOpEdLimit(duration);
+        return position > 0 && duration > 0 && position <= duration / 2;
     }
 
     public boolean canSetEnding(long position, long duration) {
-        return position > 0 && duration > 0 && duration - position <= Constant.getOpEdLimit(duration);
+        return position > 0 && duration > 0 && position >= duration / 2 && duration - position >= 1000;
     }
 
     public int getVideoWidth() {

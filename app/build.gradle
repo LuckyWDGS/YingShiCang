@@ -20,8 +20,8 @@ android {
         minSdk libs.versions.minSdk.get().toInteger()
         targetSdk libs.versions.targetSdk.get().toInteger()
         // Publisher GitHub Releases: check, download, verify and install.
-        versionCode providers.gradleProperty('appVersionCode').getOrElse('92').toInteger()
-        versionName providers.gradleProperty('appVersionName').getOrElse('3.1.2')
+        versionCode providers.gradleProperty('appVersionCode').getOrElse('93').toInteger()
+        versionName providers.gradleProperty('appVersionName').getOrElse('3.1.3')
         buildConfigField "String", "UPDATE_MANIFEST_URL", groovy.json.JsonOutput.toJson(providers.gradleProperty("updateManifestUrl").getOrElse(""))
         // Optional update mirror (service/update_mirror): base URL, server IP for its host name and server key SHA-256 (hex), never committed.
         buildConfigField "String", "UPDATE_MIRROR_URL", groovy.json.JsonOutput.toJson(providers.gradleProperty("updateMirrorUrl").getOrElse(localProps.getProperty("ysc.updateMirrorUrl", "")))

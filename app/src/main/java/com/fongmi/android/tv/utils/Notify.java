@@ -74,7 +74,12 @@ public class Notify {
     }
 
     public static void show(String text) {
-        if (!TextUtils.isEmpty(text)) get().makeText(text);
+        if (!TextUtils.isEmpty(text)) get().makeText(text, 40);
+    }
+
+    /** Raised notice, e.g. above the player's control strip so it does not cover the control it answers. */
+    public static void showAbove(String text, int bottomDp) {
+        if (!TextUtils.isEmpty(text)) get().makeText(text, bottomDp);
     }
 
     public static void progress(Context context) {
@@ -96,15 +101,15 @@ public class Notify {
         mDialog.show();
     }
 
-    private void makeText(String text) {
+    private void makeText(String text, int bottomDp) {
         if (Looper.myLooper() != Looper.getMainLooper()) {
-            App.post(() -> makeText(text));
+            App.post(() -> makeText(text, bottomDp));
             return;
         }
         if (mToast != null) mToast.cancel();
         mToast = null;
         hideNotice();
-        if (showNotice(App.activity(), text)) return;
+        if (showNotice(App.activity(), text, bottomDp)) return;
         mToast = Toast.makeText(App.get(), text, Toast.LENGTH_LONG);
         mToast.show();
     }
@@ -114,7 +119,7 @@ public class Notify {
      * mid-screen, so a foreground activity shows the message in its own untouchable window at the
      * bottom centre, above any dialog already open.
      */
-    private boolean showNotice(Activity activity, String text) {
+    private boolean showNotice(Activity activity, String text, int bottomDp) {
         if (activity == null || activity.isFinishing() || activity.isDestroyed()) return fallback("no_activity");
         // Only once the activity window is attached; its WindowManager then supplies the activity token.
         if (activity.getWindow().getDecorView().getWindowToken() == null) return fallback("no_window");
@@ -132,7 +137,7 @@ public class Notify {
         WindowManager.LayoutParams params = new WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT,
                 WindowManager.LayoutParams.TYPE_APPLICATION, WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE, PixelFormat.TRANSLUCENT);
         params.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
-        params.y = ResUtil.dp2px(40);
+        params.y = ResUtil.dp2px(bottomDp);
         params.windowAnimations = android.R.style.Animation_Toast;
         params.setTitle("Notice");
         try {

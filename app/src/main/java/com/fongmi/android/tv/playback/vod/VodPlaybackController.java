@@ -29,6 +29,13 @@ public class VodPlaybackController {
     private final VodFallbackPolicy fallbackPolicy;
     private final VodPreloader preloader;
     private History lastHistory;
+    // A line that fails while playing is retried once in place (address fetched again, position kept)
+    // before the next line; a short stall used to switch lines at once (user 2026-10-31). The retry is
+    // available again after the line has played for a minute, so rare hiccups in a long film each get one.
+    private static final long RETRY_REFILL_MS = 60_000;
+    private VodPlayRequest retried;
+    private long retriedAt;
+    private long readyAt;
 
     public VodPlaybackController(VodPlaybackHost host, VodDataSource dataSource, VodPlaybackState state) {
         this.host = host;
@@ -251,11 +258,25 @@ public class VodPlaybackController {
     }
 
     public void playbackError(String msg) {
+        VodPlayRequest playing = state.getPlayingRequest();
+        if (canRetry(playing, android.os.SystemClock.elapsedRealtime())) {
+            retried = playing;
+            retriedAt = android.os.SystemClock.elapsedRealtime();
+            host.onPlaybackRetry();
+            refresh();
+            return;
+        }
         preloader.clear();
         host.resetPlaybackForError(msg);
         // Player/decoder events do not carry a resource request token. Never use
         // an old stream's error to blacklist a newly selected resource.
         fallbackPolicy.playbackError();
+    }
+
+    private boolean canRetry(VodPlayRequest playing, long now) {
+        if (playing == null) return false;
+        if (!playing.matches(retried)) return true;
+        return readyAt > retriedAt && now - readyAt >= RETRY_REFILL_MS;
     }
 
     private void recordPlaybackHealth(VodPlayRequest request, ResourceHealth.Status status) {
@@ -265,6 +286,7 @@ public class VodPlaybackController {
 
     public void playbackReady() {
         if (state.getPlayingRequest() == null) return;
+        readyAt = android.os.SystemClock.elapsedRealtime();
         state.setSelectFirstSource(false);
     }
 

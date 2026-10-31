@@ -44,6 +44,10 @@ public interface VodPlaybackHost {
 
     boolean canPreloadNext();
 
+    /** The current line failed and is being tried again before falling back. */
+    default void onPlaybackRetry() {
+    }
+
     default int preferredQualityPosition(Result result, int previousPosition) {
         return previousPosition;
     }

@@ -360,6 +360,13 @@
     <string name="error_play_url">Unable to load url</string>
     <string name="error_play_flag">No flag data</string>
     <string name="error_play_timeout">Timed out</string>
+    <string name="play_retry">Playback interrupted, retrying this line</string>
+    <string name="play_skip_unready">Wait until the video is playing to set this</string>
+    <string name="play_opening_late">Set the opening in the first half of the video</string>
+    <string name="play_ending_early">Set the ending in the second half of the video</string>
+    <string name="play_ending_end">Already at the end of the video</string>
+    <string name="play_opening_set">Opening set to %s</string>
+    <string name="play_ending_set">Ending set to %s</string>
     <string name="error_play_network">Network connection failed</string>
     <string name="error_play_http">Server returned an error (HTTP %1$d)</string>
     <string name="error_play_http_unknown">Server returned an error</string>

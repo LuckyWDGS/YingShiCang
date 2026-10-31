@@ -86,6 +86,7 @@ import com.fongmi.android.tv.utils.FileUtil;
 import com.fongmi.android.tv.utils.ImgUtil;
 import com.fongmi.android.tv.utils.KeyUtil;
 import com.fongmi.android.tv.utils.Notify;
+import com.fongmi.android.tv.diagnostics.DiagnosticLog;
 import com.fongmi.android.tv.utils.ResUtil;
 import com.fongmi.android.tv.utils.Sniffer;
 import com.fongmi.android.tv.utils.Traffic;
@@ -547,6 +548,12 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
         player().stop();
         player().clear();
         mClock.setCallback(null);
+    }
+
+    @Override
+    public void onPlaybackRetry() {
+        DiagnosticLog.write(App.get(), "playback_retry", "same_line");
+        Notify.show(R.string.play_retry);
     }
 
     @Override
@@ -1024,10 +1031,16 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
         mVod.refresh();
     }
 
+    /** OK always answers: the time set, or why it cannot be set here. */
     private void onOpening() {
         long position = player().getPosition();
         long duration = player().getDuration();
-        if (player().canSetOpening(position, duration)) setOpening(position);
+        if (position <= 0 || duration <= 0 || mHistory == null) skipNotice(getString(R.string.play_skip_unready));
+        else if (!player().canSetOpening(position, duration)) skipNotice(getString(R.string.play_opening_late));
+        else {
+            setOpening(position);
+            skipNotice(getString(R.string.play_opening_set, Util.timeMs(Math.max(0, mHistory.getLineOpening()))));
+        }
     }
 
     private void onOpeningAdd() {
@@ -1051,15 +1064,27 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
     private void onEnding() {
         long position = player().getPosition();
         long duration = player().getDuration();
-        if (player().canSetEnding(position, duration)) setEnding(duration - position);
+        if (position <= 0 || duration <= 0 || mHistory == null) skipNotice(getString(R.string.play_skip_unready));
+        else if (position < duration / 2) skipNotice(getString(R.string.play_ending_early));
+        else if (!player().canSetEnding(position, duration)) skipNotice(getString(R.string.play_ending_end));
+        else {
+            setEnding(duration - position);
+            skipNotice(getString(R.string.play_ending_set, endingText()));
+        }
     }
 
+    /** Above the strip: the bottom notice covered 片头/片尾 themselves. */
+    private void skipNotice(String text) {
+        Notify.showAbove(text, 140);
+    }
+
+    // 片尾 shows where the ending starts, so Up moves that time later (a shorter ending) and Down earlier.
     private void onEndingAdd() {
-        setEnding(Math.max(0, Math.max(0, mHistory.getLineEnding()) + 1000));
+        setEnding(Math.max(0, Math.max(0, mHistory.getLineEnding()) - 1000));
     }
 
     private void onEndingSub() {
-        setEnding(Math.max(0, Math.max(0, mHistory.getLineEnding()) - 1000));
+        setEnding(Math.max(0, Math.max(0, mHistory.getLineEnding()) + 1000));
     }
 
     private boolean onEndingReset() {
@@ -1075,9 +1100,21 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
     /** 片头/片尾 always show their time, 00:00 until one is set (user 2026-10-24). */
     private void updateSkipLabels() {
         if (mHistory == null) return;
-        long opening = Math.max(0, mHistory.getLineOpening()), ending = Math.max(0, mHistory.getLineEnding());
+        long opening = Math.max(0, mHistory.getLineOpening());
         mBinding.control.action.opening.setText(getString(R.string.vod_opening_time, Util.timeMs(opening)));
-        mBinding.control.action.ending.setText(getString(R.string.vod_ending_time, Util.timeMs(ending)));
+        mBinding.control.action.ending.setText(getString(R.string.vod_ending_time, endingText()));
+    }
+
+    /**
+     * Where the ending starts in this episode (3:00 of a 3:30 one), not its length; the line keeps the
+     * length so episodes of other lengths skip the same credits (user 2026-10-31: "last 0:30" was unclear).
+     */
+    private String endingText() {
+        long ending = Math.max(0, mHistory.getLineEnding());
+        if (ending == 0) return Util.timeMs(0);
+        long playing = service() != null ? player().getDuration() : 0;
+        long duration = playing > 0 ? playing : mHistory.getDuration();
+        return duration > ending ? Util.timeMs(duration - ending) : "-" + Util.timeMs(ending);
     }
 
     /** The common strip never needs scrolling: every label change re-fits the controls' side padding. */
