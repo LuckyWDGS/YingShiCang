@@ -1031,16 +1031,12 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
         mVod.refresh();
     }
 
-    /** OK always answers: the time set, or why it cannot be set here. */
+    // 片头 is set in the first half and 片尾 in the second (PlayerManager.canSetOpening/Ending); the label
+    // shows the result, without a notice (user 2026-10-31).
     private void onOpening() {
         long position = player().getPosition();
         long duration = player().getDuration();
-        if (position <= 0 || duration <= 0 || mHistory == null) skipNotice(getString(R.string.play_skip_unready));
-        else if (!player().canSetOpening(position, duration)) skipNotice(getString(R.string.play_opening_late));
-        else {
-            setOpening(position);
-            skipNotice(getString(R.string.play_opening_set, Util.timeMs(Math.max(0, mHistory.getLineOpening()))));
-        }
+        if (mHistory != null && player().canSetOpening(position, duration)) setOpening(position);
     }
 
     private void onOpeningAdd() {
@@ -1064,18 +1060,7 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
     private void onEnding() {
         long position = player().getPosition();
         long duration = player().getDuration();
-        if (position <= 0 || duration <= 0 || mHistory == null) skipNotice(getString(R.string.play_skip_unready));
-        else if (position < duration / 2) skipNotice(getString(R.string.play_ending_early));
-        else if (!player().canSetEnding(position, duration)) skipNotice(getString(R.string.play_ending_end));
-        else {
-            setEnding(duration - position);
-            skipNotice(getString(R.string.play_ending_set, endingText()));
-        }
-    }
-
-    /** Above the strip: the bottom notice covered 片头/片尾 themselves. */
-    private void skipNotice(String text) {
-        Notify.showAbove(text, 140);
+        if (mHistory != null && player().canSetEnding(position, duration)) setEnding(duration - position);
     }
 
     // 片尾 shows where the ending starts, so Up moves that time later (a shorter ending) and Down earlier.

@@ -1,10 +1,10 @@
 package com.fongmi.android.tv.playback.vod;
 
-import android.text.TextUtils;
-
 import com.fongmi.android.tv.bean.Episode;
 import com.fongmi.android.tv.bean.Flag;
 import com.fongmi.android.tv.bean.Result;
+
+import java.util.Objects;
 
 public final class VodPlayRequest {
 
@@ -35,14 +35,14 @@ public final class VodPlayRequest {
     }
 
     public boolean matches(String key, Flag flag, Episode episode) {
-        return TextUtils.equals(this.key, key) && flag != null && episode != null && TextUtils.equals(this.flag, flag.getFlag()) && TextUtils.equals(this.id, episode.getUrl());
+        return Objects.equals(this.key, key) && flag != null && episode != null && Objects.equals(this.flag, flag.getFlag()) && Objects.equals(this.id, episode.getUrl());
     }
 
     public boolean matches(VodPlayRequest request) {
-        return request != null && TextUtils.equals(key, request.key) && TextUtils.equals(flag, request.flag) && TextUtils.equals(id, request.id);
+        return request != null && Objects.equals(key, request.key) && Objects.equals(flag, request.flag) && Objects.equals(id, request.id);
     }
 
     public boolean accepts(Result result) {
-        return result != null && (result.getFlag().isEmpty() || TextUtils.equals(flag, result.getFlag()));
+        return result != null && (result.getFlag().isEmpty() || Objects.equals(flag, result.getFlag()));
     }
 }

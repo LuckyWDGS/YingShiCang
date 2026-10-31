@@ -365,12 +365,6 @@
     <string name="error_play_flag">暂无线路数据</string>
     <string name="error_play_timeout">连接超时</string>
     <string name="play_retry">播放中断，正在重试当前线路</string>
-    <string name="play_skip_unready">请在视频开始播放后再设置</string>
-    <string name="play_opening_late">片头需在视频前半段设置</string>
-    <string name="play_ending_early">片尾需在视频后半段设置</string>
-    <string name="play_ending_end">已到视频结尾，请在片尾开始处设置</string>
-    <string name="play_opening_set">片头已设为 %s</string>
-    <string name="play_ending_set">片尾已设为 %s</string>
     <string name="error_play_network">网络连接失败</string>
     <string name="error_play_http">服务器返回错误（HTTP %1$d）</string>
     <string name="error_play_http_unknown">服务器返回错误</string>

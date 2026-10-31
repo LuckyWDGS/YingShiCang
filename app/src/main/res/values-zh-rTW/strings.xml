@@ -365,12 +365,6 @@
     <string name="error_play_flag">暫無線路資料</string>
     <string name="error_play_timeout">連線逾時</string>
     <string name="play_retry">播放中斷，正在重試目前線路</string>
-    <string name="play_skip_unready">請在影片開始播放後再設定</string>
-    <string name="play_opening_late">片頭需在影片前半段設定</string>
-    <string name="play_ending_early">片尾需在影片後半段設定</string>
-    <string name="play_ending_end">已到影片結尾，請在片尾開始處設定</string>
-    <string name="play_opening_set">片頭已設為 %s</string>
-    <string name="play_ending_set">片尾已設為 %s</string>
     <string name="error_play_network">網路連線失敗</string>
     <string name="error_play_http">伺服器回傳錯誤（HTTP %1$d）</string>
     <string name="error_play_http_unknown">伺服器回傳錯誤</string>

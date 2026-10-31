@@ -29,13 +29,9 @@ public class VodPlaybackController {
     private final VodFallbackPolicy fallbackPolicy;
     private final VodPreloader preloader;
     private History lastHistory;
-    // A line that fails while playing is retried once in place (address fetched again, position kept)
-    // before the next line; a short stall used to switch lines at once (user 2026-10-31). The retry is
-    // available again after the line has played for a minute, so rare hiccups in a long film each get one.
-    private static final long RETRY_REFILL_MS = 60_000;
-    private VodPlayRequest retried;
-    private long retriedAt;
-    private long readyAt;
+    // A failing line is retried in place (address fetched again, position kept) before the next line;
+    // a short stall used to switch lines at once (user 2026-10-31).
+    private final VodRetryBudget retries = new VodRetryBudget();
 
     public VodPlaybackController(VodPlaybackHost host, VodDataSource dataSource, VodPlaybackState state) {
         this.host = host;
@@ -259,9 +255,7 @@ public class VodPlaybackController {
 
     public void playbackError(String msg) {
         VodPlayRequest playing = state.getPlayingRequest();
-        if (canRetry(playing, android.os.SystemClock.elapsedRealtime())) {
-            retried = playing;
-            retriedAt = android.os.SystemClock.elapsedRealtime();
+        if (retries.take(playing, android.os.SystemClock.elapsedRealtime())) {
             host.onPlaybackRetry();
             refresh();
             return;
@@ -273,12 +267,6 @@ public class VodPlaybackController {
         fallbackPolicy.playbackError();
     }
 
-    private boolean canRetry(VodPlayRequest playing, long now) {
-        if (playing == null) return false;
-        if (!playing.matches(retried)) return true;
-        return readyAt > retriedAt && now - readyAt >= RETRY_REFILL_MS;
-    }
-
     private void recordPlaybackHealth(VodPlayRequest request, ResourceHealth.Status status) {
         if (state.getResourceRevision() != VodConfig.getDiscoveryRevision() || findEpisode(request) == null) return;
         ResourceHealth.recordPlayback(host.getVodKey(), host.getVodId(), request, state.getFlags(), status, state.getResourceRevision());
@@ -286,7 +274,7 @@ public class VodPlaybackController {
 
     public void playbackReady() {
         if (state.getPlayingRequest() == null) return;
-        readyAt = android.os.SystemClock.elapsedRealtime();
+        retries.ready(android.os.SystemClock.elapsedRealtime());
         state.setSelectFirstSource(false);
     }
 
