@@ -136,7 +136,7 @@ public final class HomeDiscovery {
         binding.categories.getViewTreeObserver().addOnGlobalFocusChangeListener((oldFocus, newFocus) -> {
             binding.categories.removeCallbacks(focusSelect);
             binding.categories.removeCallbacks(optionSelect);
-            if (newFocus == null || oldFocus == null || newFocus.isInTouchMode()) return;
+            if (newFocus == null || oldFocus == null || newFocus.isInTouchMode() || parkingFocus) return;
             if (!tabs.contains(newFocus)) { followOptionFocus(oldFocus, newFocus); return; }
             if (tabs.indexOf(newFocus) != active) binding.categories.postDelayed(focusSelect, FOCUS_SELECT_MS);
         });
@@ -276,8 +276,8 @@ public final class HomeDiscovery {
         if (!inCards) return false;
         View next = android.view.FocusFinder.getInstance().findNextFocus((android.view.ViewGroup) binding.getRoot(), focused, View.FOCUS_UP);
         View open = tabs.get(isHistory() ? 0 : active);
-        if (!tabs.contains(next) || next == open) return false;
-        open.requestFocus();
+        if (!tabs.contains(next) || (next == open && !isHistory())) return false;
+        focusCurrentTab();
         focused.playSoundEffect(android.view.SoundEffectConstants.NAVIGATION_UP);
         return true;
     }
@@ -957,9 +957,16 @@ public final class HomeDiscovery {
         roundTab = null;
     }
 
+    // History has no tab, so focus parks on 主页 without opening it: opening 历史 hides the shortcut that
+    // had focus, and the parked focus then opened 主页 250ms later (user 2026-10-31: history flashed and
+    // went back to Home).
+    private boolean parkingFocus;
+
     public void focusCurrentTab() {
         View target = isHistory() ? tabs.get(0) : tabs.get(active);
-        if (target != null) target.requestFocus();
+        if (target == null) return;
+        parkingFocus = true;
+        try { target.requestFocus(); } finally { parkingFocus = false; }
     }
 
     public void loadNearEnd() {
