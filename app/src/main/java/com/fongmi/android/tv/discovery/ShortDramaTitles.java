@@ -163,12 +163,21 @@ public final class ShortDramaTitles {
         return entry.pinyin.startsWith(q) ? title : null;
     }
 
-    /** Whether a title contains the typed letters as pinyin initials or full pinyin; false without pinyin support. */
+    /**
+     * Whether a title contains the typed letters as pinyin initials, full pinyin, English text or the
+     * initials of its English words (twd in The Walking Dead); false without pinyin support.
+     */
     public static boolean contains(String title, String query) {
         String q = query == null ? "" : query.trim().toLowerCase(Locale.ROOT);
         if (title == null || q.isEmpty() || latin() == null) return false;
         Entry entry = build(List.of(title)).get(0);
-        return TitleInitials.indexOf(entry.initials, q) >= 0 || entry.pinyin.contains(q);
+        return TitleInitials.indexOf(entry.initials, q) >= 0 || entry.pinyin.contains(q) || wordInitials(title).contains(q);
+    }
+
+    private static String wordInitials(String title) {
+        StringBuilder initials = new StringBuilder();
+        for (String word : title.toLowerCase(Locale.ROOT).split("[^a-z0-9]+")) if (!word.isEmpty()) initials.append(word.charAt(0));
+        return initials.toString();
     }
 
     /** Pinyin matching needs Android 10's ICU transliterator. */

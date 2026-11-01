@@ -88,6 +88,14 @@ public class SiteViewModel extends ViewModel {
                 status -> com.fongmi.android.tv.App.post(() -> { if (generation == searchGeneration) searchStatus.setValue(status); }));
     }
 
+    /** Several keywords over the same sources, as one aggregate search. */
+    public void searchContent(List<Site> sites, List<String> keywords, boolean quick) {
+        int generation = ++searchGeneration;
+        searches.start(sites, keywords.size(), (site, query) -> SearchTask.create(site, keywords.get(query), quick),
+                value -> com.fongmi.android.tv.App.post(() -> { if (generation == searchGeneration) search.setValue(value); }),
+                status -> com.fongmi.android.tv.App.post(() -> { if (generation == searchGeneration) searchStatus.setValue(status); }));
+    }
+
     private void execute(TaskType type, MutableLiveData<Result> liveData, Callable<Result> callable) {
         execute(type, liveData, callable, liveData::postValue);
     }

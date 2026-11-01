@@ -54,9 +54,9 @@ public class SearchActivity extends BaseActivity implements WordAdapter.OnClickL
     // Typed suggestions also list titles from the 短剧漫剧 (AiDj) source (user 2026-10-24: iQIYI's
     // suggestions only cover TV, film and variety). Its plugin search runs beside the iQIYI request.
     private static final long DRAMA_DEBOUNCE_MS = 400;
-    private static final int DRAMA_WORDS = 8, DRAMA_AFTER = 6;
+    private static final int DRAMA_WORDS = 8, DRAMA_AFTER = 6, DRAMA_TERMS = 3;
     private static final String LETTERS = "[A-Za-z]{2,12}";
-    private static final long SUGGESTION_WAIT_MS = 1500;
+    private static final long SUGGESTION_WAIT_MS = 3000;
     // The letters waiting for their suggestions; after the wait they are searched as typed.
     private String pendingSearch;
     private boolean searchLiteral;
@@ -461,9 +461,9 @@ public class SearchActivity extends BaseActivity implements WordAdapter.OnClickL
     @Override public void onSearch() {
         String text = keyword();
         if (text.isEmpty()) { Notify.show("请输入要搜索的内容"); return; }
-        String title = initialsTitle(text);
+        List<String> terms = letterTerms(text);
         // Letters typed and 搜索 pressed before their suggestions arrived: wait for them briefly.
-        if (title == null && !searchLiteral && text.matches(LETTERS) && !text.equals(wordsFor)) {
+        if (terms.isEmpty() && !searchLiteral && text.matches(LETTERS) && !text.equals(wordsFor)) {
             pendingSearch = text;
             handler.removeCallbacks(searchAnyway);
             handler.postDelayed(searchAnyway, SUGGESTION_WAIT_MS);
@@ -472,33 +472,39 @@ public class SearchActivity extends BaseActivity implements WordAdapter.OnClickL
         searchLiteral = false;
         pendingSearch = null;
         handler.removeCallbacks(searchAnyway);
-        if (title != null) { setKeyword(title); text = title; }
         suggestions.suspend();
         suggestionUiVersion++;
         mRecordAdapter.remember(text);
         Util.hideKeyboard(mBinding.keyword);
         boolean returnHome = getIntent().getBooleanExtra(CollectActivity.EXTRA_RETURN_HOME, false);
-        CollectActivity.start(this, text, returnHome);
+        CollectActivity.start(this, text, returnHome, terms);
         if (returnHome) finish();
     }
     /**
-     * Typed pinyin initials (xcjc) searched as they are matched sources' fuzzy text and returned unrelated
-     * titles (user 2026-11-01). The first suggestion, in the order shown, whose initials or pinyin start
-     * with them is searched instead, cut to the characters the initials cover; with none, the letters are
-     * searched as typed.
+     * Typed letters (pinyin initials like xcjc, or English) stay the search: sources match letters
+     * loosely, so the results also search the shown suggestions, the titles the letters may stand for
+     * (user 2026-11-01: a fuzzy search for everything related, short dramas and English titles too, not
+     * one title picked for them). A suggestion the letters spell is cut to the characters they cover
+     * (乡村警察电视剧 -> 乡村警察); 短剧漫剧 titles keep a few places after iQIYI's first words.
      */
-    private String initialsTitle(String text) {
-        if (!text.matches(LETTERS)) return null;
+    private List<String> letterTerms(String text) {
+        if (!text.matches(LETTERS)) return List.of();
         List<Word.Data> base = text.equals(wordsFor) ? baseWords : List.of();
         List<Word.Data> drama = text.equals(dramaFor) ? dramaWords : List.of();
-        List<Word.Data> shown = new ArrayList<>(base.subList(0, Math.min(DRAMA_AFTER, base.size())));
-        shown.addAll(drama);
-        shown.addAll(base);
-        for (Word.Data word : shown) {
+        java.util.LinkedHashSet<String> terms = new java.util.LinkedHashSet<>();
+        addTerms(terms, base, text, CollectActivity.MAX_TERMS - DRAMA_TERMS);
+        addTerms(terms, drama, text, CollectActivity.MAX_TERMS);
+        addTerms(terms, base, text, CollectActivity.MAX_TERMS);
+        return new ArrayList<>(terms);
+    }
+
+    private static void addTerms(java.util.Set<String> terms, List<Word.Data> words, String text, int limit) {
+        for (Word.Data word : words) {
+            if (terms.size() >= limit) return;
             String term = com.fongmi.android.tv.discovery.ShortDramaTitles.searchTerm(word.getTitle(), text);
-            if (term != null) return term;
+            if (term == null) term = word.getTitle();
+            if (term != null && !term.isBlank()) terms.add(term.trim());
         }
-        return null;
     }
     @Override public void showDialog() { SiteDialog.create().search().show(this); }
     @Override public void onRemote() { PushActivity.start(this, 1); }

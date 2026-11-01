@@ -12,6 +12,15 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 public class SearchResultRankerTest {
+    @Test public void relatedMeansTheTitleItsInstallmentOrContainingIt() {
+        SearchResultRanker.Query term = SearchResultRanker.query("乡村警察");
+        assertTrue(term.related("乡村警察"));
+        assertTrue(term.related("乡村警察2"));
+        assertTrue(term.related("[李清娥]乡村警察故事"));
+        assertFalse(term.related("乡村爱情"));
+        assertFalse(term.related("警察使命"));
+    }
+
     @Test public void normalizesPunctuationAndTraditionalTitles() {
         assertEquals(0, SearchResultRanker.titleRank("  流浪地球（2） ", "流浪地球(2)"));
         assertEquals(0, SearchResultRanker.titleRank("繁體片名", "繁体片名"));

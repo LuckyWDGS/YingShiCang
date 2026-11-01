@@ -36,7 +36,7 @@ public final class SearchResultRanker {
     }
 
     public static final class Query {
-        private static final int UNRELATED = 200_000;
+        public static final int UNRELATED = 200_000;
         private static final int OVERLAP_LIMIT = 256;
         private final String title;
 
@@ -67,6 +67,11 @@ public final class SearchResultRanker {
             if (overlap < Math.min(2, title.length())) return UNRELATED;
             return 50_000 + (OVERLAP_LIMIT - overlap) * 256
                     + Math.min(255, Math.abs(candidate.length() - title.length()));
+        }
+
+        /** Whether the candidate is this title, an installment of it or contains it (not a mere overlap). */
+        public boolean related(String candidateTitle) {
+            return score(candidateTitle) < 50_000;
         }
 
         private int addedInstallment(String candidate, String rawCandidate) {

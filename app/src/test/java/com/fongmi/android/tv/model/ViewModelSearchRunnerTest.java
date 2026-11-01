@@ -67,6 +67,30 @@ public class ViewModelSearchRunnerTest {
         } finally { release.countDown(); runner.stop(); http.shutdownNow(); crawlers.shutdownNow(); timer.shutdownNow(); }
     }
 
+    @Test public void severalQueriesRunEverySourceOnceEachAndNeverTwiceAtOnce() throws Exception {
+        var http = MoreExecutors.listeningDecorator(Executors.newFixedThreadPool(4));
+        var timer = Executors.newSingleThreadScheduledExecutor();
+        var runner = new ViewModelSearchRunner(http, timer, 5000, 4);
+        Site first = new Site(), second = new Site();
+        var calls = new java.util.concurrent.ConcurrentHashMap<String, Integer>();
+        var running = java.util.Collections.synchronizedSet(java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<Site, Boolean>()));
+        var last = new java.util.concurrent.atomic.AtomicReference<String>();
+        var overlap = new AtomicInteger();
+        var done = new CountDownLatch(1);
+        try {
+            runner.start(java.util.List.of(first, second), 3, (site, query) -> () -> {
+                if (!running.add(site)) overlap.incrementAndGet();
+                Thread.sleep(20);
+                calls.merge((site == first ? "a" : "b") + query, 1, Integer::sum);
+                running.remove(site);
+                return null;
+            }, result -> {}, status -> { last.set(status); if (status.startsWith("搜索完成 6/6")) done.countDown(); });
+            assertTrue(done.await(5, TimeUnit.SECONDS));
+            assertEquals(last.get(), java.util.Map.of("a0", 1, "a1", 1, "a2", 1, "b0", 1, "b1", 1, "b2", 1), calls);
+            assertEquals("A source ran two queries at once", 0, overlap.get());
+        } finally { runner.stop(); http.shutdownNow(); timer.shutdownNow(); }
+    }
+
     private static final class BlockingSearch implements Callable<com.fongmi.android.tv.bean.Result>, AutoCloseable {
         final CountDownLatch started = new CountDownLatch(1), release = new CountDownLatch(1);
         final AtomicInteger closed = new AtomicInteger();

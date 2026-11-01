@@ -63,7 +63,7 @@ final class ViewModelSearchRunner {
         }
     }
     private final List<Job> jobs = new CopyOnWriteArrayList<>();
-    private record Attempt(Site site, int retries) {}
+    private record Attempt(Site site, int retries, int query) {}
     private final List<Future<?>> retries = new ArrayList<>();
     private final AtomicInteger epoch = new AtomicInteger();
     private ArrayDeque<Attempt> pending;
@@ -72,11 +72,15 @@ final class ViewModelSearchRunner {
     private Consumer<String> status;
     private long revision;
     synchronized void start(List<Site> sites, Function<Site, Callable<Result>> factory, Consumer<Result> results, Consumer<String> progress) {
+        start(sites, 1, (site, query) -> factory.apply(site), results, progress);
+    }
+    /** Every source once per query, query by query; a source runs one query at a time. */
+    synchronized void start(List<Site> sites, int queries, BiFunction<Site, Integer, Callable<Result>> factory, Consumer<Result> results, Consumer<String> progress) {
         stop(); int current = epoch.get();
         pending = new ArrayDeque<>();
         revision = VodConfig.getDiscoveryRevision();
-        sites.forEach(site -> pending.add(new Attempt(site, 0)));
-        total = sites.size(); completed = failed = hits = 0; lastError = ""; status = progress;
+        for (int query = 0; query < queries; query++) for (Site site : sites) pending.add(new Attempt(site, 0, query));
+        total = sites.size() * queries; completed = failed = hits = 0; lastError = ""; status = progress;
         report();
         dispatch(current,factory,results);
     }
@@ -87,14 +91,14 @@ final class ViewModelSearchRunner {
         if(pending!=null)pending.clear();
         Task.purgeSearchTasks();
     }
-    private synchronized void dispatch(int current, Function<Site,Callable<Result>> factory,Consumer<Result> results) {
+    private synchronized void dispatch(int current, BiFunction<Site,Integer,Callable<Result>> factory,Consumer<Result> results) {
         if(epoch.get()!=current || dispatching)return;
         dispatching = true;
         try {
             Attempt attempt;
             while (epoch.get() == current && (attempt = nextAvailable()) != null) {
                 boolean crawler = attempt.site.getType() == 3;
-                Callable<Result> task = factory.apply(attempt.site);
+                Callable<Result> task = factory.apply(attempt.site, attempt.query);
                 Job job = new Job(task, attempt);
                 if (crawler) activeCrawlers++; else activeHttp++;
                 jobs.add(job);
@@ -119,13 +123,18 @@ final class ViewModelSearchRunner {
     private Attempt nextAvailable() {
         for (Iterator<Attempt> iterator = pending.iterator(); iterator.hasNext();) {
             Attempt attempt = iterator.next();
+            if (busy(attempt.site)) continue;
             if (attempt.site.getType() == 3 ? activeCrawlers < crawlerParallelism : activeHttp < parallelism) {
                 iterator.remove(); return attempt;
             }
         }
         return null;
     }
-    private synchronized void finish(int current,Function<Site,Callable<Result>> factory,Consumer<Result> results,Job job,Result value,Throwable error) {
+    private boolean busy(Site site) {
+        for (Job job : jobs) if (job.attempt.site == site) return true;
+        return false;
+    }
+    private synchronized void finish(int current,BiFunction<Site,Integer,Callable<Result>> factory,Consumer<Result> results,Job job,Result value,Throwable error) {
         job.resource.close();
         if (error != null && job.submitted != null) job.submitted.cancel(true);
         if(epoch.get()!=current)return;
@@ -258,10 +267,10 @@ final class ViewModelSearchRunner {
         String lower = message.toLowerCase(java.util.Locale.ROOT);
         return lower.contains("deadline") || lower.contains("cancel") || message.contains("取消");
     }
-    private synchronized void retry(int current, Function<Site, Callable<Result>> factory,
+    private synchronized void retry(int current, BiFunction<Site, Integer, Callable<Result>> factory,
                                     Consumer<Result> results, Attempt previous) {
         if (epoch.get() != current) return;
-        pending.addLast(new Attempt(previous.site, previous.retries + 1));
+        pending.addLast(new Attempt(previous.site, previous.retries + 1, previous.query));
         retries.removeIf(Future::isDone);
         dispatch(current, factory, results);
     }

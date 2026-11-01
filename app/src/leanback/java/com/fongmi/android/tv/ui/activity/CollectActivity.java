@@ -40,6 +40,9 @@ public class CollectActivity extends BaseActivity implements VodPresenter.OnClic
     // Only a keyword the user entered goes into search history; titles searched for a card, 快速搜索 or a
     // favorite do not (user 2026-10-30). The search page saves its own typed keywords.
     static final String EXTRA_RECORD = "record";
+    // Titles typed pinyin initials may stand for (SearchActivity.initialsTerms), searched beside them.
+    static final String EXTRA_TERMS = "terms";
+    static final int MAX_TERMS = 7;
     static final String EXTRA_EXPECTED_YEAR = "expected_year";
     static final String EXTRA_TARGET_TITLE = "target_title";
     private ActivityCollectBinding binding;
@@ -78,8 +81,12 @@ public class CollectActivity extends BaseActivity implements VodPresenter.OnClic
         start(activity, keyword, activity instanceof HomeActivity);
     }
     static void start(Activity activity, String keyword, boolean returnHome) {
+        start(activity, keyword, returnHome, List.of());
+    }
+    static void start(Activity activity, String keyword, boolean returnHome, List<String> terms) {
         activity.startActivity(new Intent(activity, CollectActivity.class)
-                .putExtra("keyword", keyword).putExtra(EXTRA_RETURN_HOME, returnHome));
+                .putExtra("keyword", keyword).putExtra(EXTRA_RETURN_HOME, returnHome)
+                .putStringArrayListExtra(EXTRA_TERMS, new ArrayList<>(terms)));
     }
     /** A keyword entered outside the search page (phone push, voice), saved to search history. */
     static void startEntered(Activity activity, String keyword) {
@@ -154,6 +161,8 @@ public class CollectActivity extends BaseActivity implements VodPresenter.OnClic
         loadNextPage(retry, scanning, false);
     }
     private void loadNextPage(boolean retry, boolean scanning, boolean force) {
+        // A letters search with candidate titles has no single query to page.
+        if (!terms.isEmpty()) return;
         if (selected.isEmpty() || loadingKey != null || exhausted.contains(selected) || (!retry && failedPages.contains(selected))) return;
         if (scanning && emptyPageScans >= 3) return;
         GridLayoutManager layout = (GridLayoutManager) binding.results.getLayoutManager();
@@ -243,16 +252,27 @@ public class CollectActivity extends BaseActivity implements VodPresenter.OnClic
         target = title.isEmpty() ? null : SearchResultRanker.target(title, expectedYear());
         queryRanker = SearchResultRanker.query(keyword());
         letters = keyword().matches("[A-Za-z]{2,12}") && com.fongmi.android.tv.discovery.ShortDramaTitles.canMatchLetters() ? keyword() : null;
+        List<String> extra = getIntent().getStringArrayListExtra(EXTRA_TERMS);
+        terms = letters == null || extra == null ? List.of() : extra.subList(0, Math.min(MAX_TERMS, extra.size()));
+        termRankers = terms.stream().map(SearchResultRanker::query).toList();
         if (getIntent().getBooleanExtra(EXTRA_RECORD, false)) com.fongmi.android.tv.setting.Setting.putKeyword(saveKeyword());
         searchSources.search(this::startSearch);
     }
     private void startSearch(List<Site> sites) {
         eligible = sites;
+        // Letters may stand for a 短剧漫剧 title too (user 2026-11-01), so that source joins their search.
+        Site drama = letters == null ? null : com.fongmi.android.tv.discovery.AiDramaRunner.site(VodConfig.get());
+        if (drama != null && !sites.contains(drama)) { eligible = new ArrayList<>(sites); eligible.add(drama); }
         searchComplete = false;
         binding.progress.setText("搜索(0/" + eligible.size() + ")");
         binding.results.setContentDescription(keyword() + "，影片列表");
         display(true); rebuildSources();
-        if (!searchSources.isWaitingForConfig()) model.searchContent(eligible, keyword(), false);
+        if (searchSources.isWaitingForConfig()) return;
+        if (terms.isEmpty()) { model.searchContent(eligible, keyword(), false); return; }
+        // The candidate titles first, in the order they were shown, then the letters as typed.
+        List<String> queries = new ArrayList<>(terms);
+        queries.add(keyword());
+        model.searchContent(eligible, queries, false);
     }
     @Subscribe(threadMode = ThreadMode.MAIN)
     public void onConfigEvent(ConfigEvent event) {
@@ -266,12 +286,48 @@ public class CollectActivity extends BaseActivity implements VodPresenter.OnClic
         history.remove(keyword()); history.add(0, keyword());
         return App.gson().toJson(history.subList(0, Math.min(9, history.size())));
     }
-    // Typed pinyin initials (xcjc) that reached the results: sources match letters loosely and returned
-    // unrelated titles (user 2026-11-01), so only titles those letters spell are shown.
+    // Typed letters (xcjc) that reached the results: sources match letters loosely and returned unrelated
+    // titles (user 2026-11-01), so only titles those letters spell, or that are one of the titles they may
+    // stand for, are shown.
     private String letters;
+    private List<String> terms = List.of();
+    private List<SearchResultRanker.Query> termRankers = List.of();
 
+    // Sources match letters loosely and return unrelated titles for initials and English words alike.
     private boolean lettersMatch(String name) {
-        return letters == null || com.fongmi.android.tv.discovery.ShortDramaTitles.contains(name, letters);
+        return letters == null || letterScore(name) < SearchResultRanker.Query.UNRELATED;
+    }
+
+    /**
+     * Typed letters: titles of the candidates in the order they were suggested, then titles the letters
+     * spell (pinyin, English text or word initials); unrelated last.
+     */
+    private int letterScore(String name) {
+        for (int i = 0; i < termRankers.size(); i++) {
+            SearchResultRanker.Query term = termRankers.get(i);
+            if (term.related(name)) return i * TERM_STEP + term.score(name);
+        }
+        // The letters as text (an English title, a bilibili upload named xcjc), never a two-letter overlap.
+        if (queryRanker.related(name)) return termRankers.size() * TERM_STEP + queryRanker.score(name);
+        if (com.fongmi.android.tv.discovery.ShortDramaTitles.contains(name, letters)) return termRankers.size() * TERM_STEP + 50_000;
+        return SearchResultRanker.Query.UNRELATED;
+    }
+
+    private static final int TERM_STEP = 60_000, TIER = 10_000_000;
+
+    /**
+     * Related film, TV and short-drama results first, then related 哔哩哔哩 collections (user 2026-11-01:
+     * uploads, after the works themselves), then everything unrelated.
+     */
+    private int rank(Vod item) {
+        int score = letters != null ? letterScore(item.getName()) : queryRanker.score(item.getName());
+        if (score >= SearchResultRanker.Query.UNRELATED) return 2 * TIER + Math.min(score, TIER - 1);
+        return (isBilibili(item.getSite()) ? TIER : 0) + score;
+    }
+
+    private static boolean isBilibili(Site site) {
+        String name = site.getName(), api = site.getApi().toLowerCase(Locale.ROOT);
+        return api.contains("bili") || name.contains("哔哩") || name.contains("哔哔") || name.contains("B站");
     }
 
     private void append(List<Vod> batch, boolean immediate) {
@@ -281,7 +337,7 @@ public class CollectActivity extends BaseActivity implements VodPresenter.OnClic
             // Raw identities and source presence also own pagination, including
             // successful batches which contain no match for the clicked card.
             if (identities.add(identity(item))) {
-                int rank = target == null ? queryRanker.score(item.getName()) : target.score(item.getName(), item.getYear());
+                int rank = target != null ? target.score(item.getName(), item.getYear()) : rank(item);
                 if (ResourceHealth.isSearchCard(item) && (target == null || target.accepts(rank)) && lettersMatch(item.getName())) {
                     items.add(item);
                     ranks.put(item, rank);
