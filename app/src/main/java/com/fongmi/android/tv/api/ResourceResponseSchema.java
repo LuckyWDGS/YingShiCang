@@ -45,8 +45,10 @@ public final class ResourceResponseSchema {
                     : object.has("url") && playableUrl(object.get("url"));
             if (failure || (!message.isEmpty() && !hasContent && !successMessage(message))) {
                 // Only keep a fixed classification; provider messages can contain private URLs.
-                boolean missing = ResourceHealth.failureStatus(new IOException(error + " " + message + " " + code + " " + status)) == ResourceHealth.Status.INVALID;
-                throw new IOException(missing ? "Resource not found" : "Source response unavailable");
+                IOException provider = new ProviderMessage((error + " " + message + " " + code + " " + status).trim());
+                boolean missing = ResourceHealth.failureStatus(provider) == ResourceHealth.Status.INVALID;
+                // The provider's text rides along as the cause; diagnostics log it redacted (SiteApi.failure).
+                throw new IOException(missing ? "Resource not found" : "Source response unavailable", provider);
             }
             if (detail) {
                 if (!object.has("list") || !object.get("list").isJsonArray()) throw new IOException("Detail list unavailable");
@@ -68,6 +70,13 @@ public final class ResourceResponseSchema {
             return object;
         } catch (RuntimeException error) {
             throw new IOException("Invalid source response JSON");
+        }
+    }
+
+    /** What the source said when it refused a request (user 2026-11-01: a 漫剧 line failed with no reason in the log). */
+    static final class ProviderMessage extends IOException {
+        ProviderMessage(String message) {
+            super(message);
         }
     }
 

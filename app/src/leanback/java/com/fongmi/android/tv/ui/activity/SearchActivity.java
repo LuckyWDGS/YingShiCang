@@ -55,6 +55,16 @@ public class SearchActivity extends BaseActivity implements WordAdapter.OnClickL
     // suggestions only cover TV, film and variety). Its plugin search runs beside the iQIYI request.
     private static final long DRAMA_DEBOUNCE_MS = 400;
     private static final int DRAMA_WORDS = 8, DRAMA_AFTER = 6;
+    private static final String LETTERS = "[A-Za-z]{2,12}";
+    private static final long SUGGESTION_WAIT_MS = 1500;
+    // The letters waiting for their suggestions; after the wait they are searched as typed.
+    private String pendingSearch;
+    private boolean searchLiteral;
+    private final Runnable searchAnyway = () -> {
+        if (pendingSearch == null || !pendingSearch.equals(keyword())) { pendingSearch = null; return; }
+        searchLiteral = true;
+        onSearch();
+    };
     private final java.util.concurrent.ExecutorService dramaExecutor = java.util.concurrent.Executors.newSingleThreadExecutor(
             com.fongmi.android.tv.utils.BackgroundThreads.factory("drama-suggest"));
     private final Map<String, List<Word.Data>> dramaCache = new LinkedHashMap<>(16, .75f, true) {
@@ -277,6 +287,7 @@ public class SearchActivity extends BaseActivity implements WordAdapter.OnClickL
         wordsFor = query;
         baseWords = words;
         renderWords(query);
+        if (query.equals(pendingSearch)) onSearch();
     }
 
     /** iQIYI's first words, then the short-drama titles, then the rest; either part may be missing. */
@@ -450,6 +461,18 @@ public class SearchActivity extends BaseActivity implements WordAdapter.OnClickL
     @Override public void onSearch() {
         String text = keyword();
         if (text.isEmpty()) { Notify.show("请输入要搜索的内容"); return; }
+        String title = initialsTitle(text);
+        // Letters typed and 搜索 pressed before their suggestions arrived: wait for them briefly.
+        if (title == null && !searchLiteral && text.matches(LETTERS) && !text.equals(wordsFor)) {
+            pendingSearch = text;
+            handler.removeCallbacks(searchAnyway);
+            handler.postDelayed(searchAnyway, SUGGESTION_WAIT_MS);
+            return;
+        }
+        searchLiteral = false;
+        pendingSearch = null;
+        handler.removeCallbacks(searchAnyway);
+        if (title != null) { setKeyword(title); text = title; }
         suggestions.suspend();
         suggestionUiVersion++;
         mRecordAdapter.remember(text);
@@ -457,6 +480,25 @@ public class SearchActivity extends BaseActivity implements WordAdapter.OnClickL
         boolean returnHome = getIntent().getBooleanExtra(CollectActivity.EXTRA_RETURN_HOME, false);
         CollectActivity.start(this, text, returnHome);
         if (returnHome) finish();
+    }
+    /**
+     * Typed pinyin initials (xcjc) searched as they are matched sources' fuzzy text and returned unrelated
+     * titles (user 2026-11-01). The first suggestion, in the order shown, whose initials or pinyin start
+     * with them is searched instead, cut to the characters the initials cover; with none, the letters are
+     * searched as typed.
+     */
+    private String initialsTitle(String text) {
+        if (!text.matches(LETTERS)) return null;
+        List<Word.Data> base = text.equals(wordsFor) ? baseWords : List.of();
+        List<Word.Data> drama = text.equals(dramaFor) ? dramaWords : List.of();
+        List<Word.Data> shown = new ArrayList<>(base.subList(0, Math.min(DRAMA_AFTER, base.size())));
+        shown.addAll(drama);
+        shown.addAll(base);
+        for (Word.Data word : shown) {
+            String term = com.fongmi.android.tv.discovery.ShortDramaTitles.searchTerm(word.getTitle(), text);
+            if (term != null) return term;
+        }
+        return null;
     }
     @Override public void showDialog() { SiteDialog.create().search().show(this); }
     @Override public void onRemote() { PushActivity.start(this, 1); }
@@ -472,6 +514,8 @@ public class SearchActivity extends BaseActivity implements WordAdapter.OnClickL
     }
     @Override protected void onPause() {
         resumed = false;
+        pendingSearch = null;
+        handler.removeCallbacks(searchAnyway);
         cancelDrama();
         suggestionUiVersion++;
         if (suggestions != null) suggestions.suspend();

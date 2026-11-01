@@ -140,12 +140,44 @@ public final class ShortDramaTitles {
         return new ArrayList<>(titles);
     }
 
+    private static volatile android.icu.text.Transliterator transliterator;
+
+    private static android.icu.text.Transliterator latin() {
+        android.icu.text.Transliterator latin = transliterator;
+        if (latin != null || Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return latin;
+        try { latin = android.icu.text.Transliterator.getInstance("Han-Latin; Latin-ASCII; Lower"); }
+        catch (Exception ignored) { /* Chinese text matching still works. */ }
+        transliterator = latin;
+        return latin;
+    }
+
+    /**
+     * What to search for typed letters that a title starts with: the characters their initials cover
+     * (xcjc on 乡村警察电视剧 gives 乡村警察), the whole title when they spell its pinyin, else null.
+     */
+    public static String searchTerm(String title, String query) {
+        String q = query == null ? "" : query.trim().toLowerCase(Locale.ROOT);
+        if (title == null || q.isEmpty() || latin() == null) return null;
+        Entry entry = build(List.of(title)).get(0);
+        if (TitleInitials.indexOf(entry.initials, q) == 0) return TitleInitials.prefix(title, q.length());
+        return entry.pinyin.startsWith(q) ? title : null;
+    }
+
+    /** Whether a title contains the typed letters as pinyin initials or full pinyin; false without pinyin support. */
+    public static boolean contains(String title, String query) {
+        String q = query == null ? "" : query.trim().toLowerCase(Locale.ROOT);
+        if (title == null || q.isEmpty() || latin() == null) return false;
+        Entry entry = build(List.of(title)).get(0);
+        return TitleInitials.indexOf(entry.initials, q) >= 0 || entry.pinyin.contains(q);
+    }
+
+    /** Pinyin matching needs Android 10's ICU transliterator. */
+    public static boolean canMatchLetters() {
+        return latin() != null;
+    }
+
     private static List<Entry> build(List<String> titles) {
-        android.icu.text.Transliterator latin = null;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            try { latin = android.icu.text.Transliterator.getInstance("Han-Latin; Latin-ASCII; Lower"); }
-            catch (Exception ignored) { /* Chinese text matching still works. */ }
-        }
+        android.icu.text.Transliterator latin = latin();
         android.icu.text.Transliterator reader = latin;
         java.util.function.Function<String, String> reading = han -> reader == null ? "" : reader.transliterate(han).replaceAll("[^a-z]", "");
         List<Entry> entries = new ArrayList<>(titles.size());

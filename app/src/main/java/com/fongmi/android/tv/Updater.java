@@ -35,6 +35,9 @@ public class Updater implements UpdateListener {
     static final long MIRROR_PROBE_MS = 20_000, MIRROR_MIN_BYTES_PER_SECOND = 128 * 1024;
     private final AtomicBoolean downloading = new AtomicBoolean();
     private boolean github, waitingPermission, installerOpened, checkFailed;
+    // The version this dialog offers, and whether its download was started (see onCancel).
+    private String offered;
+    private boolean downloadStarted;
     // Read on the check thread; a manual request may adopt a running launch check.
     private volatile boolean manual;
     private volatile String checkingStatus = "正在获取版本信息…";
@@ -147,10 +150,25 @@ public class Updater implements UpdateListener {
         }
     }
 
-    /** The publisher's mirror first (one retry), then GitHub; both answers are GitHub's own release data. */
+    /**
+     * The publisher's mirror first (one retry), then GitHub; both answers are GitHub's own release data.
+     * The mirror syncs every few minutes, so "nothing newer" from it is confirmed with GitHub: it had answered
+     * 当前已是最新版本 while a newer release was out (user 2026-11-01). GitHub unreachable keeps the mirror's answer.
+     */
     private GitHubRelease latestRelease(String endpoint) throws IOException {
         if (UpdateMirror.enabled()) try {
-            return GitHubRelease.parse(fetch(UpdateMirror.latestUrl(), GitHubRelease.MAX_RELEASE_BYTES, 1));
+            GitHubRelease mirrored = GitHubRelease.parse(fetch(UpdateMirror.latestUrl(), GitHubRelease.MAX_RELEASE_BYTES, 1));
+            if (UpdateNotice.isNewer(mirrored.versionName())) return mirrored;
+            try {
+                GitHubRelease latest = GitHubRelease.parse(fetch(endpoint, GitHubRelease.MAX_RELEASE_BYTES, 1));
+                if (UpdateNotice.newer(latest.versionName(), mirrored.versionName())) {
+                    DiagnosticLog.write(App.get(), "update_mirror_stale", "mirror=" + mirrored.versionName() + " github=" + latest.versionName());
+                    return latest;
+                }
+            } catch (IOException error) {
+                if (canceled) throw error;
+            }
+            return mirrored;
         } catch (IOException error) {
             if (canceled) throw error;
             DiagnosticLog.write(App.get(), "update_mirror_failed", "release " + NetTrace.reason(error));
@@ -256,7 +274,9 @@ public class Updater implements UpdateListener {
 
     /** Optional releases prompt once per version at launch; mandatory ones on every launch until installed. */
     private boolean prompt(String version, boolean mandatory) {
-        return manual || mandatory || UpdateNotice.firstPrompt(version);
+        if (!manual && !mandatory && !UpdateNotice.shouldPrompt(version)) return false;
+        offered = version;
+        return true;
     }
 
     private FragmentActivity host() {
@@ -301,6 +321,7 @@ public class Updater implements UpdateListener {
         if (manifest == null) { retryManifest(); return; }
         if (pending != null) { install(target); return; }
         if (!downloading.compareAndSet(false, true)) return;
+        downloadStarted = true;
         dialog.setProgress(0, 0, manifest.size);
         MaintenanceTasks.execute(this::download);
     }
@@ -316,6 +337,7 @@ public class Updater implements UpdateListener {
     private void retryManifest() {
         GitHubRelease current = release;
         if (current == null || dialog == null || !downloading.compareAndSet(false, true)) return;
+        downloadStarted = true;
         dialog.setChecking();
         MaintenanceTasks.execute(() -> {
             boolean started = false;
@@ -510,7 +532,11 @@ public class Updater implements UpdateListener {
         else if (dialog != null) dialog.setReady("尚未允许安装来源，选择安装可重新授权");
     }
 
-    @Override public void onCancel(View button) { close(); }
+    @Override public void onCancel(View button) {
+        // Turned down without downloading: the launch check leaves this version alone from now on.
+        if (offered != null && !downloadStarted) UpdateNotice.declined(offered);
+        close();
+    }
 
     private void close() {
         if (canceled) return;

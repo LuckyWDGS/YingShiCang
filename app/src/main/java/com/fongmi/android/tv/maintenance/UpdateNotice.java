@@ -31,11 +31,17 @@ public final class UpdateNotice {
         changed();
     }
 
-    /** True only the first time the launch check meets this version; mandatory releases bypass this. */
-    public static boolean firstPrompt(String version) {
-        if (version.equals(Prefers.getString(PROMPTED))) return false;
+    /**
+     * Whether the launch check offers this version; mandatory releases bypass this. Only a version the
+     * user turned down without downloading stays quiet: a download that failed or was left when the app
+     * closed is offered again (user 2026-11-01).
+     */
+    public static boolean shouldPrompt(String version) {
+        return !version.equals(Prefers.getString(PROMPTED));
+    }
+
+    public static void declined(String version) {
         Prefers.put(PROMPTED, version);
-        return true;
     }
 
     /** Runs on the main thread whenever the available version changes; null stops observing. */
@@ -49,7 +55,7 @@ public final class UpdateNotice {
     }
 
     /** Numeric x.y.z comparison; anything malformed is never treated as newer. */
-    static boolean newer(String candidate, String current) {
+    public static boolean newer(String candidate, String current) {
         if (candidate == null || current == null) return false;
         String version = "[0-9]{1,9}(\\.[0-9]{1,9}){0,3}";
         if (!candidate.matches(version) || !current.matches(version)) return false;

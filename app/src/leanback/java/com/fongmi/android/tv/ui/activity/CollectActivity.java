@@ -242,6 +242,7 @@ public class CollectActivity extends BaseActivity implements VodPresenter.OnClic
         String title = Objects.toString(getIntent().getStringExtra(EXTRA_TARGET_TITLE), "");
         target = title.isEmpty() ? null : SearchResultRanker.target(title, expectedYear());
         queryRanker = SearchResultRanker.query(keyword());
+        letters = keyword().matches("[A-Za-z]{2,12}") && com.fongmi.android.tv.discovery.ShortDramaTitles.canMatchLetters() ? keyword() : null;
         if (getIntent().getBooleanExtra(EXTRA_RECORD, false)) com.fongmi.android.tv.setting.Setting.putKeyword(saveKeyword());
         searchSources.search(this::startSearch);
     }
@@ -265,6 +266,14 @@ public class CollectActivity extends BaseActivity implements VodPresenter.OnClic
         history.remove(keyword()); history.add(0, keyword());
         return App.gson().toJson(history.subList(0, Math.min(9, history.size())));
     }
+    // Typed pinyin initials (xcjc) that reached the results: sources match letters loosely and returned
+    // unrelated titles (user 2026-11-01), so only titles those letters spell are shown.
+    private String letters;
+
+    private boolean lettersMatch(String name) {
+        return letters == null || com.fongmi.android.tv.discovery.ShortDramaTitles.contains(name, letters);
+    }
+
     private void append(List<Vod> batch, boolean immediate) {
         boolean sourceChanged = false;
         for (Vod item : batch) {
@@ -273,7 +282,7 @@ public class CollectActivity extends BaseActivity implements VodPresenter.OnClic
             // successful batches which contain no match for the clicked card.
             if (identities.add(identity(item))) {
                 int rank = target == null ? queryRanker.score(item.getName()) : target.score(item.getName(), item.getYear());
-                if (ResourceHealth.isSearchCard(item) && (target == null || target.accepts(rank))) {
+                if (ResourceHealth.isSearchCard(item) && (target == null || target.accepts(rank)) && lettersMatch(item.getName())) {
                     items.add(item);
                     ranks.put(item, rank);
                     if (listed.add(item.getSiteKey())) sourceChanged = true;

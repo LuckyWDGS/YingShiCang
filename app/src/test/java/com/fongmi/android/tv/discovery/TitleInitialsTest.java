@@ -36,4 +36,12 @@ public class TitleInitialsTest {
         assertEquals(0, TitleInitials.indexOf(slots, "hx"));
         assertEquals(-1, TitleInitials.indexOf(slots, "hl"));
     }
+
+    @Test
+    public void prefixKeepsTheCharactersTheInitialsCover() {
+        assertEquals("乡村警察", TitleInitials.prefix("乡村警察电视剧", 4));
+        assertEquals("和离后，第2", TitleInitials.prefix("和离后，第2季", 5));
+        assertEquals("短", TitleInitials.prefix("短剧", 1));
+        assertEquals("短剧", TitleInitials.prefix("短剧", 9));
+    }
 }

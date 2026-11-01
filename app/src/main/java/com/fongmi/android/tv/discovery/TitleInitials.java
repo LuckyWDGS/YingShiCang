@@ -49,6 +49,18 @@ final class TitleInitials {
         return java.util.Arrays.copyOf(slots, count);
     }
 
+    /** The title up to and including the character of its count-th slot (the characters slots() counts). */
+    static String prefix(String title, int count) {
+        int seen = 0;
+        for (int i = 0; i < title.length(); ) {
+            int c = title.codePointAt(i);
+            i += Character.charCount(c);
+            if (Character.UnicodeScript.of(c) == Character.UnicodeScript.HAN || (c < 128 && Character.isLetterOrDigit(c))) seen++;
+            if (seen == count) return title.substring(0, i).trim();
+        }
+        return title;
+    }
+
     /** First slot where query's letters each fall in consecutive slots, or -1. */
     static int indexOf(String[] slots, String query) {
         for (int start = 0; start + query.length() <= slots.length; start++) {
