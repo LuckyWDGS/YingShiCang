@@ -1,8 +1,16 @@
 package com.fongmi.android.tv.server;
 
+import android.os.Looper;
+
+import com.fongmi.android.tv.App;
+import com.fongmi.android.tv.diagnostics.DiagnosticLog;
 import com.fongmi.android.tv.service.PlaybackService;
 import com.fongmi.android.tv.utils.Task;
 import com.github.catvod.Proxy;
+
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.net.Socket;
 
 public class Server {
 
@@ -62,6 +70,46 @@ public class Server {
                 nano = null;
             }
         }
+    }
+
+    /**
+     * Plugins stream and resolve through this server (127.0.0.1); a play address requested while it is down
+     * fails. The user's 3.1.4 log: after a long pause every local call was refused and the line reported
+     * 此线路暂时无法连接 (2026-10-31). Restarts it when it is not listening; true when it had to.
+     */
+    public synchronized boolean ensureRunning() {
+        Nano running = nano;
+        if (running != null && running.isAlive() && (Looper.myLooper() == Looper.getMainLooper() || accepts(running.getListeningPort()))) return false;
+        nano = null;
+        // Released before binding so the new server keeps the port plugins already know.
+        if (running != null) running.stop();
+        start();
+        return true;
+    }
+
+    private static boolean accepts(int port) {
+        try (Socket socket = new Socket()) {
+            socket.connect(new InetSocketAddress("127.0.0.1", port), 500);
+            return true;
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    /**
+     * Its listening socket was destroyed (GuardedServerSocket). A new server takes the same port, so plugin
+     * addresses and a stream still playing through 127.0.0.1 reach it again; connections the old one already
+     * accepted are left to finish.
+     */
+    void onDead(Nano dead) {
+        Task.execute(() -> {
+            synchronized (this) {
+                if (nano != dead) return;
+                nano = null;
+                start();
+            }
+            DiagnosticLog.write(App.get(), "local_server_restarted", "accept_failed port=" + Proxy.getPort());
+        });
     }
 
     public synchronized void stop() {

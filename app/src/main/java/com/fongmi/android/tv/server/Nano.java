@@ -28,6 +28,7 @@ public class Nano extends NanoHTTPD {
 
     public Nano(int port) {
         super(port);
+        setServerSocketFactory(() -> new GuardedServerSocket(() -> Server.get().onDead(this)));
         addProcess();
     }
 

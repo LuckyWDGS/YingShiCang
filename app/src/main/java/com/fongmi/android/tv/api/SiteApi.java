@@ -466,8 +466,13 @@ public class SiteApi {
         }
     }
 
+    private static void ensureLocalServer(String reason) {
+        if (com.fongmi.android.tv.server.Server.get().ensureRunning()) DiagnosticLog.write(App.get(), "local_server_restarted", reason);
+    }
+
     @NonNull
     public static Result detailContent(@NonNull String key, @NonNull String id) throws Exception {
+        ensureLocalServer("detail");
         long start = SystemClock.elapsedRealtime();
         NetTrace.Recording net = NetTrace.begin();
         SPIDER_MS.set(-1L);
@@ -486,6 +491,7 @@ public class SiteApi {
 
     @NonNull
     public static Result playerContent(@NonNull String key, @NonNull String flag, @NonNull String id) throws Exception {
+        ensureLocalServer("player");
         long start = SystemClock.elapsedRealtime();
         NetTrace.Recording net = NetTrace.begin();
         SPIDER_MS.set(-1L);
