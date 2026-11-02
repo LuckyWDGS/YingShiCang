@@ -1840,17 +1840,52 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
         Notify.show("快进快退步长已调为 " + stepMs / 1000 + " 秒");
     }
 
-    @Override
-    public void onSwipeVolume(boolean raise) {
-        adjustVolume(raise ? AudioManager.ADJUST_RAISE : AudioManager.ADJUST_LOWER);
-    }
+    // A swipe over two thirds of the height covers the whole volume range.
+    private static final float VOLUME_RANGE_PER_HEIGHT = 1.5f;
+    private final Runnable hideVolume = () -> mBinding.widget.volume.setVisibility(View.GONE);
+    private float mVolumeBase = -1;
+    private int mVolumeSet = -1;
 
-    private void adjustVolume(int direction) {
+    /**
+     * The volume follows the finger from where the swipe started and the bar moves with it; the stream
+     * changes only when the finger crosses a whole step, without the system volume panel (user 2026-11-02:
+     * one ADJUST step with the system panel per 1/15 of the height felt stuck and jumpy on a phone).
+     */
+    @Override
+    public void onVolumeSwipe(float fraction) {
         AudioManager audio = getSystemService(AudioManager.class);
         if (audio == null) return;
-        // HDMI passthrough boxes keep a fixed output level that only the TV can change.
-        if (audio.isVolumeFixed()) Notify.show("此设备音量由电视控制，请用电视遥控器调节音量");
-        else audio.adjustStreamVolume(AudioManager.STREAM_MUSIC, direction, AudioManager.FLAG_SHOW_UI);
+        if (audio.isVolumeFixed()) {
+            // HDMI passthrough boxes keep a fixed output level that only the TV can change.
+            if (mVolumeBase < 0) Notify.show("此设备音量由电视控制，请用电视遥控器调节音量");
+            mVolumeBase = 0;
+            return;
+        }
+        int max = Math.max(1, audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC));
+        if (mVolumeBase < 0) mVolumeBase = mVolumeSet = audio.getStreamVolume(AudioManager.STREAM_MUSIC);
+        float level = Math.max(0f, Math.min(max, mVolumeBase + fraction * VOLUME_RANGE_PER_HEIGHT * max));
+        int index = Math.round(level);
+        if (index != mVolumeSet) {
+            audio.setStreamVolume(AudioManager.STREAM_MUSIC, index, 0);
+            mVolumeSet = index;
+        }
+        showVolume(level / max);
+    }
+
+    @Override
+    public void onVolumeSwipeEnd() {
+        mVolumeBase = -1;
+        mBinding.widget.volume.removeCallbacks(hideVolume);
+        mBinding.widget.volume.postDelayed(hideVolume, 800);
+    }
+
+    private void showVolume(float share) {
+        int percent = Math.round(share * 100);
+        mBinding.widget.volume.removeCallbacks(hideVolume);
+        mBinding.widget.volume.setVisibility(View.VISIBLE);
+        mBinding.widget.volumeProgress.setProgress(Math.round(share * 1000));
+        mBinding.widget.volumeText.setText(String.valueOf(percent));
+        mBinding.widget.volumeIcon.setImageResource(percent < 35 ? R.drawable.ic_widget_volume_low : percent < 70 ? R.drawable.ic_widget_volume_medium : R.drawable.ic_widget_volume_high);
     }
 
     @Override
