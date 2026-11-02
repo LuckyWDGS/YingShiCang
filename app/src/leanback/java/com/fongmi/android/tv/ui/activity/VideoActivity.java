@@ -6,7 +6,6 @@ import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.drawable.Drawable;
 import android.net.Uri;
-import android.media.AudioManager;
 import android.os.Bundle;
 import android.text.TextUtils;
 import android.text.style.ClickableSpan;
@@ -1347,6 +1346,8 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
     }
 
     private void showProgress() {
+        // Playing backwards seeks every tick; its own hint already shows where it is.
+        if (mRewindPosition >= 0) return;
         mBinding.progress.getRoot().setVisibility(View.VISIBLE);
         App.post(mR3, 0);
         hideCenter();
@@ -1373,6 +1374,8 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
 
     private void showInfo() {
         updateTopInfo();
+        // Playing backwards pauses the video; its own hint replaces the paused time.
+        if (mRewindPosition >= 0) return;
         mBinding.widget.action.setImageResource(R.drawable.ic_vod_resume);
         mBinding.widget.center.setVisibility(View.VISIBLE);
         mBinding.widget.duration.setText(player().getDurationTime());
@@ -1810,8 +1813,56 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
         player().setSpeed(SpeedSetting.getPlayback());
     }
 
+    // Playing backwards: the video is paused and the shown time moves back at the long-press speed in real
+    // time; the picture follows with exact seeks, a new one only once the last has drawn (seeks sent on a
+    // fixed tick were each cancelled by the next before they drew, and key-frame seeks barely moved the
+    // picture on streams with long key-frame gaps).
+    private static final long REWIND_TICK_MS = 100;
+    private final Runnable rewindTick = this::rewindTick;
+    private long mRewindPosition = -1;
+    private long mRewindFrom, mRewindStart, mRewindSeek;
+    private boolean mRewindResume;
+
+    /** A finger held on the left third plays backwards at the long-press speed until it lifts. */
+    @Override
+    public void onRewindStart() {
+        if (controller() == null || !hasPlaybackSource() || player().isEmpty()) return;
+        mRewindResume = controller().getPlayWhenReady();
+        mRewindPosition = mRewindFrom = mRewindSeek = player().getPosition();
+        mRewindStart = android.os.SystemClock.uptimeMillis();
+        hideCenter();
+        controller().pause();
+        rewindTick();
+    }
+
+    private void rewindTick() {
+        if (controller() == null) return;
+        float speed = SpeedSetting.getLongPress();
+        mRewindPosition = Math.max(0, mRewindFrom - (long) ((android.os.SystemClock.uptimeMillis() - mRewindStart) * speed));
+        if (player().getPlaybackState() != androidx.media3.common.Player.STATE_BUFFERING && mRewindSeek - mRewindPosition >= REWIND_TICK_MS) {
+            mRewindSeek = mRewindPosition;
+            player().seekTo(mRewindPosition);
+        }
+        hideProgress();
+        PlaybackAction.hideSpeedHint(mBinding.widget.message);
+        mBinding.widget.message.setVisibility(View.VISIBLE);
+        mBinding.widget.message.setText(getString(R.string.play_rewind_hint, SpeedSetting.format(speed), Util.timeMs(mRewindPosition)));
+        if (mRewindPosition > 0) App.post(rewindTick, REWIND_TICK_MS);
+    }
+
+    @Override
+    public void onRewindEnd() {
+        App.removeCallbacks(rewindTick);
+        if (mRewindPosition < 0) return;
+        // Land where the hint says, also when the last seek was skipped while one was still drawing.
+        if (mRewindSeek != mRewindPosition) player().seekTo(mRewindPosition);
+        mRewindPosition = -1;
+        PlaybackAction.hideSpeedHint(mBinding.widget.message);
+        if (mRewindResume && controller() != null) controller().play();
+    }
+
     // With the controls hidden Up/Down open them, playback continuing (user 2026-10-24: volume belongs to the
-    // TV remote); a vertical swipe on touch screens still changes the volume. They land on 下集 in the action
+    // TV remote; touch screens have no swipe volume either, user 2026-11-02). They land on 下集 in the action
     // strip, not on the time bar (user 2026-10-25: Left/Right already seek while the bar is hidden); without
     // a next episode, on the first visible strip control. OK-pause still opens on the time bar, whose OK plays.
     @Override
@@ -1838,54 +1889,6 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
     @Override
     public void onLongSeekStep(long stepMs) {
         Notify.show("快进快退步长已调为 " + stepMs / 1000 + " 秒");
-    }
-
-    // A swipe over two thirds of the height covers the whole volume range.
-    private static final float VOLUME_RANGE_PER_HEIGHT = 1.5f;
-    private final Runnable hideVolume = () -> mBinding.widget.volume.setVisibility(View.GONE);
-    private float mVolumeBase = -1;
-    private int mVolumeSet = -1;
-
-    /**
-     * The volume follows the finger from where the swipe started and the bar moves with it; the stream
-     * changes only when the finger crosses a whole step, without the system volume panel (user 2026-11-02:
-     * one ADJUST step with the system panel per 1/15 of the height felt stuck and jumpy on a phone).
-     */
-    @Override
-    public void onVolumeSwipe(float fraction) {
-        AudioManager audio = getSystemService(AudioManager.class);
-        if (audio == null) return;
-        if (audio.isVolumeFixed()) {
-            // HDMI passthrough boxes keep a fixed output level that only the TV can change.
-            if (mVolumeBase < 0) Notify.show("此设备音量由电视控制，请用电视遥控器调节音量");
-            mVolumeBase = 0;
-            return;
-        }
-        int max = Math.max(1, audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC));
-        if (mVolumeBase < 0) mVolumeBase = mVolumeSet = audio.getStreamVolume(AudioManager.STREAM_MUSIC);
-        float level = Math.max(0f, Math.min(max, mVolumeBase + fraction * VOLUME_RANGE_PER_HEIGHT * max));
-        int index = Math.round(level);
-        if (index != mVolumeSet) {
-            audio.setStreamVolume(AudioManager.STREAM_MUSIC, index, 0);
-            mVolumeSet = index;
-        }
-        showVolume(level / max);
-    }
-
-    @Override
-    public void onVolumeSwipeEnd() {
-        mVolumeBase = -1;
-        mBinding.widget.volume.removeCallbacks(hideVolume);
-        mBinding.widget.volume.postDelayed(hideVolume, 800);
-    }
-
-    private void showVolume(float share) {
-        int percent = Math.round(share * 100);
-        mBinding.widget.volume.removeCallbacks(hideVolume);
-        mBinding.widget.volume.setVisibility(View.VISIBLE);
-        mBinding.widget.volumeProgress.setProgress(Math.round(share * 1000));
-        mBinding.widget.volumeText.setText(String.valueOf(percent));
-        mBinding.widget.volumeIcon.setImageResource(percent < 35 ? R.drawable.ic_widget_volume_low : percent < 70 ? R.drawable.ic_widget_volume_medium : R.drawable.ic_widget_volume_high);
     }
 
     @Override
@@ -1934,6 +1937,7 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
         // before onStop. Revoke queued input as soon as this screen loses focus.
         cancelPendingSeek();
         hideCenter();
+        onRewindEnd();
         super.onPause();
     }
 

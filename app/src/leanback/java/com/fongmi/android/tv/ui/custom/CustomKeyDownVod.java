@@ -18,10 +18,9 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener {
     // A swipe across the whole screen moves two minutes, in either direction.
     private static final long SWIPE_FULL_WIDTH_MS = 120_000;
 
-    private static final int SWIPE_NONE = 0, SWIPE_SEEK = 1, SWIPE_VOLUME = 2, SWIPE_HOLD = 3;
-    // Holding a finger on the left or right third rewinds or fast-forwards: one step per tick, 10s steps,
-    // 30s once held as long as the remote's long step (user 2026-11-02).
-    private static final long HOLD_TICK_MS = 300;
+    // A vertical swipe does nothing (user 2026-11-02: no swipe volume); it is still not a tap.
+    private static final int SWIPE_NONE = 0, SWIPE_SEEK = 1, SWIPE_VERTICAL = 2, SWIPE_HOLD = 3;
+
     // Left/Right step 10s; held this long they step 30s, announced once per hold (user 2026-10-24).
     private static final long LONG_HOLD_MS = 2_000;
     // Presses closer together than this add up to one seek with the bubble kept up. At 250ms ordinary
@@ -37,10 +36,7 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener {
     private float downX, downY;
     private long swipeTime;
     private View touchView;
-    private int holdDirection;
-    private long holdStart;
-    private long holdSeek;
-    private final Runnable holdTick = this::holdTick;
+    private boolean holdForward;
     private boolean changeSpeed;
     private boolean full;
     private long holdTime;
@@ -59,15 +55,15 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener {
 
     /**
      * Touch-screen TVs, like the remote's arrows: a horizontal swipe on the full-screen video seeks (the
-     * center bubble follows the finger, the seek happens on release), a vertical swipe changes the volume,
-     * a finger held on the left or right third rewinds or fast-forwards until it lifts;
+     * center bubble follows the finger, the seek happens on release),
+     * a finger held on the right third plays faster and on the left third plays backwards until it lifts;
      * taps keep toggling the controls and double taps pause.
      */
     public boolean onTouchEvent(View view, MotionEvent e) {
         if (!full) return false;
         int action = e.getActionMasked();
         if (swipe == SWIPE_HOLD) {
-            if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) endHold(action == MotionEvent.ACTION_UP);
+            if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) endHold();
             return true;
         }
         if (action == MotionEvent.ACTION_DOWN) {
@@ -80,11 +76,7 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener {
         }
         if (swipe == SWIPE_NONE) return detector.onTouchEvent(e);
         if (swipe == SWIPE_SEEK) seekSwipe(view, e, action);
-        else if (action == MotionEvent.ACTION_MOVE) listener.onVolumeSwipe((downY - e.getY()) / Math.max(1, view.getHeight()));
-        if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
-            if (swipe == SWIPE_VOLUME) listener.onVolumeSwipeEnd();
-            swipe = SWIPE_NONE;
-        }
+        if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) swipe = SWIPE_NONE;
         return true;
     }
 
@@ -97,47 +89,39 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener {
         }
     }
 
-    /** A finger held still on the left or right third: rewind or fast-forward until it lifts. */
+    /**
+     * A finger held still on the right third plays at the long-press speed, on the left third plays backwards
+     * at that speed, until it lifts (user 2026-11-02: in real time, like a playback speed, not a jump).
+     */
     @Override
     public void onLongPress(@NonNull MotionEvent e) {
         View view = touchView;
         if (!full || swipe != SWIPE_NONE || view == null || e.getPointerCount() > 1) return;
         float third = view.getWidth() / 3f;
-        if (e.getX() < third) holdDirection = -1;
-        else if (e.getX() > third * 2) holdDirection = 1;
+        if (e.getX() < third) holdForward = false;
+        else if (e.getX() > third * 2) holdForward = true;
         else return;
         swipe = SWIPE_HOLD;
         commitPendingSeek();
         cancelView(view, e, false);
-        holdSeek = 0;
-        holdStart = e.getEventTime();
-        holdTick();
+        if (holdForward) listener.onSpeedUp();
+        else listener.onRewindStart();
     }
 
-    private void holdTick() {
-        long held = android.os.SystemClock.uptimeMillis() - holdStart;
-        holdSeek += holdDirection * (held >= LONG_HOLD_MS ? Constant.INTERVAL_SEEK_LONG : Constant.INTERVAL_SEEK);
-        listener.onSeeking(holdSeek);
-        App.post(holdTick, HOLD_TICK_MS);
-    }
-
-    private void endHold(boolean commit) {
-        App.removeCallbacks(holdTick);
+    private void endHold() {
         swipe = SWIPE_NONE;
-        listener.onSeekEnd(commit ? holdSeek : 0);
-        holdSeek = 0;
+        if (holdForward) listener.onSpeedEnd();
+        else listener.onRewindEnd();
     }
 
     /** Past the touch slop the gesture is a swipe, not a tap: cancel the view's click and the detector's tap tracking. */
     private void startSwipe(View view, MotionEvent e) {
         float dx = Math.abs(e.getX() - downX), dy = Math.abs(e.getY() - downY);
         if (dx > touchSlop && dx > dy * 1.5f) swipe = SWIPE_SEEK;
-        else if (dy > touchSlop && dy > dx * 1.5f) swipe = SWIPE_VOLUME;
+        else if (dy > touchSlop && dy > dx * 1.5f) swipe = SWIPE_VERTICAL;
         else return;
         swipeTime = 0;
         commitPendingSeek();
-        // Measure from here so the volume starts moving with the finger, not with a jump.
-        if (swipe == SWIPE_VOLUME) downY = e.getY();
         cancelView(view, e, true);
     }
 
@@ -151,7 +135,7 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener {
 
     public void setFull(boolean full) {
         this.full = full;
-        if (!full && swipe == SWIPE_HOLD) endHold(false);
+        if (!full && swipe == SWIPE_HOLD) endHold();
     }
 
     public boolean hasEvent(KeyEvent event) {
@@ -283,11 +267,11 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener {
         default void onLongSeekStep(long stepMs) {
         }
 
-        /** A vertical swipe, as the share of the view's height moved since it started (up is positive). */
-        default void onVolumeSwipe(float fraction) {
+        /** A finger held on the left third: play backwards until onRewindEnd. */
+        default void onRewindStart() {
         }
 
-        default void onVolumeSwipeEnd() {
+        default void onRewindEnd() {
         }
     }
 }

@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
@@ -107,49 +106,6 @@
         android:visibility="gone"
         tools:text="Speed 3.0x"
         tools:visibility="visible" />
-
-    <!-- Touch screens: a vertical swipe on the full-screen video changes the volume; this follows the finger. -->
-    <androidx.appcompat.widget.LinearLayoutCompat
-        android:id="@+id/volume"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="top|center_horizontal"
-        android:layout_marginTop="24dp"
-        android:background="@drawable/shape_widget"
-        android:gravity="center"
-        android:orientation="horizontal"
-        android:visibility="gone"
-        tools:visibility="visible">
-
-        <androidx.appcompat.widget.AppCompatImageView
-            android:id="@+id/volumeIcon"
-            android:layout_width="24dp"
-            android:layout_height="24dp"
-            android:layout_marginEnd="12dp"
-            android:src="@drawable/ic_widget_volume_high" />
-
-        <com.google.android.material.progressindicator.LinearProgressIndicator
-            android:id="@+id/volumeProgress"
-            android:layout_width="160dp"
-            android:layout_height="wrap_content"
-            android:max="1000"
-            app:indicatorColor="@color/white"
-            app:trackColor="#40FFFFFF"
-            app:trackCornerRadius="2dp"
-            app:trackThickness="4dp" />
-
-        <com.google.android.material.textview.MaterialTextView
-            android:id="@+id/volumeText"
-            android:layout_width="40dp"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="12dp"
-            android:fontFeatureSettings="tnum"
-            android:gravity="end"
-            android:textColor="@color/white"
-            android:textSize="16sp"
-            tools:text="60" />
-
-    </androidx.appcompat.widget.LinearLayoutCompat>
 
     <androidx.appcompat.widget.LinearLayoutCompat
         android:id="@+id/center"
