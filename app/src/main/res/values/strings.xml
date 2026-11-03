@@ -40,7 +40,6 @@
     <string name="play_backward">←</string>
     <string name="play_speed">Speed</string>
     <string name="play_speed_hint">Speed <xliff:g name="speed">%1$s</xliff:g></string>
-    <string name="play_rewind_hint">Rewind <xliff:g name="speed">%1$s</xliff:g>  <xliff:g name="time">%2$s</xliff:g></string>
     <string name="play_reset">Reset</string>
     <string name="play_replay">Replay</string>
     <string name="play_decode">Hard</string>

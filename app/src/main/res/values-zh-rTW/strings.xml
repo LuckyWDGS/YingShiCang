@@ -45,7 +45,6 @@
     <string name="play_backward">←</string>
     <string name="play_speed">倍速</string>
     <string name="play_speed_hint">倍速 <xliff:g name="speed">%1$s</xliff:g></string>
-    <string name="play_rewind_hint">倒放 <xliff:g name="speed">%1$s</xliff:g>  <xliff:g name="time">%2$s</xliff:g></string>
     <string name="play_reset">刷新</string>
     <string name="play_replay">重播</string>
     <string name="play_decode">硬解</string>

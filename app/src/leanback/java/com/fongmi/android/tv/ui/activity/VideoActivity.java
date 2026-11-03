@@ -1346,7 +1346,7 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
     }
 
     private void showProgress() {
-        // Playing backwards seeks every tick; its own hint already shows where it is.
+        // Playing backwards seeks every tick; its own bubble already shows where it is.
         if (mRewindPosition >= 0) return;
         mBinding.progress.getRoot().setVisibility(View.VISIBLE);
         App.post(mR3, 0);
@@ -1374,7 +1374,7 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
 
     private void showInfo() {
         updateTopInfo();
-        // Playing backwards pauses the video; its own hint replaces the paused time.
+        // Playing backwards pauses the video; its own bubble already shows the time.
         if (mRewindPosition >= 0) return;
         mBinding.widget.action.setImageResource(R.drawable.ic_vod_resume);
         mBinding.widget.center.setVisibility(View.VISIBLE);
@@ -1844,9 +1844,7 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
             player().seekTo(mRewindPosition);
         }
         hideProgress();
-        PlaybackAction.hideSpeedHint(mBinding.widget.message);
-        mBinding.widget.message.setVisibility(View.VISIBLE);
-        mBinding.widget.message.setText(getString(R.string.play_rewind_hint, SpeedSetting.format(speed), Util.timeMs(mRewindPosition)));
+        showHoldTime(R.drawable.ic_widget_rewind, mRewindPosition);
         if (mRewindPosition > 0) App.post(rewindTick, REWIND_TICK_MS);
     }
 
@@ -1857,8 +1855,44 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
         // Land where the hint says, also when the last seek was skipped while one was still drawing.
         if (mRewindSeek != mRewindPosition) player().seekTo(mRewindPosition);
         mRewindPosition = -1;
-        PlaybackAction.hideSpeedHint(mBinding.widget.message);
+        hideCenter();
         if (mRewindResume && controller() != null) controller().play();
+    }
+
+    // A finger held on the right third plays at the long-press speed; the bubble shows the time playing
+    // rather than 倍速 (user 2026-11-02). The remote's long-press Up keeps its speed hint.
+    private static final long FORWARD_TICK_MS = 200;
+    private final Runnable forwardTick = this::forwardTick;
+    private boolean mForwarding;
+
+    @Override
+    public void onForwardStart() {
+        if (!player().isPlaying()) return;
+        player().setSpeed(SpeedSetting.getLongPress());
+        mForwarding = true;
+        forwardTick();
+    }
+
+    private void forwardTick() {
+        showHoldTime(R.drawable.ic_widget_forward, player().getPosition());
+        App.post(forwardTick, FORWARD_TICK_MS);
+    }
+
+    @Override
+    public void onForwardEnd() {
+        App.removeCallbacks(forwardTick);
+        if (!mForwarding) return;
+        mForwarding = false;
+        player().setSpeed(SpeedSetting.getPlayback());
+        hideCenter();
+    }
+
+    /** The centre bubble during a hold: direction and the time on screen. */
+    private void showHoldTime(int icon, long position) {
+        mBinding.widget.center.setVisibility(View.VISIBLE);
+        mBinding.widget.action.setImageResource(icon);
+        mBinding.widget.duration.setText(player().getDurationTime());
+        mBinding.widget.position.setText(Util.timeMs(Math.max(0, position)));
     }
 
     // With the controls hidden Up/Down open them, playback continuing (user 2026-10-24: volume belongs to the
@@ -1938,6 +1972,7 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
         cancelPendingSeek();
         hideCenter();
         onRewindEnd();
+        onForwardEnd();
         super.onPause();
     }
 

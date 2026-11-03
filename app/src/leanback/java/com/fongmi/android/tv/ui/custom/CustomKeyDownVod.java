@@ -104,13 +104,13 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener {
         swipe = SWIPE_HOLD;
         commitPendingSeek();
         cancelView(view, e, false);
-        if (holdForward) listener.onSpeedUp();
+        if (holdForward) listener.onForwardStart();
         else listener.onRewindStart();
     }
 
     private void endHold() {
         swipe = SWIPE_NONE;
-        if (holdForward) listener.onSpeedEnd();
+        if (holdForward) listener.onForwardEnd();
         else listener.onRewindEnd();
     }
 
@@ -265,6 +265,13 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener {
 
         /** A held Left/Right now moves this far per step. */
         default void onLongSeekStep(long stepMs) {
+        }
+
+        /** A finger held on the right third: play at the long-press speed until onForwardEnd. */
+        default void onForwardStart() {
+        }
+
+        default void onForwardEnd() {
         }
 
         /** A finger held on the left third: play backwards until onRewindEnd. */
