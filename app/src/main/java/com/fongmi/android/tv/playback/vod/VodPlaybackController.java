@@ -3,6 +3,7 @@ package com.fongmi.android.tv.playback.vod;
 import androidx.media3.common.C;
 import androidx.media3.common.MediaMetadata;
 
+import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.bean.Episode;
 import com.fongmi.android.tv.bean.Flag;
@@ -11,8 +12,11 @@ import com.fongmi.android.tv.bean.Keep;
 import com.fongmi.android.tv.bean.Parse;
 import com.fongmi.android.tv.bean.Result;
 import com.fongmi.android.tv.bean.Vod;
+import com.fongmi.android.tv.cloudlogin.DriveLogins;
+import com.fongmi.android.tv.diagnostics.DiagnosticLog;
 import com.fongmi.android.tv.playback.PlaybackResult;
 import com.fongmi.android.tv.resource.ResourceHealth;
+import com.fongmi.android.tv.utils.Util;
 
 import java.util.Collections;
 import java.util.List;
@@ -180,7 +184,17 @@ public class VodPlaybackController {
         seamless(selected);
     }
 
+    /** A failed line handing over: the other lines' failures still count. */
+    void fallbackFlag(Flag item) {
+        selectFlag(item, false);
+    }
+
     public void selectEpisode(Episode item) {
+        state.clearFailedLines();
+        playSelected(item);
+    }
+
+    private void playSelected(Episode item) {
         if (!state.hasFlags()) return;
         // A fresh selection owns playback; late fallback search batches may only
         // update the candidate list until this selection itself fails.
@@ -275,6 +289,7 @@ public class VodPlaybackController {
     public void playbackReady() {
         if (state.getPlayingRequest() == null) return;
         retries.ready(android.os.SystemClock.elapsedRealtime());
+        state.clearFailedLines();
         state.setSelectFirstSource(false);
     }
 
@@ -460,6 +475,8 @@ public class VodPlaybackController {
         item.checkPic(host.getVodPic());
         item.checkName(host.getVodName());
         List<Flag> flags = item.getFlags();
+        DriveLogins.prefer(flags);
+        state.clearFailedLines();
         state.setFlags(flags);
         History history = historyPolicy.findOrCreate(host.getHistoryKey(), host.getVodMark(), item);
         state.setHistory(history);
@@ -473,9 +490,15 @@ public class VodPlaybackController {
 
     private void restoreDetail(VodPlayRequest activeRequest, History history) {
         if (restorePlaybackSelection(activeRequest)) publishPlaybackMetadata(state.getEpisode());
-        else selectFlag(history.getFlag(), true);
+        else selectFlag(entryFlag(history), true);
         if (history.isRevSort()) reverseEpisode(true);
         if (state.getPlayingRequest() != null && !host.hasPlaybackSession()) requestSelectedEpisode();
+    }
+
+    private Flag entryFlag(History history) {
+        Flag entry = DriveLogins.entry(state.getFlags(), findFlag(history.getFlag()));
+        DiagnosticLog.write(App.get(), "vod_lines", "lines=" + DriveLogins.describe(state.getFlags()) + " saved=" + DriveLogins.family(history.getVodFlag()) + " open=" + DriveLogins.family(entry.getFlag()));
+        return entry;
     }
 
     private boolean restorePlaybackSelection(VodPlayRequest request) {
@@ -514,11 +537,16 @@ public class VodPlaybackController {
 
     private void seamless(Flag flag) {
         History history = state.getHistory();
-        Episode episode = history == null ? null : flag.find(history.getVodRemarks(), host.getVodMark().isEmpty());
+        Episode episode = history == null ? null : flag.closest(history.getVodRemarks(), host.getVodMark().isEmpty());
         host.renderQualityVisible(episode != null && episode.isSelected() && state.getQuality().getUrl().isMulti());
         if (episode == null || episode.isSelected()) return;
+        // A different episode has nothing to do with the time saved for the one that is gone.
+        if (flag.getEpisodes().size() > 1 && episode.getScore(history.getVodRemarks(), Util.getNumber(history.getVodRemarks())) == 0) {
+            history.setPosition(C.TIME_UNSET);
+            history.setDuration(C.TIME_UNSET);
+        }
         history.setVodRemarks(episode.getName());
-        selectEpisode(episode);
+        playSelected(episode);
     }
 
     private void mergeFlag(Flag activated, Flag item) {

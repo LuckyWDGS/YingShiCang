@@ -69,12 +69,19 @@ class VodFallbackPolicy {
     }
 
     private boolean fallbackToNextLine() {
-        int position = state.getFlagPosition() + 1;
-        if (position >= state.getFlags().size()) return false;
-        Flag flag = state.getFlags().get(position);
-        host.showSwitchLine(flag);
-        controller.selectFlag(flag);
-        return true;
+        List<Flag> flags = state.getFlags();
+        if (flags.isEmpty()) return false;
+        int position = state.getFlagPosition();
+        state.addFailedLine(flags.get(position));
+        // The line opened need not be the first, so go round: every line gets its turn once.
+        for (int i = 1; i < flags.size(); i++) {
+            Flag flag = flags.get((position + i) % flags.size());
+            if (state.hasFailedLine(flag)) continue;
+            host.showSwitchLine(flag);
+            controller.fallbackFlag(flag);
+            return true;
+        }
+        return false;
     }
 
     private void fallbackToNextSource(boolean force) {

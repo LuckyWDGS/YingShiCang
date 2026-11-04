@@ -22,7 +22,6 @@ import androidx.annotation.RequiresApi;
 import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.R;
 
-import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -182,7 +181,7 @@ public final class CloudLoginChooser {
     private static void handle(Context context, View root, List<View> items) {
         List<String> labels = new ArrayList<>();
         for (View item : items) labels.add(((TextView) item).getText().toString());
-        int index = choose(labels, hasQuarkLogin(context), hasBaiduLogin(context));
+        int index = choose(labels, DriveLogins.hasQuark(context), DriveLogins.hasBaidu(context));
         if (root.getTag(STYLED) == null) {
             root.setTag(STYLED, Boolean.TRUE);
             replace(root, items, index);
@@ -199,16 +198,6 @@ public final class CloudLoginChooser {
             if (baidu && label.contains("嘟嘟")) return i;
         }
         return 0;
-    }
-
-    private static boolean hasQuarkLogin(Context context) {
-        String value = context.getSharedPreferences("spUtils", Context.MODE_PRIVATE).getString("quark_ck", "");
-        return value != null && !value.isEmpty();
-    }
-
-    private static boolean hasBaiduLogin(Context context) {
-        File file = new File(context.getFilesDir(), "mybd_cookie");
-        return file.isFile() && file.length() > 0;
     }
 
     /**

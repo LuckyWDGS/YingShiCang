@@ -128,11 +128,44 @@ public class Flag implements Parcelable, Diffable<Flag> {
     public Episode find(String remarks, boolean strict) {
         if (getEpisodes().isEmpty()) return null;
         if (getEpisodes().size() == 1) return getEpisodes().get(0);
+        Episode same = same(remarks);
+        return same != null ? same : other(strict);
+    }
+
+    /** Like find, but a line without that episode offers the one closest to its number (user 2026-11-04). */
+    public Episode closest(String remarks, boolean strict) {
+        if (getEpisodes().isEmpty()) return null;
+        if (getEpisodes().size() == 1) return getEpisodes().get(0);
+        Episode same = same(remarks);
+        if (same != null) return same;
+        Episode near = nearest(remarks);
+        return near != null ? near : other(strict);
+    }
+
+    // A list can hold several seasons: 第22集 of the season the name states comes before another season's.
+    private Episode same(String remarks) {
         int number = Util.getNumber(remarks);
+        int season = Episode.season(remarks);
         return getEpisodes().stream()
-                .map(episode -> new Episode.Rule(episode, episode.getScore(remarks, number)))
-                .filter(Episode.Rule::find).max(Comparator.comparingInt(Episode.Rule::score)).map(Episode.Rule::episode)
-                .orElseGet(() -> isPositionValid() ? getEpisodes().get(getPosition()) : strict ? null : getEpisodes().get(0));
+                .map(episode -> {
+                    int score = episode.getScore(remarks, number);
+                    return new Episode.Rule(episode, score > 0 && season != -1 && Episode.season(episode.getName()) == season ? score + 1 : score);
+                })
+                .filter(Episode.Rule::find).max(Comparator.comparingInt(Episode.Rule::score)).map(Episode.Rule::episode).orElse(null);
+    }
+
+    private Episode nearest(String remarks) {
+        int number = Util.getNumber(remarks);
+        if (number < 0) return null;
+        int season = Episode.season(remarks);
+        List<Episode> numbered = getEpisodes().stream().filter(episode -> episode.getNumber() > 0).toList();
+        List<Episode> sameSeason = numbered.stream().filter(episode -> Episode.season(episode.getName()) == season).toList();
+        return (season != -1 && !sameSeason.isEmpty() ? sameSeason : numbered).stream()
+                .min(Comparator.<Episode>comparingInt(episode -> Math.abs(episode.getNumber() - number)).thenComparingInt(Episode::getNumber)).orElse(null);
+    }
+
+    private Episode other(boolean strict) {
+        return isPositionValid() ? getEpisodes().get(getPosition()) : strict ? null : getEpisodes().get(0);
     }
 
     private boolean isPositionValid() {

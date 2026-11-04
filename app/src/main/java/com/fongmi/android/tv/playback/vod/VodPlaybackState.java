@@ -18,6 +18,7 @@ import java.util.Set;
 public class VodPlaybackState {
 
     private final Set<SourceId> failedSources;
+    private final Set<String> failedLines;
     private final List<Vod> sources;
     private final List<Flag> flags;
     private VodPlayRequest pendingRequest;
@@ -39,6 +40,7 @@ public class VodPlaybackState {
 
     public VodPlaybackState() {
         this.failedSources = new HashSet<>();
+        this.failedLines = new HashSet<>();
         this.sources = new ArrayList<>();
         this.flags = new ArrayList<>();
         this.quality = Result.empty();
@@ -49,6 +51,7 @@ public class VodPlaybackState {
 
     public void reset() {
         failedSources.clear();
+        failedLines.clear();
         sources.clear();
         flags.clear();
         clearPlayRequest();
@@ -64,6 +67,18 @@ public class VodPlaybackState {
         autoFallback = false;
         useParse = false;
         fallbackSearchStarted = false;
+    }
+
+    void addFailedLine(Flag flag) {
+        failedLines.add(flag.getFlag());
+    }
+
+    boolean hasFailedLine(Flag flag) {
+        return failedLines.contains(flag.getFlag());
+    }
+
+    void clearFailedLines() {
+        failedLines.clear();
     }
 
     void addFailedId(String key, String id) {

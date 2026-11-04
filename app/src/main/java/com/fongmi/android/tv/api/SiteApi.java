@@ -540,17 +540,7 @@ public class SiteApi {
 
     /** The cloud-drive family a line (flag) name refers to; anything else is "other". */
     static String drive(String flag) {
-        String value = flag == null ? "" : flag.toLowerCase(java.util.Locale.ROOT);
-        if (value.contains("夸克") || value.contains("quark")) return "quark";
-        if (value.contains("uc")) return "uc";
-        if (value.contains("百度") || value.contains("嘟嘟") || value.contains("baidu")) return "baidu";
-        if (value.contains("阿里") || value.contains("ali")) return "ali";
-        if (value.contains("115")) return "115";
-        if (value.contains("123")) return "123";
-        if (value.contains("迅雷") || value.contains("xunlei")) return "xunlei";
-        if (value.contains("天翼") || value.contains("189")) return "tianyi";
-        if (value.contains("移动") || value.contains("139")) return "yidong";
-        return "other";
+        return com.fongmi.android.tv.cloudlogin.DriveLogins.family(flag);
     }
 
     /** How long a source took to answer, so a slow line shows in uploaded logs; never URLs, titles or IDs. */

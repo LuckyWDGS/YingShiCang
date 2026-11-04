@@ -12,8 +12,12 @@ import com.github.catvod.utils.Trans;
 import com.google.gson.annotations.SerializedName;
 
 import java.util.Objects;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class Episode implements Parcelable, Diffable<Episode> {
+
+    private static final Pattern SEASON = Pattern.compile("(?i)(?<![a-z])s(\\d{1,2})e\\d|第(\\d{1,2})季|第([一二三四五六七八九十])季");
 
     @SerializedName("name")
     private String name;
@@ -98,6 +102,15 @@ public class Episode implements Parcelable, Diffable<Episode> {
         if (number == -1 && name.length() >= 2 && getName().toLowerCase().contains(name.toLowerCase())) return 70;
         if (number == -1 && getName().length() >= 2 && name.toLowerCase().contains(getName().toLowerCase())) return 60;
         return 0;
+    }
+
+    /** The season a name states (S02E05, 第二季), -1 when it states none. */
+    public static int season(String name) {
+        Matcher matcher = SEASON.matcher(name);
+        if (!matcher.find()) return -1;
+        if (matcher.group(1) != null) return Integer.parseInt(matcher.group(1));
+        if (matcher.group(2) != null) return Integer.parseInt(matcher.group(2));
+        return "一二三四五六七八九十".indexOf(matcher.group(3)) + 1;
     }
 
     public boolean matchesName(Episode other) {
