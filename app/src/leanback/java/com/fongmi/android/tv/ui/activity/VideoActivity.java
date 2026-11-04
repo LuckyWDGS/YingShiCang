@@ -1324,10 +1324,25 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
     private void onDanmaku() {
         boolean on = !isDanmakuOn();
         player().enableDanmaku(on);
-        if (on && player().getSelectedDanmakuUri() == null && mDanmakuResult != null && mDanmakuEpisode != null)
-            VodPlaybackMedia.searchDanmaku(mDanmakuResult, mDanmakuHistory, mDanmakuEpisode, player().danmakuReceiver(false), player().danmakuReceiver(true), true);
+        boolean selected = player().getSelectedDanmakuUri() != null;
+        DiagnosticLog.write(App.get(), "danmaku_toggle", "on=" + on + " selected=" + selected + " api=" + !DanmakuSetting.getEffectiveApiUrl().isEmpty());
+        // A source's danmaku comes through its plugin, which can take half a minute the first time.
+        if (on && selected) Notify.show(R.string.danmaku_loading);
+        if (on && !selected && mDanmakuResult != null && mDanmakuEpisode != null) {
+            Notify.show(R.string.danmaku_searching);
+            VodPlaybackMedia.searchDanmaku(mDanmakuResult, mDanmakuHistory, mDanmakuEpisode, player().danmakuReceiver(false), player().danmakuReceiver(true), this::onDanmakuMissing);
+        }
         updateDanmakuLabel();
         setR1Callback();
+    }
+
+    private void onDanmakuMissing() {
+        if (isDanmakuOn()) Notify.show(R.string.danmaku_not_found);
+    }
+
+    @Override
+    protected void onDanmakuFailed() {
+        if (isDanmakuOn()) Notify.show(R.string.danmaku_load_failed);
     }
 
     private boolean isDanmakuOn() {
@@ -1859,8 +1874,9 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
         if (mRewindResume && controller() != null) controller().play();
     }
 
-    // A finger held on the right third plays at the long-press speed; the bubble shows the time playing
-    // rather than 倍速 (user 2026-11-02). The remote's long-press Up keeps its speed hint.
+    // A finger held on the right third plays at 5x (user 2026-11-03); the bubble shows the time playing
+    // rather than 倍速 (user 2026-11-02). The remote's long-press Up keeps its speed and hint.
+    private static final float HOLD_FORWARD_SPEED = 5f;
     private static final long FORWARD_TICK_MS = 200;
     private final Runnable forwardTick = this::forwardTick;
     private boolean mForwarding;
@@ -1868,7 +1884,7 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
     @Override
     public void onForwardStart() {
         if (!player().isPlaying()) return;
-        player().setSpeed(SpeedSetting.getLongPress());
+        player().setSpeed(HOLD_FORWARD_SPEED);
         mForwarding = true;
         forwardTick();
     }

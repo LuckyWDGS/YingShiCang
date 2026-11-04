@@ -295,7 +295,7 @@ public class CollectActivity extends BaseActivity implements VodPresenter.OnClic
 
     // Sources match letters loosely and return unrelated titles for initials and English words alike.
     private boolean lettersMatch(String name) {
-        return letters == null || letterScore(name) < SearchResultRanker.Query.UNRELATED;
+        return letters == null || letterScore(name) < NOT_RELATED;
     }
 
     /**
@@ -310,24 +310,15 @@ public class CollectActivity extends BaseActivity implements VodPresenter.OnClic
         // The letters as text (an English title, a bilibili upload named xcjc), never a two-letter overlap.
         if (queryRanker.related(name)) return termRankers.size() * TERM_STEP + queryRanker.score(name);
         if (com.fongmi.android.tv.discovery.ShortDramaTitles.contains(name, letters)) return termRankers.size() * TERM_STEP + 50_000;
-        return SearchResultRanker.Query.UNRELATED;
+        return NOT_RELATED;
     }
 
-    private static final int TERM_STEP = 60_000, TIER = 10_000_000;
+    // Above every candidate's score: from the fifth candidate on it passes SearchResultRanker's UNRELATED.
+    private static final int TERM_STEP = 60_000, NOT_RELATED = 10_000_000;
 
-    /**
-     * Related film, TV and short-drama results first, then related 哔哩哔哩 collections (user 2026-11-01:
-     * uploads, after the works themselves), then everything unrelated.
-     */
+    /** By relevance alone, whatever the source (bilibili is no longer put last, user 2026-11-03). */
     private int rank(Vod item) {
-        int score = letters != null ? letterScore(item.getName()) : queryRanker.score(item.getName());
-        if (score >= SearchResultRanker.Query.UNRELATED) return 2 * TIER + Math.min(score, TIER - 1);
-        return (isBilibili(item.getSite()) ? TIER : 0) + score;
-    }
-
-    private static boolean isBilibili(Site site) {
-        String name = site.getName(), api = site.getApi().toLowerCase(Locale.ROOT);
-        return api.contains("bili") || name.contains("哔哩") || name.contains("哔哔") || name.contains("B站");
+        return letters != null ? letterScore(item.getName()) : queryRanker.score(item.getName());
     }
 
     private void append(List<Vod> batch, boolean immediate) {

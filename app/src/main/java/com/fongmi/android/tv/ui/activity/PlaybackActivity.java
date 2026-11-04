@@ -28,9 +28,12 @@ import androidx.media3.ui.PlayerSeekView;
 import androidx.media3.ui.PlayerView;
 import androidx.media3.ui.TimeBar;
 import androidx.media3.ui.danmaku.DanmakuConfig;
+import androidx.media3.ui.danmaku.DanmakuController;
 
+import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.bean.Result;
+import com.fongmi.android.tv.diagnostics.DiagnosticLog;
 import com.fongmi.android.tv.playback.PlaybackIntent;
 import com.fongmi.android.tv.player.PlayerManager;
 import com.fongmi.android.tv.player.media.PlaySpec;
@@ -40,9 +43,11 @@ import com.fongmi.android.tv.setting.PlayerSetting;
 import com.fongmi.android.tv.setting.SubtitleSetting;
 import com.fongmi.android.tv.ui.base.BaseActivity;
 import com.fongmi.android.tv.utils.ResUtil;
+import com.github.catvod.net.NetTrace;
 import com.github.catvod.net.OkHttp;
 import com.google.common.util.concurrent.ListenableFuture;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -52,6 +57,11 @@ public abstract class PlaybackActivity extends BaseActivity implements MediaCont
 
     private final List<ServiceReadyObserver<?>> serviceReadyObservers = new ArrayList<>();
     private final List<Runnable> foreverObserverRemovers = new ArrayList<>();
+    // A source plugin can pass the 30s read timeout preparing its danmaku, then answers at once.
+    private static final int DANMAKU_RETRIES = 2;
+    private static final long DANMAKU_RETRY_MS = 2_000;
+    private final Runnable mDanmakuRetry = this::syncDanmakuSource;
+    private int mDanmakuRetries;
     private ListenableFuture<MediaController> mControllerFuture;
     private MediaController mController;
     private PlaybackService mService;
@@ -435,7 +445,25 @@ public abstract class PlaybackActivity extends BaseActivity implements MediaCont
         playerView.setDanmakuOkHttpClient(OkHttp.player());
         playerView.setDanmakuEnabled(DanmakuSetting.isShow());
         playerView.setDanmakuConfig(DanmakuSetting.getConfig());
+        playerView.getDanmakuController().setListener(new DanmakuController.Listener() {
+            @Override
+            public void onLoadCompleted(Uri uri, int count) {
+                mDanmakuRetries = 0;
+                DiagnosticLog.write(App.get(), "danmaku_load", "outcome=ok count=" + count);
+            }
+
+            @Override
+            public void onLoadError(Uri uri, IOException error) {
+                DiagnosticLog.write(App.get(), "danmaku_load", "outcome=" + NetTrace.reason(error));
+                if (mDanmakuRetries++ < DANMAKU_RETRIES) App.post(mDanmakuRetry, DANMAKU_RETRY_MS);
+                else onDanmakuFailed();
+            }
+        });
         SubtitleSetting.applyStyle(this, playerView.getSubtitleView());
+    }
+
+    /** The danmaku of this episode could not be loaded, retries included. */
+    protected void onDanmakuFailed() {
     }
 
     private void syncDanmakuSource() {
@@ -444,6 +472,7 @@ public abstract class PlaybackActivity extends BaseActivity implements MediaCont
     }
 
     private void releasePlaybackService() {
+        App.removeCallbacks(mDanmakuRetry);
         if (mService != null) releaseService(isOwner());
         detach();
     }
@@ -536,6 +565,8 @@ public abstract class PlaybackActivity extends BaseActivity implements MediaCont
 
         @Override
         public void onDanmakuSourceChanged(Uri uri) {
+            mDanmakuRetries = 0;
+            App.removeCallbacks(mDanmakuRetry);
             if (isOwner()) getPlayerView().setDanmakuSource(uri);
         }
 

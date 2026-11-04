@@ -881,6 +881,8 @@ public class PlayerManager implements ParseCallback {
             setTrack(Track.find(getKey()));
             callback.onTracksChanged();
             initTrack = true;
+            int text = TrackUtil.count(tracks, C.TRACK_TYPE_TEXT);
+            if (text > 0) DiagnosticLog.write(App.get(), "playback_text_tracks", "count=" + text + " selected=" + tracks.isTypeSelected(C.TRACK_TYPE_TEXT));
         }
 
         @Override

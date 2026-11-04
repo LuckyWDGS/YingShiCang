@@ -1,15 +1,19 @@
 package com.fongmi.android.tv.api;
 
 import android.net.Uri;
+import android.os.SystemClock;
 import android.text.TextUtils;
 
 import androidx.collection.ArrayMap;
 
+import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.bean.Danmaku;
+import com.fongmi.android.tv.diagnostics.DiagnosticLog;
 import com.fongmi.android.tv.impl.ApiCallback;
 import com.fongmi.android.tv.setting.DanmakuSetting;
 import com.fongmi.android.tv.utils.ResUtil;
+import com.github.catvod.net.NetTrace;
 import com.github.catvod.net.OkHttp;
 import com.github.catvod.utils.Trans;
 
@@ -36,7 +40,9 @@ public class DanmakuApi {
     private static final String TAG = DanmakuApi.class.getSimpleName();
     private static final int MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
     private static final int MAX_RESULTS = 128;
-    private static final long REQUEST_TIMEOUT_MS = 10_000;
+    // An API matching a title for the first time can take well over 10s, then answers at once.
+    private static final long REQUEST_TIMEOUT_MS = 30_000;
+    private static final long SEARCH_RETRY_MS = 2_000;
     private static final AtomicInteger REQUEST_ID = new AtomicInteger();
     /*
      * Keep one bounded client for the lifetime of the process.  Creating a
@@ -63,8 +69,30 @@ public class DanmakuApi {
         if (client != null) OkHttp.cancel(client, TAG);
     }
 
-    public static void search(String name, String episode, Consumer<Danmaku> found) {
-        search(name, episode, items -> { if (!items.isEmpty()) found.accept(pick(items, episode)); }, error -> {});
+    /** The danmaku for this episode, or missing when there is none: a failed search gets one more try. */
+    public static void find(String name, String episode, Consumer<Danmaku> found, Runnable missing) {
+        find(name, episode, found, missing, 1);
+    }
+
+    private static void find(String name, String episode, Consumer<Danmaku> found, Runnable missing, int retries) {
+        long start = SystemClock.elapsedRealtime();
+        search(name, episode, items -> {
+            log(start, items.isEmpty() ? "empty" : "found count=" + items.size());
+            if (items.isEmpty()) missing.run();
+            else found.accept(pick(items, episode));
+        }, error -> {
+            log(start, NetTrace.reason(error));
+            if (retries == 0) {
+                missing.run();
+                return;
+            }
+            int requestId = REQUEST_ID.get();
+            App.post(() -> { if (requestId == REQUEST_ID.get()) find(name, episode, found, missing, retries - 1); }, SEARCH_RETRY_MS);
+        });
+    }
+
+    private static void log(long start, String outcome) {
+        DiagnosticLog.write(App.get(), "danmaku_search", "ms=" + (SystemClock.elapsedRealtime() - start) + " outcome=" + outcome);
     }
 
     private static final Pattern EPISODE = Pattern.compile("第\\s*([0-9]{1,4}|[零〇一二两三四五六七八九十百]{1,6})\\s*[集话話期回]"

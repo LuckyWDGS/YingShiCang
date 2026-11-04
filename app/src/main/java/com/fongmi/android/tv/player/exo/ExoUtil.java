@@ -75,6 +75,9 @@ public class ExoUtil {
         DefaultTrackSelector.Parameters.Builder builder = trackSelector.buildUponParameters();
         if (DecodeSetting.isPreferAAC()) builder.setPreferredAudioMimeType(MimeTypes.AUDIO_AAC);
         builder.setPreferredTextLanguages(LangUtil.getPreferredTextLanguages());
+        // A subtitle track shows by itself, the preferred language first. Without this only Chinese or
+        // default-flagged tracks did, and the others had to be picked by hand (user 2026-11-03).
+        builder.setSelectTextByDefault(true);
         builder.setTunnelingEnabled(DecodeSetting.isTunnelingEnabled());
         // User preference: keep the highest supported quality unless explicitly changed.
         builder.setForceHighestSupportedBitrate(PlayerSetting.isHighestQualityPreferred());

@@ -204,6 +204,10 @@
     <string name="danmaku">弹幕</string>
     <string name="danmaku_state_on">弹幕：开</string>
     <string name="danmaku_state_off">弹幕：关</string>
+    <string name="danmaku_searching">正在搜索弹幕…</string>
+    <string name="danmaku_loading">正在加载弹幕，首次可能需要半分钟</string>
+    <string name="danmaku_not_found">没有找到弹幕</string>
+    <string name="danmaku_load_failed">弹幕加载失败</string>
     <string name="danmaku_select">选择弹幕</string>
     <string name="danmaku_setting">弹幕设置</string>
     <string name="danmaku_text_size">字体缩放</string>
