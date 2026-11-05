@@ -10,6 +10,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.fongmi.android.tv.Product;
 import com.fongmi.android.tv.bean.Keep;
 import com.fongmi.android.tv.databinding.AdapterVodBinding;
+import com.fongmi.android.tv.follow.FollowChecker;
 import com.fongmi.android.tv.utils.ImgUtil;
 import com.fongmi.android.tv.utils.ResUtil;
 
@@ -73,7 +74,7 @@ public class KeepAdapter extends BaseDiffAdapter<Keep, KeepAdapter.ViewHolder> {
         holder.binding.name.setText(item.getVodName());
         holder.binding.remark.setVisibility(View.GONE);
         holder.binding.site.setVisibility(View.VISIBLE);
-        holder.binding.site.setText(item.getSiteName());
+        holder.binding.site.setText(FollowChecker.updated(item.getKey()) ? "有更新 · " + item.getSiteName() : item.getSiteName());
         holder.binding.delete.setVisibility(!delete ? View.GONE : View.VISIBLE);
         ImgUtil.load(item.getVodName(), item.getVodPic(), holder.binding.image);
     }

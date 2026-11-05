@@ -6,6 +6,7 @@ import com.fongmi.android.tv.bean.Result;
 import com.fongmi.android.tv.bean.Site;
 import com.fongmi.android.tv.bean.Vod;
 import com.fongmi.android.tv.resource.ResourceHealth;
+import com.fongmi.android.tv.resource.SourceBench;
 import com.fongmi.android.tv.utils.Task;
 import com.google.common.util.concurrent.FluentFuture;
 import com.google.common.util.concurrent.MoreExecutors;
@@ -22,17 +23,22 @@ final class ViewModelSearchRunner {
     // when retried, which was the main cause of the long tail on real sources.
     private static final int MAX_RETRIES = 1;
     private static final long RETRY_DELAY_MS = 700;
+    // A letters search asks every source up to eight times; a source failing twice running is not asked again.
+    private static final int RUN_FAILURES = 2;
     private final com.google.common.util.concurrent.ListeningExecutorService workers;
     private final com.google.common.util.concurrent.ListeningExecutorService crawlerWorkers;
     private final ScheduledExecutorService scheduler;
     private final long timeout;
     private final int parallelism;
     private final int crawlerParallelism;
+    private final SourceBench bench;
+    private final Map<Site, Integer> runFailures = new IdentityHashMap<>();
+    private boolean answered;
     private int activeHttp, activeCrawlers;
     private boolean dispatching;
     ViewModelSearchRunner() {
         this(Task.searchExecutor(), Task.searchExecutor(true), Task.scheduler(), Constant.TIMEOUT_SEARCH,
-                Task.SEARCH_PARALLELISM, Task.SEARCH_CRAWLER_PARALLELISM);
+                Task.SEARCH_PARALLELISM, Task.SEARCH_CRAWLER_PARALLELISM, SourceBench.search());
     }
     ViewModelSearchRunner(com.google.common.util.concurrent.ListeningExecutorService workers, ScheduledExecutorService scheduler, long timeout) {
         this(workers, scheduler, timeout, 4);
@@ -43,6 +49,12 @@ final class ViewModelSearchRunner {
     ViewModelSearchRunner(com.google.common.util.concurrent.ListeningExecutorService workers,
                          com.google.common.util.concurrent.ListeningExecutorService crawlerWorkers,
                          ScheduledExecutorService scheduler, long timeout, int parallelism, int crawlerParallelism) {
+        this(workers, crawlerWorkers, scheduler, timeout, parallelism, crawlerParallelism, new SourceBench());
+    }
+    ViewModelSearchRunner(com.google.common.util.concurrent.ListeningExecutorService workers,
+                         com.google.common.util.concurrent.ListeningExecutorService crawlerWorkers,
+                         ScheduledExecutorService scheduler, long timeout, int parallelism, int crawlerParallelism, SourceBench bench) {
+        this.bench = bench;
         this.workers = workers; this.crawlerWorkers = crawlerWorkers;
         this.scheduler = scheduler; this.timeout = timeout;
         this.parallelism = Math.max(1, parallelism); this.crawlerParallelism = Math.max(1, crawlerParallelism);
@@ -79,8 +91,10 @@ final class ViewModelSearchRunner {
         stop(); int current = epoch.get();
         pending = new ArrayDeque<>();
         revision = VodConfig.getDiscoveryRevision();
-        for (int query = 0; query < queries; query++) for (Site site : sites) pending.add(new Attempt(site, 0, query));
-        total = sites.size() * queries; completed = failed = hits = 0; lastError = ""; status = progress;
+        List<Site> active = bench.active(sites, Site::getKey);
+        for (int query = 0; query < queries; query++) for (Site site : active) pending.add(new Attempt(site, 0, query));
+        total = active.size() * queries; completed = failed = hits = 0; lastError = ""; status = progress;
+        runFailures.clear(); answered = false;
         report();
         dispatch(current,factory,results);
     }
@@ -163,6 +177,7 @@ final class ViewModelSearchRunner {
             failed++;
             String message=String.valueOf(error);
             lastError=message.contains("架构") ? "插件架构不兼容" : message.contains("Timeout") ? "部分站点超时" : "部分站点加载失败";
+            sourceFailed(job.attempt.site);
         } else if(value!=null){
             // Keep only entries that can lead to a real detail page. Empty shells and
             // parser status rows otherwise make the aggregate search look successful.
@@ -177,9 +192,28 @@ final class ViewModelSearchRunner {
                 value.setList(valid);
                 hits += valid.size();
                 results.accept(value);
+                sourceAnswered(job.attempt.site);
             }
         }
         report(); dispatch(current,factory,results);
+    }
+
+    /** One failed round per source and search, and only once another source has shown the network works. */
+    private void sourceFailed(Site site) {
+        int failures = runFailures.merge(site, 1, Integer::sum);
+        if (answered && failures == 1) bench.failed(site.getKey());
+        if (failures < RUN_FAILURES) return;
+        for (Iterator<Attempt> iterator = pending.iterator(); iterator.hasNext();) {
+            if (iterator.next().site != site) continue;
+            iterator.remove(); total--;
+        }
+    }
+
+    private void sourceAnswered(Site site) {
+        runFailures.remove(site);
+        bench.answered(site.getKey());
+        if (!answered) runFailures.keySet().forEach(failing -> bench.failed(failing.getKey()));
+        answered = true;
     }
 
     private static boolean isTransientFailure(Throwable error) {

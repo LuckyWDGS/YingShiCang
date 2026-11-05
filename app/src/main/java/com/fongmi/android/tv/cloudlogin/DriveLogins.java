@@ -3,15 +3,20 @@ package com.fongmi.android.tv.cloudlogin;
 import android.content.Context;
 import android.content.SharedPreferences;
 
+import androidx.annotation.VisibleForTesting;
+
 import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.bean.Flag;
+import com.github.catvod.utils.Prefers;
 
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Predicate;
 
 /**
@@ -23,6 +28,16 @@ public final class DriveLogins {
     private static final String QUARK = "quark";
     private static final String UC = "uc";
     private static final String BAIDU = "baidu";
+    private static final int FAILING_PLAYS = 3;
+
+    private static Predicate<String> scanned = DriveLogins::hasLogin;
+
+    /** For the settings page. failing: its last plays all failed, which is what an expired login looks like. */
+    public record Status(String name, boolean scanned, boolean failing) {
+        String text() {
+            return name + " " + (!scanned ? "未扫码" : failing ? "可能已失效" : "已扫码");
+        }
+    }
 
     private DriveLogins() {
     }
@@ -69,7 +84,7 @@ public final class DriveLogins {
         return context.getSharedPreferences("spUtils", Context.MODE_PRIVATE);
     }
 
-    private static boolean scanned(String family) {
+    private static boolean hasLogin(String family) {
         Context context = App.get();
         return switch (family) {
             case QUARK -> hasQuark(context);
@@ -81,7 +96,7 @@ public final class DriveLogins {
 
     /** Scanned-in drives first, the source's order otherwise, so automatic line changes reach them first. */
     public static void prefer(List<Flag> flags) {
-        prefer(flags, DriveLogins::scanned);
+        prefer(flags, scanned);
     }
 
     static void prefer(List<Flag> flags, Predicate<String> scanned) {
@@ -90,7 +105,7 @@ public final class DriveLogins {
 
     /** The line to open: the saved one, unless it is a drive not scanned in and another drive is. */
     public static Flag entry(List<Flag> flags, Flag saved) {
-        return entry(flags, saved, DriveLogins::scanned);
+        return entry(flags, saved, scanned);
     }
 
     static Flag entry(List<Flag> flags, Flag saved, Predicate<String> scanned) {
@@ -105,8 +120,48 @@ public final class DriveLogins {
         List<String> lines = new ArrayList<>();
         for (Flag flag : flags) {
             String family = family(flag.getFlag());
-            lines.add(scanned(family) ? family + "*" : family);
+            lines.add(scanned.test(family) ? family + "*" : family);
         }
         return String.join(",", lines);
+    }
+
+    /** The drive families among these lines that are scanned in, looked up once for a whole row of lines. */
+    public static Set<String> scannedAmong(List<Flag> flags) {
+        Set<String> families = new HashSet<>();
+        for (Flag flag : flags) families.add(family(flag.getFlag()));
+        families.removeIf(family -> !needsScan(family) || !scanned.test(family));
+        return families;
+    }
+
+    /** A line of a scanned-in drive got an address or failed to. */
+    public static void played(String flag, boolean ok) {
+        String family = family(flag);
+        if (!needsScan(family) || !scanned.test(family)) return;
+        int failed = Prefers.getInt(failedKey(family));
+        int now = ok ? 0 : Math.min(failed + 1, FAILING_PLAYS);
+        if (now != failed) Prefers.put(failedKey(family), now);
+    }
+
+    public static List<Status> statuses() {
+        return List.of(status("夸克", QUARK), status("百度", BAIDU), status("UC", UC));
+    }
+
+    private static Status status(String name, String family) {
+        return new Status(name, scanned.test(family), Prefers.getInt(failedKey(family)) >= FAILING_PLAYS);
+    }
+
+    private static String failedKey(String family) {
+        return "drive_failed_" + family;
+    }
+
+    public static String summary(List<Status> statuses) {
+        List<String> parts = new ArrayList<>();
+        for (Status status : statuses) parts.add(status.text());
+        return String.join(" · ", parts);
+    }
+
+    @VisibleForTesting
+    public static void setScanned(Predicate<String> value) {
+        scanned = value == null ? DriveLogins::hasLogin : value;
     }
 }

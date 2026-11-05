@@ -67,7 +67,7 @@ public class ExoMediaSourceFactory implements MediaSource.Factory {
     }
 
     static DataSource.Factory createUpstreamDataSourceFactory(Map<String, String> headers) {
-        HttpDataSource.Factory factory = new OkHttpDataSource.Factory(OkHttp.player());
+        HttpDataSource.Factory factory = new OkHttpDataSource.Factory(OkHttp.media());
         factory.setDefaultRequestProperties(headers);
         return new DefaultDataSource.Factory(App.get(), factory);
     }
@@ -130,7 +130,7 @@ public class ExoMediaSourceFactory implements MediaSource.Factory {
     }
 
     private HttpDataSource.Factory getHttpDataSourceFactory() {
-        if (httpDataSourceFactory == null) httpDataSourceFactory = new OkHttpDataSource.Factory(OkHttp.player());
+        if (httpDataSourceFactory == null) httpDataSourceFactory = new OkHttpDataSource.Factory(OkHttp.media());
         return httpDataSourceFactory;
     }
 }

@@ -8,6 +8,7 @@ import com.fongmi.android.tv.bean.Filter;
 import com.fongmi.android.tv.bean.Result;
 import com.fongmi.android.tv.bean.Site;
 import com.fongmi.android.tv.bean.Vod;
+import com.fongmi.android.tv.resource.SourceBench;
 import com.fongmi.android.tv.utils.BackgroundThreads;
 import java.util.*;
 import java.util.concurrent.*;
@@ -58,7 +59,7 @@ public final class SourceDiscoveryRunner {
         final List<PageSlot> pages = new ArrayList<>();
         final Map<String, Vod> items = new LinkedHashMap<>();
         final RetryBudget retryBudget = new RetryBudget();
-        boolean initialized, failed;
+        boolean initialized, failed, resting;
         int turn, categoryCount, adultCategoryCount;
         SourceSlot(Site site) {
             this.site = site; signature = signature(site);
@@ -71,7 +72,7 @@ public final class SourceDiscoveryRunner {
             }
             return null;
         }
-        boolean available() { return !initialized || next() != null; }
+        boolean available() { return !resting && (!initialized || next() != null); }
         boolean more() { return !failed && available(); }
     }
     private static final class Work {
@@ -108,6 +109,9 @@ public final class SourceDiscoveryRunner {
     private final OkHttpClient client;
     private final AtomicLong epoch = new AtomicLong();
     private final List<Work> running = new CopyOnWriteArrayList<>();
+    private final SourceBench bench = SourceBench.discovery();
+    private final Set<SourceSlot> roundFailed = new HashSet<>();
+    private final Set<SourceSlot> counted = new HashSet<>();
     private final ExecutorService coordinator = Executors.newSingleThreadExecutor(BackgroundThreads.factory("discovery-coordinator"));
     private Future<?> round;
     private Batch published;
@@ -117,6 +121,9 @@ public final class SourceDiscoveryRunner {
         this.state = state.snapshot(); this.client = client; this.cache = cache;
         Set<String> keys = new HashSet<>();
         for (Site site : new ArrayList<>(config.getSites())) if (!site.getKey().isEmpty() && keys.add(site.getKey())) sources.add(new SourceSlot(site));
+        // Resting sources stay listed: current() compares this list with the configuration.
+        List<SourceSlot> active = bench.active(sources, slot -> slot.site.getKey());
+        for (SourceSlot slot : sources) slot.resting = !active.contains(slot);
     }
     private static String signature(Site site) {
         // Retained only in memory; never log APIs/extensions/headers, which can contain credentials.
@@ -218,6 +225,10 @@ public final class SourceDiscoveryRunner {
             }
             if (valid(token)) {
                 if (stats != null && current()) debugSummary(stats, token, retry);
+                // With nothing on the page the network may be down, which says nothing about these sources.
+                // Once per page, however many automatic retries it takes: those come seconds apart.
+                if (sources.stream().anyMatch(slot -> !slot.items.isEmpty())) roundFailed.stream().filter(counted::add).forEach(slot -> bench.failed(slot.site.getKey()));
+                roundFailed.clear();
                 publish(token, true, callback);
             }
         } catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); }
@@ -283,7 +294,9 @@ public final class SourceDiscoveryRunner {
             slot.categoryCount = outcome.categoryCount; slot.adultCategoryCount = outcome.adultCategoryCount;
         }
         slot.failed = outcome.error();
-        if (!outcome.error()) slot.retryBudget.succeeded();
+        if (outcome.error()) roundFailed.add(slot);
+        else slot.retryBudget.succeeded();
+        if (outcome.result != null && !outcome.result.getList().isEmpty()) bench.answered(slot.site.getKey());
         if (stats != null) stats.error(outcome.errorType);
         if (outcome.error() || outcome.result == null) return;
         PageSlot page = work.page == null ? slot.next() : work.page;

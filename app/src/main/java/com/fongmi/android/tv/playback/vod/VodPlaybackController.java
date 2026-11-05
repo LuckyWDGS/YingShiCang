@@ -20,6 +20,7 @@ import com.fongmi.android.tv.utils.Util;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.function.LongSupplier;
 
 public class VodPlaybackController {
 
@@ -37,11 +38,18 @@ public class VodPlaybackController {
     // a short stall used to switch lines at once (user 2026-10-31).
     private final VodRetryBudget retries = new VodRetryBudget();
 
+    private final LongSupplier clock;
+
     public VodPlaybackController(VodPlaybackHost host, VodDataSource dataSource, VodPlaybackState state) {
+        this(host, dataSource, state, new VodHistoryPolicy(), android.os.SystemClock::elapsedRealtime);
+    }
+
+    VodPlaybackController(VodPlaybackHost host, VodDataSource dataSource, VodPlaybackState state, VodHistoryPolicy historyPolicy, LongSupplier clock) {
         this.host = host;
         this.dataSource = dataSource;
         this.state = state;
-        this.historyPolicy = new VodHistoryPolicy();
+        this.clock = clock;
+        this.historyPolicy = historyPolicy;
         this.fallbackPolicy = new VodFallbackPolicy(this, state, host, dataSource);
         this.preloader = new VodPreloader(host, dataSource, state);
     }
@@ -269,7 +277,7 @@ public class VodPlaybackController {
 
     public void playbackError(String msg) {
         VodPlayRequest playing = state.getPlayingRequest();
-        if (retries.take(playing, android.os.SystemClock.elapsedRealtime())) {
+        if (retries.take(playing, clock.getAsLong())) {
             host.onPlaybackRetry();
             refresh();
             return;
@@ -288,7 +296,7 @@ public class VodPlaybackController {
 
     public void playbackReady() {
         if (state.getPlayingRequest() == null) return;
-        retries.ready(android.os.SystemClock.elapsedRealtime());
+        retries.ready(clock.getAsLong());
         state.clearFailedLines();
         state.setSelectFirstSource(false);
     }
@@ -529,10 +537,14 @@ public class VodPlaybackController {
     }
 
     private MediaMetadata publishPlaybackMetadata(Episode episode) {
-        MediaMetadata metadata = VodPlaybackMedia.metadata(state.getHistory(), episode);
+        MediaMetadata metadata = metadata(episode);
         state.setPlaybackMetadata(metadata);
         host.renderPlaybackMetadata(metadata);
         return metadata;
+    }
+
+    MediaMetadata metadata(Episode episode) {
+        return VodPlaybackMedia.metadata(state.getHistory(), episode);
     }
 
     private void seamless(Flag flag) {

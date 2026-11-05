@@ -291,6 +291,8 @@
     <string name="setting_restore">Restore</string>
     <string name="setting_version">日志上传与诊断</string>
     <string name="setting_update">版本更新</string>
+    <string name="setting_follow">追剧提醒</string>
+    <string name="setting_drive">网盘登录</string>
     <string name="setting_choose">Choose</string>
     <string name="setting_off">Off</string>
     <string name="setting_on">On</string>

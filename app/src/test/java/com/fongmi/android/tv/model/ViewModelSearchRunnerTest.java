@@ -413,6 +413,70 @@ public class ViewModelSearchRunnerTest {
         }
     }
 
+    private static Site named(String key) {
+        return new Site() { @Override public String getKey() { return key; } };
+    }
+
+    /** Runs one search to its end on one thread: sources answer in turn. */
+    private static void search(ViewModelSearchRunner runner, java.util.List<Site> sites, int queries,
+                               java.util.function.BiFunction<Site, Integer, java.util.concurrent.Callable<com.fongmi.android.tv.bean.Result>> tasks) throws Exception {
+        CountDownLatch done = new CountDownLatch(1);
+        runner.start(sites, queries, tasks, value -> {}, status -> { if (status.startsWith("搜索完成")) done.countDown(); });
+        assertTrue(done.await(5, TimeUnit.SECONDS));
+    }
+
+    @Test public void aSourceFailingTwiceRunningIsNotAskedForTheOtherQueries() throws Exception {
+        var workers = MoreExecutors.listeningDecorator(Executors.newSingleThreadExecutor());
+        var timer = Executors.newSingleThreadScheduledExecutor();
+        var runner = new ViewModelSearchRunner(workers, timer, 2000, 1);
+        Site good = named("good"), bad = named("bad");
+        AtomicInteger badAsked = new AtomicInteger(), goodAsked = new AtomicInteger();
+        try {
+            search(runner, java.util.List.of(good, bad), 6, (site, query) -> () -> {
+                if (site == good) { goodAsked.incrementAndGet(); return result("hit"); }
+                badAsked.incrementAndGet();
+                throw new java.io.IOException("source refused");
+            });
+            assertEquals(2, badAsked.get());
+            assertEquals(6, goodAsked.get());
+        } finally { runner.stop(); workers.shutdownNow(); timer.shutdownNow(); }
+    }
+
+    @Test public void aSourceFailingThreeSearchesSitsOutTheNext() throws Exception {
+        var workers = MoreExecutors.listeningDecorator(Executors.newSingleThreadExecutor());
+        var timer = Executors.newSingleThreadScheduledExecutor();
+        var bench = new com.fongmi.android.tv.resource.SourceBench();
+        var runner = new ViewModelSearchRunner(workers, workers, timer, 2000, 1, 1, bench);
+        Site good = named("good"), bad = named("bad");
+        AtomicInteger badAsked = new AtomicInteger();
+        java.util.function.BiFunction<Site, Integer, java.util.concurrent.Callable<com.fongmi.android.tv.bean.Result>> tasks = (site, query) -> () -> {
+            if (site == good) return result("hit");
+            badAsked.incrementAndGet();
+            throw new java.io.IOException("source refused");
+        };
+        try {
+            for (int i = 0; i < 3; i++) search(runner, java.util.List.of(bad, good), 1, tasks);
+            assertEquals(3, badAsked.get());
+            assertTrue(bench.resting("bad"));
+            search(runner, java.util.List.of(bad, good), 1, tasks);
+            assertEquals(3, badAsked.get());
+        } finally { runner.stop(); workers.shutdownNow(); timer.shutdownNow(); }
+    }
+
+    @Test public void nothingCountsWhenNoSourceAnswers() throws Exception {
+        var workers = MoreExecutors.listeningDecorator(Executors.newSingleThreadExecutor());
+        var timer = Executors.newSingleThreadScheduledExecutor();
+        var bench = new com.fongmi.android.tv.resource.SourceBench();
+        var runner = new ViewModelSearchRunner(workers, workers, timer, 2000, 1, 1, bench);
+        try {
+            for (int i = 0; i < 4; i++) search(runner, java.util.List.of(named("a"), named("b")), 1, (site, query) -> () -> {
+                throw new java.io.IOException("network down");
+            });
+            assertFalse(bench.resting("a"));
+            assertFalse(bench.resting("b"));
+        } finally { runner.stop(); workers.shutdownNow(); timer.shutdownNow(); }
+    }
+
     private static com.fongmi.android.tv.bean.Result result(String id) {
         var vod = new com.fongmi.android.tv.bean.Vod() {
             @Override public String getId() { return id; }

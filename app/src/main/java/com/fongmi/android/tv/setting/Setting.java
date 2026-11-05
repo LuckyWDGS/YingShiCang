@@ -113,6 +113,14 @@ public class Setting {
         Prefers.put("incognito", incognito);
     }
 
+    public static boolean isFollow() {
+        return Prefers.getBoolean("follow_updates", true);
+    }
+
+    public static void putFollow(boolean follow) {
+        Prefers.put("follow_updates", follow);
+    }
+
     public static boolean getUpdate() {
         return Prefers.getBoolean("update", true);
     }

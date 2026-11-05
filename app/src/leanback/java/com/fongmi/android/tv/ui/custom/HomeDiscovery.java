@@ -319,7 +319,7 @@ public final class HomeDiscovery {
                         .map(option -> new Choice(option.label, option.value)).toList())).toList());
     }
 
-    private long roundStart;
+    private long roundStart, roundFirst;
     private String roundTab, roundKind;
     // Last provider failure of the current round (class + keyword or HTTP status), for diagnostics only.
     private volatile String roundError;
@@ -853,6 +853,7 @@ public final class HomeDiscovery {
             render.accept(new ArrayList<>(items));
             binding.recycler.setContentDescription("片单，共" + items.size() + "部");
             more = batch.more();
+            if (roundFirst < 0 && items.size() > before) roundFirst = SystemClock.elapsedRealtime() - roundStart;
             if (!batch.finished()) return;
             logRound(before, batch.failed() ? "partial_failed" : null);
             busy = false; failed = batch.failed(); page++;
@@ -940,6 +941,7 @@ public final class HomeDiscovery {
 
     private void beginRound(String kind) {
         roundStart = SystemClock.elapsedRealtime();
+        roundFirst = -1;
         roundTab = names[active];
         roundKind = kind;
     }
@@ -953,7 +955,7 @@ public final class HomeDiscovery {
     private void writeRound(String outcome, int added) {
         if (roundTab == null) return;
         DiagnosticLog.write(activity, "category_load", "tab=" + roundTab + " kind=" + roundKind + " ms=" + (SystemClock.elapsedRealtime() - roundStart)
-                + " items=" + items.size() + " added=" + added + " outcome=" + outcome);
+                + " first=" + roundFirst + " items=" + items.size() + " added=" + added + " outcome=" + outcome);
         roundTab = null;
     }
 

@@ -31,6 +31,7 @@ import okhttp3.logging.HttpLoggingInterceptor;
 public class OkHttp {
 
     private static final long TIMEOUT = TimeUnit.SECONDS.toMillis(30);
+    private static final long MEDIA_TIMEOUT = TimeUnit.SECONDS.toMillis(15);
 
     private ResponseInterceptor responseInterceptor;
     private RequestInterceptor requestInterceptor;
@@ -39,6 +40,7 @@ public class OkHttp {
     private OkProxySelector selector;
     private OkHttpClient client;
     private OkHttpClient player;
+    private OkHttpClient media;
     private OkDns dns;
 
     public static OkHttp get() {
@@ -83,6 +85,23 @@ public class OkHttp {
     public static synchronized OkHttpClient player() {
         if (get().player != null) return get().player;
         return get().player = getBuilder().build();
+    }
+
+    /**
+     * The player's media requests. A server that goes silent mid-segment held playback for the full 30s
+     * before the player asked again. Source plugins' local proxies keep 30s: they answer only once the
+     * drive behind them has.
+     */
+    public static synchronized OkHttpClient media() {
+        if (get().media != null) return get().media;
+        return get().media = player().newBuilder().connectTimeout(MEDIA_TIMEOUT, TimeUnit.MILLISECONDS).readTimeout(MEDIA_TIMEOUT, TimeUnit.MILLISECONDS).addInterceptor(chain -> {
+            if (!isLocal(chain.request().url().host())) return chain.proceed(chain.request());
+            return chain.withReadTimeout((int) TIMEOUT, TimeUnit.MILLISECONDS).proceed(chain.request());
+        }).build();
+    }
+
+    static boolean isLocal(String host) {
+        return "127.0.0.1".equals(host) || "localhost".equals(host) || "::1".equals(host) || "[::1]".equals(host);
     }
 
     public static OkHttpClient client(long timeout) {

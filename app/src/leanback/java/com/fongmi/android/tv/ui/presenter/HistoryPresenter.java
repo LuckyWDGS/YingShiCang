@@ -12,6 +12,7 @@ import com.bumptech.glide.Glide;
 import com.fongmi.android.tv.Product;
 import com.fongmi.android.tv.bean.History;
 import com.fongmi.android.tv.databinding.AdapterVodBinding;
+import com.fongmi.android.tv.follow.FollowChecker;
 import com.fongmi.android.tv.utils.ImgUtil;
 import com.fongmi.android.tv.utils.ResUtil;
 import com.fongmi.android.tv.utils.PosterLabel;
@@ -82,6 +83,7 @@ public class HistoryPresenter extends Presenter {
         setClickListener(holder.view, item);
         holder.binding.name.setText(item.getVodName());
         String source = PosterLabel.source(item.getCid() == VodConfig.getCid() ? item.getSiteName() : "", item.getSiteKey());
+        if (FollowChecker.updated(item.getKey())) source = source.isEmpty() ? "有更新" : "有更新 · " + source;
         String episode = same ? "" : PosterLabel.history(item.getVodRemarks());
         String watched = PosterLabel.watched(item.getPosition(), item.getDuration());
         if (!watched.isEmpty()) episode = episode.isEmpty() ? watched : episode + " · " + watched;

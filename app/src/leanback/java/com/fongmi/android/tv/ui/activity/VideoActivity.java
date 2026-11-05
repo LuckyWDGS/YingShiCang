@@ -49,6 +49,7 @@ import com.fongmi.android.tv.bean.Vod;
 import com.fongmi.android.tv.databinding.ActivityVideoBinding;
 import com.fongmi.android.tv.db.AppDatabase;
 import com.fongmi.android.tv.event.RefreshEvent;
+import com.fongmi.android.tv.follow.FollowChecker;
 import com.fongmi.android.tv.impl.CustomTarget;
 import com.fongmi.android.tv.model.VideoViewModel;
 import com.fongmi.android.tv.playback.MediaSeekPolicy;
@@ -590,7 +591,9 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
         mDanmakuResult = result;
         mDanmakuHistory = history;
         mDanmakuEpisode = episode;
-        VodPlaybackMedia.searchDanmaku(result, history, episode, player().danmakuReceiver(false), player().danmakuReceiver(true));
+        // Danmaku the user switched on stays on from episode to episode, with 自动搜索 off too.
+        boolean follow = isDanmakuOn() && result.getDanmaku().isEmpty();
+        VodPlaybackMedia.searchDanmaku(result, history, episode, player().danmakuReceiver(false), player().danmakuReceiver(true), follow ? () -> {} : null);
     }
 
     @Override
@@ -598,6 +601,7 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
         for (TextView field : new TextView[]{mBinding.year, mBinding.area, mBinding.type,
                 mBinding.site, mBinding.director, mBinding.actor}) field.setText("");
         mHistory = history;
+        FollowChecker.seen(getHistoryKey(), item.getFlags());
         mBinding.progressLayout.showContent();
         mBinding.name.setText(item.getName());
         mBinding.video.requestFocus();

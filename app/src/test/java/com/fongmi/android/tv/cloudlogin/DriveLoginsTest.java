@@ -76,4 +76,12 @@ public class DriveLoginsTest {
         List<Flag> flags = lines("嘟嘟", "夸父");
         assertEquals("嘟嘟", DriveLogins.entry(flags, null, ONLY_BAIDU).getFlag());
     }
+
+    @Test
+    public void theSummaryNamesEachDrive() {
+        assertEquals("夸克 已扫码 · 百度 可能已失效 · UC 未扫码", DriveLogins.summary(List.of(
+                new DriveLogins.Status("夸克", true, false),
+                new DriveLogins.Status("百度", true, true),
+                new DriveLogins.Status("UC", false, true))));
+    }
 }

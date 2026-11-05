@@ -8,15 +8,18 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.bean.Flag;
+import com.fongmi.android.tv.cloudlogin.DriveLogins;
 import com.fongmi.android.tv.databinding.AdapterFlagBinding;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 public class FlagAdapter extends RecyclerView.Adapter<FlagAdapter.ViewHolder> {
 
     private final OnClickListener mListener;
     private final List<Flag> mItems;
+    private Set<String> scanned = Set.of();
     private int nextFocusDown;
 
     public FlagAdapter(OnClickListener listener) {
@@ -28,6 +31,7 @@ public class FlagAdapter extends RecyclerView.Adapter<FlagAdapter.ViewHolder> {
     public void addAll(List<Flag> items) {
         mItems.clear();
         mItems.addAll(items);
+        scanned = DriveLogins.scannedAmong(items);
         notifyDataSetChanged();
     }
 
@@ -68,7 +72,7 @@ public class FlagAdapter extends RecyclerView.Adapter<FlagAdapter.ViewHolder> {
     @Override
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
         Flag item = mItems.get(position);
-        holder.binding.text.setText(item.getShow());
+        holder.binding.text.setText(scanned.contains(DriveLogins.family(item.getFlag())) ? item.getShow() + " ✓" : item.getShow());
         holder.binding.text.setSelected(item.isSelected());
         holder.binding.text.setNextFocusDownId(nextFocusDown);
         holder.binding.getRoot().setOnClickListener(v -> mListener.onItemClick(item));

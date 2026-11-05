@@ -8,6 +8,7 @@ import android.view.View;
 import androidx.viewbinding.ViewBinding;
 
 import com.fongmi.android.tv.BuildConfig;
+import com.fongmi.android.tv.cloudlogin.DriveLogins;
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.Updater;
 import com.fongmi.android.tv.api.config.LiveConfig;
@@ -89,6 +90,7 @@ public class SettingActivity extends BaseActivity implements ConfigListener, Sit
     private void setOtherText() {
         mBinding.dohText.setText(getDohList()[getDohIndex()]);
         mBinding.incognitoText.setText(Setting.getSwitch(Setting.isIncognito()));
+        mBinding.followText.setText(Setting.getSwitch(Setting.isFollow()));
         mBinding.chapterMarkerText.setText(Setting.getSwitch(PlayerSetting.isChapterMarker()));
         mBinding.sizeText.setText((size = ResUtil.getStringArray(R.array.select_size))[PlayerSetting.getSize()]);
     }
@@ -104,6 +106,11 @@ public class SettingActivity extends BaseActivity implements ConfigListener, Sit
         super.onResume();
         UpdateNotice.observe(this::setUpdateText);
         setUpdateText();
+        setDriveText();
+    }
+
+    private void setDriveText() {
+        mBinding.driveText.setText(DriveLogins.summary(DriveLogins.statuses()));
     }
 
     @Override
@@ -136,6 +143,7 @@ public class SettingActivity extends BaseActivity implements ConfigListener, Sit
         mBinding.restore.setOnClickListener(this::onRestore);
         mBinding.version.setOnClickListener(this::onVersion);
         mBinding.update.setOnClickListener(this::onUpdate);
+        mBinding.follow.setOnClickListener(this::setFollow);
         mBinding.vod.setOnLongClickListener(this::onVodEdit);
         mBinding.vodHome.setOnClickListener(this::onVodHome);
         mBinding.live.setOnLongClickListener(this::onLiveEdit);
@@ -279,6 +287,11 @@ public class SettingActivity extends BaseActivity implements ConfigListener, Sit
     private void setChapterMarker(View view) {
         PlayerSetting.putChapterMarker(!PlayerSetting.isChapterMarker());
         mBinding.chapterMarkerText.setText(Setting.getSwitch(PlayerSetting.isChapterMarker()));
+    }
+
+    private void setFollow(View view) {
+        Setting.putFollow(!Setting.isFollow());
+        mBinding.followText.setText(Setting.getSwitch(Setting.isFollow()));
     }
 
     private void setIncognito(View view) {

@@ -42,6 +42,7 @@ import com.fongmi.android.tv.db.BackupManager;
 import com.fongmi.android.tv.event.CastEvent;
 import com.fongmi.android.tv.event.ConfigEvent;
 import com.fongmi.android.tv.event.RefreshEvent;
+import com.fongmi.android.tv.follow.FollowChecker;
 import com.fongmi.android.tv.event.ServerEvent;
 import com.fongmi.android.tv.impl.Callback;
 import com.fongmi.android.tv.model.SiteViewModel;
@@ -669,6 +670,7 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         mWeather.refresh();
         if (discovery != null) discovery.setActive(true);
         if (mHistoryReturnKey != null) getHistory();
+        FollowChecker.resume(Notify::show);
     }
 
     @Override
@@ -679,6 +681,7 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         mClock.stop();
         mWeather.stop();
         if (discovery != null) discovery.setActive(false);
+        FollowChecker.pause();
     }
 
     @Override
