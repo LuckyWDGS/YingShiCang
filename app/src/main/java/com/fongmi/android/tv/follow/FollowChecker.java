@@ -11,6 +11,7 @@ import com.fongmi.android.tv.diagnostics.DiagnosticLog;
 import com.fongmi.android.tv.event.RefreshEvent;
 import com.fongmi.android.tv.setting.Setting;
 import com.fongmi.android.tv.utils.BackgroundThreads;
+import com.fongmi.android.tv.utils.BoundedCalls;
 import com.fongmi.android.tv.utils.Task;
 import com.github.catvod.utils.Prefers;
 
@@ -23,6 +24,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
 /**
@@ -39,13 +42,13 @@ public final class FollowChecker {
     private static final int ROUND_TITLES = 10;
 
     private static final ExecutorService ROUND = Executors.newSingleThreadExecutor(BackgroundThreads.factory("follow-round"));
-    private static final ExecutorService DETAIL = Executors.newCachedThreadPool(BackgroundThreads.factory("follow-detail"));
+    private static final BoundedCalls DETAIL = new BoundedCalls(1, BackgroundThreads.factory("follow-detail"));
+    private static final AtomicLong generation = new AtomicLong();
     private static final Runnable START = FollowChecker::start;
 
     private static volatile FollowList list;
     private static volatile Consumer<String> notice;
-    private static volatile Future<Integer> asking;
-    private static volatile boolean running;
+    private static volatile Future<?> roundTask;
 
     private FollowChecker() {
     }
@@ -55,7 +58,7 @@ public final class FollowChecker {
         return list;
     }
 
-    private static void save() {
+    private static synchronized void save() {
         Prefers.put(SAVED, list().save());
     }
 
@@ -74,65 +77,73 @@ public final class FollowChecker {
 
     /** Home is on screen. notice gets the text announcing new episodes. */
     public static void resume(Consumer<String> notice) {
+        pause();
         FollowChecker.notice = notice;
         if (Setting.isFollow()) App.post(START, START_DELAY_MS);
     }
 
     public static void pause() {
+        generation.incrementAndGet();
         notice = null;
         App.removeCallbacks(START);
-        // Leaving Home is usually opening a title, and a plugin may serve one request at a time.
-        Future<Integer> future = asking;
+        Future<?> future = roundTask;
         if (future != null) future.cancel(true);
     }
 
     private static void start() {
-        if (running || notice == null) return;
-        if (!VodConfig.get().isReady()) {
+        if (notice == null || !Setting.isFollow()) return;
+        if (!VodConfig.get().isReady() || (roundTask != null && !roundTask.isDone())) {
             App.post(START, START_DELAY_MS);
             return;
         }
-        running = true;
-        ROUND.execute(() -> {
-            try {
-                round();
-            } finally {
-                running = false;
-            }
-        });
+        long token = generation.get(), revision = VodConfig.getDiscoveryRevision();
+        roundTask = ROUND.submit(() -> round(token, revision));
     }
 
-    private static void round() {
+    private static boolean current(long token, long revision) {
+        return token == generation.get() && revision == VodConfig.getDiscoveryRevision()
+                && notice != null && Setting.isFollow() && !Thread.currentThread().isInterrupted();
+    }
+
+    private static void round(long token, long revision) {
         Map<String, Title> titles = titles();
         List<String> due = list().due(new ArrayList<>(titles.keySet()), System.currentTimeMillis(), ROUND_TITLES);
-        int asked = 0, answered = 0;
+        int asked = 0, answered = 0, updated = 0;
         for (String key : due) {
-            if (notice == null) break;
+            if (!current(token, revision)) break;
             asked++;
             int count;
             try {
-                count = episodes(titles.get(key));
+                count = DETAIL.call(() -> episodes(titles.get(key)), DETAIL_TIMEOUT_MS, value -> {});
                 if (count > 0) answered++;
-            } catch (TimeoutException slow) {
-                // The source may still be working on it: leave it alone, playback needs it.
-                list().checked(key, 0, System.currentTimeMillis());
+            } catch (InterruptedException cancelled) {
+                Thread.currentThread().interrupt();
                 break;
+            } catch (TimeoutException | RejectedExecutionException slow) {
+                DiagnosticLog.write(App.get(), "follow_blocked", "active=" + DETAIL.active());
+                // A native call may ignore interruption. Do not queue more behind it.
+                if (current(token, revision)) list().checked(key, 0, System.currentTimeMillis());
+                break;
+            } catch (Exception failure) {
+                count = 0;
             }
-            // Cancelled by leaving Home: this title has not been looked at.
-            if (notice == null) break;
-            list().checked(key, count, System.currentTimeMillis());
+            if (!current(token, revision)) break;
+            if (list().checked(key, count, System.currentTimeMillis())) updated++;
         }
-        List<String> updates = list().untold();
-        DiagnosticLog.write(App.get(), "follow_round", "titles=" + titles.size() + " due=" + due.size() + " asked=" + asked + " answered=" + answered + " updated=" + updates.size());
-        if (asked == 0) return;
         save();
-        if (updates.isEmpty()) return;
-        String text = text(titles, updates);
+        DiagnosticLog.write(App.get(), "follow_round", "titles=" + titles.size() + " due=" + due.size() + " asked=" + asked + " answered=" + answered + " updated=" + updated);
+        // Even when nothing is due, an earlier undelivered notice must be offered again.
         App.post(() -> {
+            if (!current(token, revision)) return;
+            Map<String, Integer> pending = list().pending(new ArrayList<>(titles.keySet()));
+            if (pending.isEmpty()) return;
             RefreshEvent.history();
             RefreshEvent.keep();
             Consumer<String> target = notice;
-            if (target != null) target.accept(text);
+            if (target == null) return;
+            target.accept(text(titles, new ArrayList<>(pending.keySet())));
+            list().announced(pending);
+            Task.execute(FollowChecker::save);
         });
     }
 
@@ -157,29 +168,13 @@ public final class FollowChecker {
         titles.putIfAbsent(key, new Title(siteKey, vodId, name));
     }
 
-    private static int episodes(Title title) throws TimeoutException {
-        Future<Integer> future = DETAIL.submit(() -> {
-            Result result = SiteApi.detailContent(title.siteKey(), title.vodId());
-            return result.getList().isEmpty() ? 0 : episodes(result.getVod().getFlags());
-        });
-        asking = future;
-        try {
-            return future.get(DETAIL_TIMEOUT_MS, TimeUnit.MILLISECONDS);
-        } catch (TimeoutException error) {
-            future.cancel(true);
-            throw error;
-        } catch (Exception error) {
-            return 0;
-        } finally {
-            asking = null;
-        }
+    private static int episodes(Title title) throws Exception {
+        Result result = SiteApi.detailContent(title.siteKey(), title.vodId());
+        return result.getList().isEmpty() ? 0 : episodes(result.getVod().getFlags());
     }
 
-    /** The longest line: lines of one title rarely agree. */
     private static int episodes(List<Flag> flags) {
-        int count = 0;
-        for (Flag flag : flags) count = Math.max(count, flag.getEpisodes().size());
-        return count;
+        return FollowEpisodes.count(flags);
     }
 
     private static String text(Map<String, Title> titles, List<String> updates) {

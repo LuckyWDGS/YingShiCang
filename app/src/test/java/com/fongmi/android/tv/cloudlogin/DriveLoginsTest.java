@@ -77,6 +77,20 @@ public class DriveLoginsTest {
         assertEquals("嘟嘟", DriveLogins.entry(flags, null, ONLY_BAIDU).getFlag());
     }
 
+    @Test public void ordinaryFailuresAreNotExpiredLogins() {
+        org.junit.Assert.assertFalse(DriveLogins.authenticationFailure(new java.net.SocketTimeoutException("timeout")));
+        org.junit.Assert.assertFalse(DriveLogins.authenticationFailure(new java.io.IOException("HTTP 403")));
+        org.junit.Assert.assertFalse(DriveLogins.authenticationFailure(new Exception("分享已失效")));
+        org.junit.Assert.assertFalse(DriveLogins.authenticationFailure(new java.util.concurrent.CancellationException("请重新扫码")));
+        org.junit.Assert.assertTrue(DriveLogins.authenticationFailure(new Exception("provider", new Exception("登录已过期，请重新扫码"))));
+    }
+
+    @Test public void unverifiedUcStateIsHonestAndSavedLineIsKept() {
+        assertEquals("UC 状态未知", DriveLogins.summary(List.of(new DriveLogins.Status("UC", false, false, false))));
+        var flags = lines("夸克", "UC");
+        assertEquals("UC", DriveLogins.entry(flags, flags.get(1)).getFlag());
+    }
+
     @Test
     public void theSummaryNamesEachDrive() {
         assertEquals("夸克 已扫码 · 百度 可能已失效 · UC 未扫码", DriveLogins.summary(List.of(

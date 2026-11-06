@@ -1,595 +1,194 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:background="@color/tv_theme_background"
-    android:fillViewport="true"
-    android:clipToPadding="false">
-
-    <androidx.appcompat.widget.LinearLayoutCompat
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="15dp">
-
-        <!-- The first two rows follow the reference layout: a wide source card and a compact choice card. -->
-        <androidx.appcompat.widget.LinearLayoutCompat
-            android:layout_width="match_parent"
-            android:layout_height="45dp"
-            android:orientation="horizontal">
-
-            <androidx.appcompat.widget.LinearLayoutCompat
-                android:id="@+id/vod"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_marginEnd="7dp"
-                android:layout_weight="2"
-                android:background="@drawable/selector_setting_item"
-                android:focusable="true"
-                android:focusableInTouchMode="false"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:paddingStart="9dp"
-                android:paddingEnd="7dp">
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:fontFamily="sans-serif-medium"
-                    android:maxLines="1"
-                    android:text="@string/setting_vod"
-                    android:textColor="@color/tv_theme_text"
-                    android:textSize="17sp" />
-                <TextView
-                    android:id="@+id/vodUrl"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:ellipsize="middle"
-                    android:gravity="center_vertical|end"
-                    android:maxLines="1"
-                    android:textColor="@color/tv_theme_text"
-                    android:textSize="15sp"
-                    tools:text="https://example.com/config.json" />
-                <TextView
-                    android:layout_width="14dp"
-                    android:layout_height="wrap_content"
-                    android:gravity="center"
-                    android:includeFontPadding="false"
-                    android:text=">"
-                    android:textColor="@color/tv_theme_text"
-                    android:textSize="16sp" />
-            </androidx.appcompat.widget.LinearLayoutCompat>
-
-            <androidx.appcompat.widget.LinearLayoutCompat
-                android:id="@+id/lines"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:background="@drawable/selector_setting_item"
-                android:focusable="true"
-                android:focusableInTouchMode="false"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:paddingStart="9dp"
-                android:paddingEnd="7dp">
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:fontFamily="sans-serif-medium"
-                    android:maxLines="1"
-                    android:text="@string/setting_lines"
-                    android:textColor="@color/tv_theme_text"
-                    android:textSize="17sp" />
-                <TextView
-                    android:id="@+id/linesText"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:ellipsize="end"
-                    android:gravity="center_vertical|end"
-                    android:maxLines="1"
-                    android:textColor="@color/tv_theme_text"
-                    android:textSize="15sp"
-                    tools:text="自定义配置线路 0" />
-                <TextView
-                    android:layout_width="14dp"
-                    android:layout_height="wrap_content"
-                    android:gravity="center"
-                    android:includeFontPadding="false"
-                    android:text=">"
-                    android:textColor="@color/tv_theme_text"
-                    android:textSize="16sp" />
-            </androidx.appcompat.widget.LinearLayoutCompat>
-        </androidx.appcompat.widget.LinearLayoutCompat>
-
-        <androidx.appcompat.widget.LinearLayoutCompat
-            android:layout_width="match_parent"
-            android:layout_height="45dp"
-            android:layout_marginTop="7dp"
-            android:orientation="horizontal">
-            <androidx.appcompat.widget.LinearLayoutCompat
-                android:id="@+id/live"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_marginEnd="7dp"
-                android:layout_weight="2"
-                android:background="@drawable/selector_setting_item"
-                android:focusable="true"
-                android:focusableInTouchMode="false"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:paddingStart="9dp"
-                android:paddingEnd="7dp">
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:fontFamily="sans-serif-medium"
-                    android:maxLines="1"
-                    android:text="@string/setting_live"
-                    android:textColor="@color/tv_theme_text"
-                    android:textSize="17sp" />
-                <TextView
-                    android:id="@+id/liveUrl"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:ellipsize="middle"
-                    android:gravity="center_vertical|end"
-                    android:maxLines="1"
-                    android:textColor="@color/tv_theme_text"
-                    android:textSize="15sp"
-                    tools:text="https://example.com/live.m3u" />
-                <TextView
-                    android:layout_width="14dp"
-                    android:layout_height="wrap_content"
-                    android:gravity="center"
-                    android:includeFontPadding="false"
-                    android:text=">"
-                    android:textColor="@color/tv_theme_text"
-                    android:textSize="16sp" />
-            </androidx.appcompat.widget.LinearLayoutCompat>
-
-            <androidx.appcompat.widget.LinearLayoutCompat
-                android:id="@+id/vodHome"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_marginEnd="7dp"
-                android:layout_weight="1"
-                android:background="@drawable/selector_setting_item"
-                android:focusable="true"
-                android:focusableInTouchMode="false"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:paddingStart="9dp"
-                android:paddingEnd="7dp">
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:fontFamily="sans-serif-medium"
-                    android:maxLines="1"
-                    android:text="@string/setting_default_site"
-                    android:textColor="@color/tv_theme_text"
-                    android:textSize="17sp" />
-                <TextView
-                    android:id="@+id/vodHomeText"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:ellipsize="end"
-                    android:gravity="center_vertical|end"
-                    android:maxLines="1"
-                    android:textColor="@color/tv_theme_text"
-                    android:textSize="15sp"
-                    tools:text="点播站源" />
-                <TextView
-                    android:layout_width="14dp"
-                    android:layout_height="wrap_content"
-                    android:gravity="center"
-                    android:includeFontPadding="false"
-                    android:text=">"
-                    android:textColor="@color/tv_theme_text"
-                    android:textSize="16sp" />
-            </androidx.appcompat.widget.LinearLayoutCompat>
-            <androidx.appcompat.widget.LinearLayoutCompat
-                android:id="@+id/chapterMarker"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:background="@drawable/selector_setting_item"
-                android:focusable="true"
-                android:focusableInTouchMode="false"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:paddingStart="9dp"
-                android:paddingEnd="7dp">
-                <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:fontFamily="sans-serif-medium" android:maxLines="1" android:text="@string/setting_chapter_marker" android:textColor="@color/tv_theme_text" android:textSize="16sp" />
-                <TextView android:id="@+id/chapterMarkerText" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="center_vertical|end" android:maxLines="1" android:textColor="@color/tv_theme_text" android:textSize="14sp" tools:text="关" />
-                <TextView android:layout_width="14dp" android:layout_height="wrap_content" android:gravity="center" android:includeFontPadding="false" android:text=">" android:textColor="@color/tv_theme_text" android:textSize="16sp" />
-            </androidx.appcompat.widget.LinearLayoutCompat>
-        </androidx.appcompat.widget.LinearLayoutCompat>
-
-        <!-- Four-column rows keep the dense, glanceable rhythm of the reference settings page. -->
-        <androidx.appcompat.widget.LinearLayoutCompat
-            android:layout_width="match_parent"
-            android:layout_height="45dp"
-            android:layout_marginTop="7dp"
-            android:orientation="horizontal">
-            <androidx.appcompat.widget.LinearLayoutCompat
-                android:id="@+id/liveHome"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_marginEnd="7dp"
-                android:layout_weight="1"
-                android:background="@drawable/selector_setting_item"
-                android:focusable="true"
-                android:focusableInTouchMode="false"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:paddingStart="9dp"
-                android:paddingEnd="7dp">
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:fontFamily="sans-serif-medium"
-                    android:maxLines="1"
-                    android:text="@string/setting_default_live"
-                    android:textColor="@color/tv_theme_text"
-                    android:textSize="16sp" />
-                <TextView
-                    android:id="@+id/liveHomeText"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:ellipsize="end"
-                    android:gravity="center_vertical|end"
-                    android:maxLines="1"
-                    android:textColor="@color/tv_theme_text"
-                    android:textSize="14sp"
-                    tools:text="直播源" />
-                <TextView
-                    android:layout_width="14dp"
-                    android:layout_height="wrap_content"
-                    android:gravity="center"
-                    android:includeFontPadding="false"
-                    android:text=">"
-                    android:textColor="@color/tv_theme_text"
-                    android:textSize="16sp" />
-            </androidx.appcompat.widget.LinearLayoutCompat>
-
-            <androidx.appcompat.widget.LinearLayoutCompat
-                android:id="@+id/wall"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_marginEnd="7dp"
-                android:layout_weight="1"
-                android:background="@drawable/selector_setting_item"
-                android:focusable="true"
-                android:focusableInTouchMode="false"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:paddingStart="9dp"
-                android:paddingEnd="7dp">
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:fontFamily="sans-serif-medium"
-                    android:maxLines="1"
-                    android:text="@string/setting_wall"
-                    android:textColor="@color/tv_theme_text"
-                    android:textSize="16sp" />
-                <TextView
-                    android:id="@+id/wallUrl"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:ellipsize="middle"
-                    android:gravity="center_vertical|end"
-                    android:maxLines="1"
-                    android:textColor="@color/tv_theme_text"
-                    android:textSize="14sp"
-                    tools:text="https://example.com/wallpaper.json" />
-                <TextView
-                    android:layout_width="14dp"
-                    android:layout_height="wrap_content"
-                    android:gravity="center"
-                    android:includeFontPadding="false"
-                    android:text=">"
-                    android:textColor="@color/tv_theme_text"
-                    android:textSize="16sp" />
-            </androidx.appcompat.widget.LinearLayoutCompat>
-
-            <androidx.appcompat.widget.LinearLayoutCompat
-                android:id="@+id/wallDefault"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_marginEnd="7dp"
-                android:layout_weight="1"
-                android:background="@drawable/selector_setting_item"
-                android:focusable="true"
-                android:focusableInTouchMode="false"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:paddingStart="9dp"
-                android:paddingEnd="7dp">
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:fontFamily="sans-serif-medium"
-                    android:maxLines="1"
-                    android:text="@string/setting_wall_default"
-                    android:textColor="@color/tv_theme_text"
-                    android:textSize="16sp" />
-                <TextView
-                    android:layout_width="14dp"
-                    android:layout_height="wrap_content"
-                    android:gravity="center"
-                    android:includeFontPadding="false"
-                    android:text=">"
-                    android:textColor="@color/tv_theme_text"
-                    android:textSize="16sp" />
-            </androidx.appcompat.widget.LinearLayoutCompat>
-
-            <androidx.appcompat.widget.LinearLayoutCompat
-                android:id="@+id/wallRefresh"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:background="@drawable/selector_setting_item"
-                android:focusable="true"
-                android:focusableInTouchMode="false"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:paddingStart="9dp"
-                android:paddingEnd="7dp">
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:fontFamily="sans-serif-medium"
-                    android:maxLines="1"
-                    android:text="@string/setting_wall_refresh"
-                    android:textColor="@color/tv_theme_text"
-                    android:textSize="16sp" />
-                <TextView
-                    android:layout_width="14dp"
-                    android:layout_height="wrap_content"
-                    android:gravity="center"
-                    android:includeFontPadding="false"
-                    android:text=">"
-                    android:textColor="@color/tv_theme_text"
-                    android:textSize="16sp" />
-            </androidx.appcompat.widget.LinearLayoutCompat>
-        </androidx.appcompat.widget.LinearLayoutCompat>
-
-        <androidx.appcompat.widget.LinearLayoutCompat
-            android:layout_width="match_parent"
-            android:layout_height="45dp"
-            android:layout_marginTop="7dp"
-            android:orientation="horizontal">
-            <androidx.appcompat.widget.LinearLayoutCompat
-                android:id="@+id/player"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_marginEnd="7dp"
-                android:layout_weight="1"
-                android:background="@drawable/selector_setting_item"
-                android:focusable="true"
-                android:focusableInTouchMode="false"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:paddingStart="9dp"
-                android:paddingEnd="7dp">
-                <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:fontFamily="sans-serif-medium" android:maxLines="1" android:text="@string/setting_player" android:textColor="@color/tv_theme_text" android:textSize="16sp" />
-                <TextView android:layout_width="14dp" android:layout_height="wrap_content" android:gravity="center" android:includeFontPadding="false" android:text=">" android:textColor="@color/tv_theme_text" android:textSize="16sp" />
-            </androidx.appcompat.widget.LinearLayoutCompat>
-            <androidx.appcompat.widget.LinearLayoutCompat
-                android:id="@+id/danmaku"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_marginEnd="7dp"
-                android:layout_weight="1"
-                android:background="@drawable/selector_setting_item"
-                android:focusable="true"
-                android:focusableInTouchMode="false"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:paddingStart="9dp"
-                android:paddingEnd="7dp">
-                <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:fontFamily="sans-serif-medium" android:maxLines="1" android:text="@string/setting_danmaku" android:textColor="@color/tv_theme_text" android:textSize="16sp" />
-                <TextView android:layout_width="14dp" android:layout_height="wrap_content" android:gravity="center" android:includeFontPadding="false" android:text=">" android:textColor="@color/tv_theme_text" android:textSize="16sp" />
-            </androidx.appcompat.widget.LinearLayoutCompat>
-            <androidx.appcompat.widget.LinearLayoutCompat
-                android:id="@+id/incognito"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_marginEnd="7dp"
-                android:layout_weight="1"
-                android:background="@drawable/selector_setting_item"
-                android:focusable="true"
-                android:focusableInTouchMode="false"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:paddingStart="9dp"
-                android:paddingEnd="7dp">
-                <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:fontFamily="sans-serif-medium" android:maxLines="1" android:text="@string/setting_incognito" android:textColor="@color/tv_theme_text" android:textSize="16sp" />
-                <TextView android:id="@+id/incognitoText" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="center_vertical|end" android:maxLines="1" android:textColor="@color/tv_theme_text" android:textSize="14sp" tools:text="关" />
-                <TextView android:layout_width="14dp" android:layout_height="wrap_content" android:gravity="center" android:includeFontPadding="false" android:text=">" android:textColor="@color/tv_theme_text" android:textSize="16sp" />
-            </androidx.appcompat.widget.LinearLayoutCompat>
-            <androidx.appcompat.widget.LinearLayoutCompat
-                android:id="@+id/doh"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:background="@drawable/selector_setting_item"
-                android:focusable="true"
-                android:focusableInTouchMode="false"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:paddingStart="9dp"
-                android:paddingEnd="7dp">
-                <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:fontFamily="sans-serif-medium" android:maxLines="1" android:text="@string/setting_doh" android:textColor="@color/tv_theme_text" android:textSize="16sp" />
-                <TextView android:id="@+id/dohText" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:ellipsize="end" android:gravity="center_vertical|end" android:maxLines="1" android:textColor="@color/tv_theme_text" android:textSize="14sp" tools:text="关闭" />
-                <TextView android:layout_width="14dp" android:layout_height="wrap_content" android:gravity="center" android:includeFontPadding="false" android:text=">" android:textColor="@color/tv_theme_text" android:textSize="16sp" />
-            </androidx.appcompat.widget.LinearLayoutCompat>
-        </androidx.appcompat.widget.LinearLayoutCompat>
-
-        <androidx.appcompat.widget.LinearLayoutCompat
-            android:layout_width="match_parent"
-            android:layout_height="45dp"
-            android:layout_marginTop="7dp"
-            android:orientation="horizontal">
-            <androidx.appcompat.widget.LinearLayoutCompat
-                android:id="@+id/size"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_marginEnd="7dp"
-                android:layout_weight="1"
-                android:background="@drawable/selector_setting_item"
-                android:focusable="true"
-                android:focusableInTouchMode="false"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:paddingStart="9dp"
-                android:paddingEnd="7dp">
-                <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:fontFamily="sans-serif-medium" android:maxLines="1" android:text="@string/setting_size" android:textColor="@color/tv_theme_text" android:textSize="16sp" />
-                <TextView android:id="@+id/sizeText" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="center_vertical|end" android:maxLines="1" android:textColor="@color/tv_theme_text" android:textSize="14sp" tools:text="默认" />
-                <TextView android:layout_width="14dp" android:layout_height="wrap_content" android:gravity="center" android:includeFontPadding="false" android:text=">" android:textColor="@color/tv_theme_text" android:textSize="16sp" />
-            </androidx.appcompat.widget.LinearLayoutCompat>
-            <androidx.appcompat.widget.LinearLayoutCompat
-                android:id="@+id/backup"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_marginEnd="7dp"
-                android:layout_weight="1"
-                android:background="@drawable/selector_setting_item"
-                android:focusable="true"
-                android:focusableInTouchMode="false"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:paddingStart="9dp"
-                android:paddingEnd="7dp">
-                <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:fontFamily="sans-serif-medium" android:maxLines="1" android:text="@string/setting_backup" android:textColor="@color/tv_theme_text" android:textSize="16sp" />
-                <TextView android:layout_width="14dp" android:layout_height="wrap_content" android:gravity="center" android:includeFontPadding="false" android:text=">" android:textColor="@color/tv_theme_text" android:textSize="16sp" />
-            </androidx.appcompat.widget.LinearLayoutCompat>
-            <androidx.appcompat.widget.LinearLayoutCompat
-                android:id="@+id/restore"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_marginEnd="7dp"
-                android:layout_weight="1"
-                android:background="@drawable/selector_setting_item"
-                android:focusable="true"
-                android:focusableInTouchMode="false"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:paddingStart="9dp"
-                android:paddingEnd="7dp">
-                <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:fontFamily="sans-serif-medium" android:maxLines="1" android:text="@string/setting_restore" android:textColor="@color/tv_theme_text" android:textSize="16sp" />
-                <TextView android:layout_width="14dp" android:layout_height="wrap_content" android:gravity="center" android:includeFontPadding="false" android:text=">" android:textColor="@color/tv_theme_text" android:textSize="16sp" />
-            </androidx.appcompat.widget.LinearLayoutCompat>
-            <androidx.appcompat.widget.LinearLayoutCompat
-                android:id="@+id/cache"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:background="@drawable/selector_setting_item"
-                android:focusable="true"
-                android:focusableInTouchMode="false"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:paddingStart="9dp"
-                android:paddingEnd="7dp">
-                <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:fontFamily="sans-serif-medium" android:maxLines="1" android:text="@string/setting_cache" android:textColor="@color/tv_theme_text" android:textSize="16sp" />
-                <TextView android:id="@+id/cacheText" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:ellipsize="end" android:gravity="center_vertical|end" android:maxLines="1" android:textColor="@color/tv_theme_text" android:textSize="14sp" tools:text="0 MB" />
-                <TextView android:layout_width="14dp" android:layout_height="wrap_content" android:gravity="center" android:includeFontPadding="false" android:text=">" android:textColor="@color/tv_theme_text" android:textSize="16sp" />
-            </androidx.appcompat.widget.LinearLayoutCompat>
-        </androidx.appcompat.widget.LinearLayoutCompat>
-
-        <androidx.appcompat.widget.LinearLayoutCompat
-            android:layout_width="match_parent"
-            android:layout_height="45dp"
-            android:layout_marginTop="7dp"
-            android:orientation="horizontal">
-            <androidx.appcompat.widget.LinearLayoutCompat
-                android:id="@+id/version"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_marginEnd="7dp"
-                android:layout_weight="1"
-                android:background="@drawable/selector_setting_item"
-                android:focusable="true"
-                android:focusableInTouchMode="false"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:paddingStart="9dp"
-                android:paddingEnd="7dp">
-                <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:fontFamily="sans-serif-medium" android:maxLines="1" android:text="@string/setting_version" android:textColor="@color/tv_theme_text" android:textSize="16sp" />
-                <TextView android:layout_width="14dp" android:layout_height="wrap_content" android:gravity="center" android:includeFontPadding="false" android:text=">" android:textColor="@color/tv_theme_text" android:textSize="16sp" />
-            </androidx.appcompat.widget.LinearLayoutCompat>
-            <androidx.appcompat.widget.LinearLayoutCompat
-                android:id="@+id/update"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:background="@drawable/selector_setting_item"
-                android:focusable="true"
-                android:focusableInTouchMode="false"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:paddingStart="9dp"
-                android:paddingEnd="7dp">
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:fontFamily="sans-serif-medium" android:maxLines="1" android:text="@string/setting_update" android:textColor="@color/tv_theme_text" android:textSize="16sp" />
-                <View android:id="@+id/updateDot" android:layout_width="8dp" android:layout_height="8dp" android:layout_marginStart="6dp" android:background="@drawable/shape_update_dot" android:visibility="gone" />
-                <TextView android:id="@+id/versionText" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:ellipsize="end" android:gravity="center_vertical|end" android:maxLines="1" android:textColor="@color/tv_theme_text" android:textSize="14sp" tools:text="1.1.0" />
-                <TextView android:layout_width="14dp" android:layout_height="wrap_content" android:gravity="center" android:includeFontPadding="false" android:text=">" android:textColor="@color/tv_theme_text" android:textSize="16sp" />
-            </androidx.appcompat.widget.LinearLayoutCompat>
-        </androidx.appcompat.widget.LinearLayoutCompat>
-
-        <androidx.appcompat.widget.LinearLayoutCompat
-            android:layout_width="match_parent"
-            android:layout_height="45dp"
-            android:layout_marginTop="7dp"
-            android:orientation="horizontal">
-            <androidx.appcompat.widget.LinearLayoutCompat
-                android:id="@+id/follow"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_marginEnd="7dp"
-                android:layout_weight="1"
-                android:background="@drawable/selector_setting_item"
-                android:focusable="true"
-                android:focusableInTouchMode="false"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:paddingStart="9dp"
-                android:paddingEnd="7dp">
-                <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:fontFamily="sans-serif-medium" android:maxLines="1" android:text="@string/setting_follow" android:textColor="@color/tv_theme_text" android:textSize="16sp" />
-                <TextView android:id="@+id/followText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:maxLines="1" android:textColor="@color/tv_theme_text" android:textSize="14sp" tools:text="开" />
-                <TextView android:layout_width="14dp" android:layout_height="wrap_content" android:gravity="center" android:includeFontPadding="false" android:text=">" android:textColor="@color/tv_theme_text" android:textSize="16sp" />
-            </androidx.appcompat.widget.LinearLayoutCompat>
-            <androidx.appcompat.widget.LinearLayoutCompat
-                android:id="@+id/drive"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="2"
-                android:background="@drawable/selector_setting_item"
-                android:focusable="true"
-                android:focusableInTouchMode="false"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:paddingStart="9dp"
-                android:paddingEnd="7dp">
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:fontFamily="sans-serif-medium" android:maxLines="1" android:text="@string/setting_drive" android:textColor="@color/tv_theme_text" android:textSize="16sp" />
-                <TextView android:id="@+id/driveText" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:layout_weight="1" android:ellipsize="end" android:gravity="center_vertical|end" android:maxLines="1" android:textColor="@color/tv_theme_text" android:textSize="14sp" tools:text="夸克 已扫码 · 百度 未扫码 · UC 未扫码" />
-            </androidx.appcompat.widget.LinearLayoutCompat>
-        </androidx.appcompat.widget.LinearLayoutCompat>
-    </androidx.appcompat.widget.LinearLayoutCompat>
-</androidx.core.widget.NestedScrollView>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:background="@color/tv_theme_background" android:orientation="horizontal" android:padding="28dp">
+    <LinearLayout android:layout_width="184dp" android:layout_height="match_parent" android:orientation="vertical">
+        <TextView android:id="@+id/settingsTitle" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/setting_home_title" android:textSize="30sp" android:textColor="#F2F2F2" android:fontFamily="sans-serif-medium" />
+        <TextView android:id="@+id/settingsSubtitle" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="7dp" android:layout_marginBottom="26dp" android:text="@string/setting_home_subtitle" android:textSize="12sp" android:textColor="#AAAAAA"/>
+        <TextView android:id="@+id/navSources" android:layout_width="match_parent" android:layout_height="48dp" android:layout_marginBottom="8dp" android:paddingStart="16dp" android:paddingEnd="16dp" android:gravity="center_vertical" android:text="@string/setting_home_sources" android:textSize="16sp" android:textColor="#F2F2F2" android:background="@drawable/setting_home_item" android:focusable="true" android:clickable="true"/>
+        <TextView android:id="@+id/navPlayback" android:layout_width="match_parent" android:layout_height="48dp" android:layout_marginBottom="8dp" android:paddingStart="16dp" android:paddingEnd="16dp" android:gravity="center_vertical" android:text="@string/setting_home_playback" android:textSize="16sp" android:textColor="#F2F2F2" android:background="@drawable/setting_home_item" android:focusable="true" android:clickable="true"/>
+        <TextView android:id="@+id/navAppearance" android:layout_width="match_parent" android:layout_height="48dp" android:layout_marginBottom="8dp" android:paddingStart="16dp" android:paddingEnd="16dp" android:gravity="center_vertical" android:text="@string/setting_home_appearance" android:textSize="16sp" android:textColor="#F2F2F2" android:background="@drawable/setting_home_item" android:focusable="true" android:clickable="true"/>
+        <TextView android:id="@+id/navStorage" android:layout_width="match_parent" android:layout_height="48dp" android:layout_marginBottom="8dp" android:paddingStart="16dp" android:paddingEnd="16dp" android:gravity="center_vertical" android:text="@string/setting_home_storage" android:textSize="16sp" android:textColor="#F2F2F2" android:background="@drawable/setting_home_item" android:focusable="true" android:clickable="true"/>
+        <TextView android:id="@+id/navAbout" android:layout_width="match_parent" android:layout_height="48dp" android:layout_marginBottom="8dp" android:paddingStart="16dp" android:paddingEnd="16dp" android:gravity="center_vertical" android:text="@string/setting_home_about" android:textSize="16sp" android:textColor="#F2F2F2" android:background="@drawable/setting_home_item" android:focusable="true" android:clickable="true"/>
+        <Space android:layout_width="1dp" android:layout_height="0dp" android:layout_weight="1"/>
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/setting_home_keys" android:lineSpacingExtra="5dp" android:textSize="11sp" android:textColor="#AAAAAA"/>
+    </LinearLayout>
+    <View android:layout_width="1dp" android:layout_height="match_parent" android:layout_marginStart="24dp" android:layout_marginEnd="24dp" android:background="#242424"/>
+    <LinearLayout android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent" android:orientation="vertical">
+        <TextView android:id="@+id/sectionTitle" android:layout_width="match_parent" android:layout_height="wrap_content" android:textSize="24sp" android:textColor="#F2F2F2" android:fontFamily="sans-serif-medium"/>
+        <TextView android:id="@+id/sectionHint" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:layout_marginBottom="20dp" android:textSize="13sp" android:textColor="#AAAAAA"/>
+        <androidx.core.widget.NestedScrollView android:id="@+id/sectionScroll" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:fillViewport="true" android:clipToPadding="false" android:padding="2dp">
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
+                <LinearLayout android:id="@+id/groupSources" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:visibility="gone">
+                    <LinearLayout android:id="@+id/vod" style="@style/SettingHomeRow">
+                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1.25" android:orientation="vertical">
+                            <TextView style="@style/SettingHomeLabel" android:text="@string/setting_vod"/>
+                            <TextView style="@style/SettingHomeDescription" android:text="@string/setting_home_vod_hint"/>
+                        </LinearLayout>
+                        <TextView android:id="@+id/vodUrl" style="@style/SettingHomeValue"/>
+                        <TextView android:layout_width="20dp" android:layout_height="wrap_content" android:layout_marginStart="10dp" android:text="›" android:textColor="#AAAAAA" android:textSize="23sp" android:gravity="end"/>
+                    </LinearLayout>
+                    <LinearLayout android:id="@+id/lines" style="@style/SettingHomeRow">
+                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1.25" android:orientation="vertical">
+                            <TextView style="@style/SettingHomeLabel" android:text="@string/setting_lines"/>
+                            <TextView style="@style/SettingHomeDescription" android:text="@string/setting_home_lines_hint"/>
+                        </LinearLayout>
+                        <TextView android:id="@+id/linesText" style="@style/SettingHomeValue"/>
+                        <TextView android:layout_width="20dp" android:layout_height="wrap_content" android:layout_marginStart="10dp" android:text="›" android:textColor="#AAAAAA" android:textSize="23sp" android:gravity="end"/>
+                    </LinearLayout>
+                    <LinearLayout android:id="@+id/vodHome" style="@style/SettingHomeRow">
+                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1.25" android:orientation="vertical">
+                            <TextView style="@style/SettingHomeLabel" android:text="@string/setting_default_site"/>
+                            <TextView style="@style/SettingHomeDescription" android:text="@string/setting_home_vod_home_hint"/>
+                        </LinearLayout>
+                        <TextView android:id="@+id/vodHomeText" style="@style/SettingHomeValue"/>
+                        <TextView android:layout_width="20dp" android:layout_height="wrap_content" android:layout_marginStart="10dp" android:text="›" android:textColor="#AAAAAA" android:textSize="23sp" android:gravity="end"/>
+                    </LinearLayout>
+                    <LinearLayout android:id="@+id/live" style="@style/SettingHomeRow">
+                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1.25" android:orientation="vertical">
+                            <TextView style="@style/SettingHomeLabel" android:text="@string/setting_live"/>
+                            <TextView style="@style/SettingHomeDescription" android:text="@string/setting_home_live_hint"/>
+                        </LinearLayout>
+                        <TextView android:id="@+id/liveUrl" style="@style/SettingHomeValue"/>
+                        <TextView android:layout_width="20dp" android:layout_height="wrap_content" android:layout_marginStart="10dp" android:text="›" android:textColor="#AAAAAA" android:textSize="23sp" android:gravity="end"/>
+                    </LinearLayout>
+                    <LinearLayout android:id="@+id/liveHome" style="@style/SettingHomeRow">
+                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1.25" android:orientation="vertical">
+                            <TextView style="@style/SettingHomeLabel" android:text="@string/setting_default_live"/>
+                            <TextView style="@style/SettingHomeDescription" android:text="@string/setting_home_live_home_hint"/>
+                        </LinearLayout>
+                        <TextView android:id="@+id/liveHomeText" style="@style/SettingHomeValue"/>
+                        <TextView android:layout_width="20dp" android:layout_height="wrap_content" android:layout_marginStart="10dp" android:text="›" android:textColor="#AAAAAA" android:textSize="23sp" android:gravity="end"/>
+                    </LinearLayout>
+                    <LinearLayout android:id="@+id/drive" android:layout_width="match_parent" android:layout_height="wrap_content" android:padding="16dp" android:orientation="vertical" android:focusable="true" android:background="@drawable/setting_home_item">
+                        <TextView style="@style/SettingHomeLabel" android:text="@string/setting_drive" android:textSize="14sp"/>
+                        <TextView android:id="@+id/driveText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:textSize="13sp" android:textColor="#F2F2F2"/>
+                        <TextView style="@style/SettingHomeDescription" android:text="@string/setting_home_drive_hint"/>
+                    </LinearLayout>
+                </LinearLayout>
+                <LinearLayout android:id="@+id/groupPlayback" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:visibility="gone">
+                    <LinearLayout android:id="@+id/player" style="@style/SettingHomeRow">
+                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1.25" android:orientation="vertical">
+                            <TextView style="@style/SettingHomeLabel" android:text="@string/setting_player"/>
+                            <TextView style="@style/SettingHomeDescription" android:text="@string/setting_home_player_hint"/>
+                        </LinearLayout>
+                        <TextView android:layout_width="20dp" android:layout_height="wrap_content" android:layout_marginStart="10dp" android:text="›" android:textColor="#AAAAAA" android:textSize="23sp" android:gravity="end"/>
+                    </LinearLayout>
+                    <LinearLayout android:id="@+id/danmaku" style="@style/SettingHomeRow">
+                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1.25" android:orientation="vertical">
+                            <TextView style="@style/SettingHomeLabel" android:text="@string/setting_danmaku"/>
+                            <TextView style="@style/SettingHomeDescription" android:text="@string/setting_home_danmaku_hint"/>
+                        </LinearLayout>
+                        <TextView android:layout_width="20dp" android:layout_height="wrap_content" android:layout_marginStart="10dp" android:text="›" android:textColor="#AAAAAA" android:textSize="23sp" android:gravity="end"/>
+                    </LinearLayout>
+                    <LinearLayout android:id="@+id/chapterMarker" style="@style/SettingHomeRow">
+                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1.25" android:orientation="vertical">
+                            <TextView style="@style/SettingHomeLabel" android:text="@string/setting_chapter_marker"/>
+                            <TextView style="@style/SettingHomeDescription" android:text="@string/setting_home_chapter_hint"/>
+                        </LinearLayout>
+                        <TextView android:id="@+id/chapterMarkerText" style="@style/SettingHomeValue"/>
+                        <TextView android:layout_width="20dp" android:layout_height="wrap_content" android:layout_marginStart="10dp" android:text="›" android:textColor="#AAAAAA" android:textSize="23sp" android:gravity="end"/>
+                    </LinearLayout>
+                    <LinearLayout android:id="@+id/follow" style="@style/SettingHomeRow">
+                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1.25" android:orientation="vertical">
+                            <TextView style="@style/SettingHomeLabel" android:text="@string/setting_follow"/>
+                            <TextView style="@style/SettingHomeDescription" android:text="@string/setting_home_follow_hint"/>
+                        </LinearLayout>
+                        <TextView android:id="@+id/followText" style="@style/SettingHomeValue"/>
+                        <TextView android:layout_width="20dp" android:layout_height="wrap_content" android:layout_marginStart="10dp" android:text="›" android:textColor="#AAAAAA" android:textSize="23sp" android:gravity="end"/>
+                    </LinearLayout>
+                    <LinearLayout android:id="@+id/incognito" style="@style/SettingHomeRow">
+                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1.25" android:orientation="vertical">
+                            <TextView style="@style/SettingHomeLabel" android:text="@string/setting_incognito"/>
+                            <TextView style="@style/SettingHomeDescription" android:text="@string/setting_home_incognito_hint"/>
+                        </LinearLayout>
+                        <TextView android:id="@+id/incognitoText" style="@style/SettingHomeValue"/>
+                        <TextView android:layout_width="20dp" android:layout_height="wrap_content" android:layout_marginStart="10dp" android:text="›" android:textColor="#AAAAAA" android:textSize="23sp" android:gravity="end"/>
+                    </LinearLayout>
+                </LinearLayout>
+                <LinearLayout android:id="@+id/groupAppearance" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:visibility="gone">
+                    <LinearLayout android:id="@+id/size" style="@style/SettingHomeRow">
+                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1.25" android:orientation="vertical">
+                            <TextView style="@style/SettingHomeLabel" android:text="@string/setting_size"/>
+                            <TextView style="@style/SettingHomeDescription" android:text="@string/setting_home_size_hint"/>
+                        </LinearLayout>
+                        <TextView android:id="@+id/sizeText" style="@style/SettingHomeValue"/>
+                        <TextView android:layout_width="20dp" android:layout_height="wrap_content" android:layout_marginStart="10dp" android:text="›" android:textColor="#AAAAAA" android:textSize="23sp" android:gravity="end"/>
+                    </LinearLayout>
+                    <LinearLayout android:id="@+id/wall" style="@style/SettingHomeRow">
+                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1.25" android:orientation="vertical">
+                            <TextView style="@style/SettingHomeLabel" android:text="@string/setting_wall"/>
+                            <TextView style="@style/SettingHomeDescription" android:text="@string/setting_home_wall_hint"/>
+                        </LinearLayout>
+                        <TextView android:id="@+id/wallUrl" style="@style/SettingHomeValue"/>
+                        <TextView android:layout_width="20dp" android:layout_height="wrap_content" android:layout_marginStart="10dp" android:text="›" android:textColor="#AAAAAA" android:textSize="23sp" android:gravity="end"/>
+                    </LinearLayout>
+                    <LinearLayout android:id="@+id/wallDefault" style="@style/SettingHomeRow">
+                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1.25" android:orientation="vertical">
+                            <TextView style="@style/SettingHomeLabel" android:text="@string/setting_wall_default"/>
+                            <TextView style="@style/SettingHomeDescription" android:text="@string/setting_home_wall_default_hint"/>
+                        </LinearLayout>
+                        <TextView android:layout_width="20dp" android:layout_height="wrap_content" android:layout_marginStart="10dp" android:text="›" android:textColor="#AAAAAA" android:textSize="23sp" android:gravity="end"/>
+                    </LinearLayout>
+                    <LinearLayout android:id="@+id/wallRefresh" style="@style/SettingHomeRow">
+                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1.25" android:orientation="vertical">
+                            <TextView style="@style/SettingHomeLabel" android:text="@string/setting_wall_refresh"/>
+                            <TextView style="@style/SettingHomeDescription" android:text="@string/setting_home_wall_refresh_hint"/>
+                        </LinearLayout>
+                        <TextView android:layout_width="20dp" android:layout_height="wrap_content" android:layout_marginStart="10dp" android:text="›" android:textColor="#AAAAAA" android:textSize="23sp" android:gravity="end"/>
+                    </LinearLayout>
+                </LinearLayout>
+                <LinearLayout android:id="@+id/groupStorage" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:visibility="gone">
+                    <LinearLayout android:id="@+id/doh" style="@style/SettingHomeRow">
+                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1.25" android:orientation="vertical">
+                            <TextView style="@style/SettingHomeLabel" android:text="@string/setting_doh"/>
+                            <TextView style="@style/SettingHomeDescription" android:text="@string/setting_home_doh_hint"/>
+                        </LinearLayout>
+                        <TextView android:id="@+id/dohText" style="@style/SettingHomeValue"/>
+                        <TextView android:layout_width="20dp" android:layout_height="wrap_content" android:layout_marginStart="10dp" android:text="›" android:textColor="#AAAAAA" android:textSize="23sp" android:gravity="end"/>
+                    </LinearLayout>
+                    <LinearLayout android:id="@+id/cache" style="@style/SettingHomeRow">
+                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1.25" android:orientation="vertical">
+                            <TextView style="@style/SettingHomeLabel" android:text="@string/setting_cache"/>
+                            <TextView style="@style/SettingHomeDescription" android:text="@string/setting_home_cache_hint"/>
+                        </LinearLayout>
+                        <TextView android:id="@+id/cacheText" style="@style/SettingHomeValue"/>
+                        <TextView android:layout_width="20dp" android:layout_height="wrap_content" android:layout_marginStart="10dp" android:text="›" android:textColor="#AAAAAA" android:textSize="23sp" android:gravity="end"/>
+                    </LinearLayout>
+                    <LinearLayout android:id="@+id/backup" style="@style/SettingHomeRow">
+                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1.25" android:orientation="vertical">
+                            <TextView style="@style/SettingHomeLabel" android:text="@string/setting_backup"/>
+                            <TextView style="@style/SettingHomeDescription" android:text="@string/setting_home_backup_hint"/>
+                        </LinearLayout>
+                        <TextView android:layout_width="20dp" android:layout_height="wrap_content" android:layout_marginStart="10dp" android:text="›" android:textColor="#AAAAAA" android:textSize="23sp" android:gravity="end"/>
+                    </LinearLayout>
+                    <LinearLayout android:id="@+id/restore" style="@style/SettingHomeRow">
+                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1.25" android:orientation="vertical">
+                            <TextView style="@style/SettingHomeLabel" android:text="@string/setting_restore"/>
+                            <TextView style="@style/SettingHomeDescription" android:text="@string/setting_home_restore_hint"/>
+                        </LinearLayout>
+                        <TextView android:layout_width="20dp" android:layout_height="wrap_content" android:layout_marginStart="10dp" android:text="›" android:textColor="#AAAAAA" android:textSize="23sp" android:gravity="end"/>
+                    </LinearLayout>
+                </LinearLayout>
+                <LinearLayout android:id="@+id/groupAbout" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:visibility="gone">
+                    <LinearLayout android:id="@+id/update" style="@style/SettingHomeRow">
+                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1.25" android:orientation="vertical">
+                            <TextView style="@style/SettingHomeLabel" android:text="@string/setting_update"/>
+                            <TextView style="@style/SettingHomeDescription" android:text="@string/setting_home_update_hint"/>
+                        </LinearLayout>
+                        <TextView android:id="@+id/versionText" style="@style/SettingHomeValue"/>
+                        <View android:id="@+id/updateDot" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginStart="8dp" android:background="@drawable/shape_update_dot" android:visibility="gone"/>
+                        <TextView android:layout_width="20dp" android:layout_height="wrap_content" android:layout_marginStart="10dp" android:text="›" android:textColor="#AAAAAA" android:textSize="23sp" android:gravity="end"/>
+                    </LinearLayout>
+                    <LinearLayout android:id="@+id/version" style="@style/SettingHomeRow">
+                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1.25" android:orientation="vertical">
+                            <TextView style="@style/SettingHomeLabel" android:text="@string/setting_version"/>
+                            <TextView style="@style/SettingHomeDescription" android:text="@string/setting_home_diagnostics_hint"/>
+                        </LinearLayout>
+                        <TextView android:layout_width="20dp" android:layout_height="wrap_content" android:layout_marginStart="10dp" android:text="›" android:textColor="#AAAAAA" android:textSize="23sp" android:gravity="end"/>
+                    </LinearLayout>
+                </LinearLayout>
+            </LinearLayout>
+        </androidx.core.widget.NestedScrollView>
+    </LinearLayout>
+</LinearLayout>

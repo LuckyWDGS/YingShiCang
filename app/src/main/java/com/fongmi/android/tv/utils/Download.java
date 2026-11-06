@@ -33,6 +33,12 @@ public class Download {
     private long maxBytes;
     private long timeoutMillis;
     private String tag;
+    private boolean verifiedTransport;
+
+    public Download verifiedTransport() {
+        verifiedTransport = true;
+        return this;
+    }
 
     public static Download create(String url, File file) {
         return new Download(url, file);
@@ -96,7 +102,7 @@ public class Download {
     }
 
     private Call createCall() {
-        Call request = OkHttp.newCall(url, tag);
+        Call request = OkHttp.newCall(verifiedTransport ? OkHttp.verified() : OkHttp.client(), url, tag);
         if (timeoutMillis > 0) request.timeout().timeout(timeoutMillis, java.util.concurrent.TimeUnit.MILLISECONDS);
         call = request;
         return request;

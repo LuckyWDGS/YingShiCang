@@ -33,6 +33,7 @@ public class SiteViewModel extends ViewModel {
     private final MutableLiveData<String> searchStatus = new MutableLiveData<>();
     private int searchGeneration;
     private int configWait;
+    private java.util.concurrent.CompletableFuture<Void> configWaiting;
 
     public LiveData<String> getSearchStatus() { return searchStatus; }
 
@@ -88,12 +89,13 @@ public class SiteViewModel extends ViewModel {
      */
     public void awaitConfig(Runnable ready) {
         int request = ++configWait;
+        if (configWaiting != null) configWaiting.cancel(false);
         if (VodConfig.get().isReady()) {
             ready.run();
             return;
         }
-        Task.execute(() -> {
-            VodConfig.get().awaitReady(CONFIG_WAIT_MS);
+        configWaiting = VodConfig.get().whenReady(CONFIG_WAIT_MS);
+        configWaiting.thenRun(() -> {
             App.post(() -> {
                 if (request == configWait) ready.run();
             });
@@ -163,6 +165,7 @@ public class SiteViewModel extends ViewModel {
     @Override
     protected void onCleared() {
         configWait++;
+        if (configWaiting != null) configWaiting.cancel(false);
         stopSearch();
         tasks.cancelAll();
     }

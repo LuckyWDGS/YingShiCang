@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="setting_home_title">设置</string>
+    <string name="setting_home_subtitle">按你的习惯，调整观影体验</string>
+    <string name="setting_home_sources">内容来源</string>
+    <string name="setting_home_playback">播放与追剧</string>
+    <string name="setting_home_appearance">外观</string>
+    <string name="setting_home_storage">网络与存储</string>
+    <string name="setting_home_about">关于与更新</string>
+    <string name="setting_home_sources_hint">管理点播、直播与默认来源</string>
+    <string name="setting_home_playback_hint">播放体验、观看记录与更新提醒</string>
+    <string name="setting_home_appearance_hint">调整图片与背景显示</string>
+    <string name="setting_home_storage_hint">网络解析、缓存与个人数据</string>
+    <string name="setting_home_about_hint">检查新版本，查看运行诊断</string>
+    <string name="setting_home_keys">方向键切换  ·  确认选择\n返回退出设置</string>
+    <string name="setting_home_vod_hint">选择配置 · 长按编辑地址</string>
+    <string name="setting_home_live_hint">选择配置 · 长按编辑地址</string>
+    <string name="setting_home_lines_hint">切换配置中的可用线路</string>
+    <string name="setting_home_vod_home_hint">进入首页时使用的点播来源</string>
+    <string name="setting_home_live_home_hint">进入直播时使用的频道来源</string>
+    <string name="setting_home_drive_hint">扫码请在网盘影片播放时完成；状态仅供参考</string>
+    <string name="setting_home_player_hint">播放器、解码、速度与预加载</string>
+    <string name="setting_home_danmaku_hint">显示、搜索与弹幕样式</string>
+    <string name="setting_home_chapter_hint">在进度条上显示未观看的精彩点</string>
+    <string name="setting_home_follow_hint">在首页检查收藏和最近观看的剧集</string>
+    <string name="setting_home_incognito_hint">开启后不记录观看历史</string>
+    <string name="setting_home_size_hint">调整支持此选项的图片卡片尺寸</string>
+    <string name="setting_home_wall_hint">选择在线壁纸配置 · 长按编辑地址</string>
+    <string name="setting_home_wall_default_hint">轮换内置壁纸</string>
+    <string name="setting_home_wall_refresh_hint">获取新壁纸 · 长按查看历史</string>
+    <string name="setting_home_doh_hint">选择域名解析服务</string>
+    <string name="setting_home_cache_hint">清理可删除缓存，保留源插件与登录数据</string>
+    <string name="setting_home_backup_hint">保存配置、收藏和观看记录</string>
+    <string name="setting_home_restore_hint">从已有备份恢复个人数据</string>
+    <string name="setting_home_update_hint">检查并安装新版本</string>
+    <string name="setting_home_diagnostics_hint">日志上传、诊断信息与维护工具</string>
+    <string name="setting_home_unset">未设置</string>
+    <string name="setting_home_unselected">未选择</string>
+    <string name="setting_home_loading">计算中…</string>
+</resources>

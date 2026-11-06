@@ -51,12 +51,12 @@ public final class SourceBench {
         load(saved);
     }
 
-    public static SourceBench search() {
+    public static synchronized SourceBench search() {
         if (search == null) search = lane("search");
         return search;
     }
 
-    public static SourceBench discovery() {
+    public static synchronized SourceBench discovery() {
         if (discovery == null) discovery = lane("discovery");
         return discovery;
     }
@@ -77,11 +77,15 @@ public final class SourceBench {
     }
 
     public synchronized boolean resting(String id) {
+        return remaining(id) > 0;
+    }
+
+    public synchronized long remaining(String id) {
         Entry entry = entries.get(id);
-        if (entry == null || entry.until == 0) return false;
+        if (entry == null || entry.until == 0) return 0;
         long left = entry.until - clock.getAsLong();
         // Further ahead than a rest can be: the clock moved back, as on TVs without a battery-backed clock.
-        return left > 0 && left <= REST_MS;
+        return left > 0 && left <= REST_MS ? left : 0;
     }
 
     public synchronized void failed(String id) {

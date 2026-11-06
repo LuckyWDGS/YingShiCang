@@ -67621,10 +67621,9 @@ index 0000000..6a648c9
 +}
 diff --git a/libraries/ui_danmaku/src/main/java/androidx/media3/ui/danmaku/DanmakuController.java b/libraries/ui_danmaku/src/main/java/androidx/media3/ui/danmaku/DanmakuController.java
 new file mode 100644
-index 0000000..7bf291c
 --- /dev/null
 +++ b/libraries/ui_danmaku/src/main/java/androidx/media3/ui/danmaku/DanmakuController.java
-@@ -0,0 +1,815 @@
+@@ -0,0 +1,823 @@
 +/*
 + * Copyright (C) 2026 The Android Open Source Project
 + *
@@ -67886,6 +67885,7 @@ index 0000000..7bf291c
 +            generation,
 +            startPositionMs,
 +            durationMs);
++    if (listener != null) listener.onLoadStarted(uri);
 +    sourceLoader.load(loaderHandler, request, new SourceListener());
 +  }
 +
@@ -68275,6 +68275,7 @@ index 0000000..7bf291c
 +  }
 +
 +  private void cancelActiveSession() {
++    if (listener != null && activeUri != null) listener.onLoadCancelled(activeUri);
 +    segmentLoader.cancel();
 +    sourceLoader.cancel();
 +    activeUri = null;
@@ -68292,6 +68293,12 @@ index 0000000..7bf291c
 +
 +  /** Receives danmaku loading events. */
 +  public interface Listener {
++
++    /** Called for an actual source load, never for reuse of an already loaded timeline. */
++    default void onLoadStarted(Uri uri) {}
++
++    /** Called when a source load is invalidated, including detaching the view. */
++    default void onLoadCancelled(Uri uri) {}
 +
 +    /** Called when a source has finished loading. */
 +    default void onLoadCompleted(Uri uri, int count) {}

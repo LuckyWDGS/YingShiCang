@@ -140,13 +140,18 @@ public class JarLoader {
             if (loaders.containsKey(key)) return;
             String[] texts = jar.split(";md5;");
             String md5 = texts.length > 1 ? texts[1].trim() : "";
-            if (md5.startsWith("http")) md5 = OkHttp.string(md5).trim();
+            if (md5.startsWith("http")) {
+                try {
+                    md5 = OkHttp.verifiedString(md5).trim();
+                    if (!md5.matches("(?i)[a-f0-9]{32}")) throw new IOException("Invalid plugin checksum");
+                } catch (IOException error) { throw new IllegalStateException("源插件校验信息获取失败", error); }
+            }
             jar = texts[0];
             if (jar.startsWith("http")) {
                 String address = jar;
                 try {
                     JarArtifact.load(Path.jar(jar), key, md5, System.currentTimeMillis(), destination -> {
-                        try { Download.create(address, destination).timeout(15_000).maxBytes(32 * 1024 * 1024).get(); }
+                        try { Download.create(address, destination).verifiedTransport().timeout(15_000).maxBytes(32 * 1024 * 1024).get(); }
                         catch (RuntimeException e) {
                             preserveCancellation(e);
                             checkCancellation();

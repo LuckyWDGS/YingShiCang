@@ -9,6 +9,8 @@ import com.fongmi.android.tv.bean.Result;
 import com.fongmi.android.tv.bean.Site;
 import com.fongmi.android.tv.bean.Vod;
 import com.fongmi.android.tv.resource.SourceBench;
+import com.fongmi.android.tv.resource.SourceIdentity;
+import com.fongmi.android.tv.utils.Task;
 import com.fongmi.android.tv.utils.BackgroundThreads;
 import java.util.*;
 import java.util.concurrent.*;
@@ -55,7 +57,7 @@ public final class SourceDiscoveryRunner {
     private static final class SourceSlot {
         final Site site;
         final Site requestSite;
-        final String signature;
+        final String signature, benchId;
         final List<PageSlot> pages = new ArrayList<>();
         final Map<String, Vod> items = new LinkedHashMap<>();
         final RetryBudget retryBudget = new RetryBudget();
@@ -63,6 +65,7 @@ public final class SourceDiscoveryRunner {
         int turn, categoryCount, adultCategoryCount;
         SourceSlot(Site site) {
             this.site = site; signature = signature(site);
+            benchId = SourceIdentity.of(VodConfig.getUrl(), site);
             requestSite = site.getType() == 4 ? App.gson().fromJson(App.gson().toJson(site), Site.class) : site;
         }
         PageSlot next() {
@@ -114,6 +117,7 @@ public final class SourceDiscoveryRunner {
     private final Set<SourceSlot> counted = new HashSet<>();
     private final ExecutorService coordinator = Executors.newSingleThreadExecutor(BackgroundThreads.factory("discovery-coordinator"));
     private Future<?> round;
+    private volatile Future<?> restWake;
     private Batch published;
     private volatile boolean closed;
 
@@ -122,7 +126,7 @@ public final class SourceDiscoveryRunner {
         Set<String> keys = new HashSet<>();
         for (Site site : new ArrayList<>(config.getSites())) if (!site.getKey().isEmpty() && keys.add(site.getKey())) sources.add(new SourceSlot(site));
         // Resting sources stay listed: current() compares this list with the configuration.
-        List<SourceSlot> active = bench.active(sources, slot -> slot.site.getKey());
+        List<SourceSlot> active = bench.active(sources, slot -> slot.benchId);
         for (SourceSlot slot : sources) slot.resting = !active.contains(slot);
     }
     private static String signature(Site site) {
@@ -155,6 +159,7 @@ public final class SourceDiscoveryRunner {
     private void next(boolean retry, boolean manual, Consumer<Batch> callback) {
         if (closed) return;
         long token = epoch.incrementAndGet();
+        if (restWake != null) restWake.cancel(false);
         // Let runRound finish an invalidated scope so its callback can release the UI's
         // loading state even when the configuration changed just before this call.
         round = coordinator.submit(() -> runRound(token, retry, manual, callback));
@@ -171,6 +176,16 @@ public final class SourceDiscoveryRunner {
     private void runRound(long token, boolean retry, boolean manual, Consumer<Batch> callback) {
         SourceDiscoveryRoundStats stats = BuildConfig.DEBUG ? new SourceDiscoveryRoundStats() : null;
         Deque<SourceSlot> pending = new ArrayDeque<>();
+        List<SourceSlot> awake = manual ? sources : bench.active(sources, slot -> slot.benchId);
+        for (SourceSlot slot : sources) {
+            boolean wasResting = slot.resting;
+            slot.resting = !awake.contains(slot);
+            if (wasResting && !slot.resting) {
+                slot.failed = retry;
+                slot.retryBudget.succeeded();
+                counted.remove(slot);
+            }
+        }
         // Failed sources retain their exact raw-page cursor, but never hold up
         // healthy-source pagination. Only the explicit retry round reissues them.
         for (SourceSlot slot : sources) if (slot.available() && (retry ? slot.failed && (manual || slot.retryBudget.available()) : !slot.failed)) pending.add(slot);
@@ -227,8 +242,10 @@ public final class SourceDiscoveryRunner {
                 if (stats != null && current()) debugSummary(stats, token, retry);
                 // With nothing on the page the network may be down, which says nothing about these sources.
                 // Once per page, however many automatic retries it takes: those come seconds apart.
-                if (sources.stream().anyMatch(slot -> !slot.items.isEmpty())) roundFailed.stream().filter(counted::add).forEach(slot -> bench.failed(slot.site.getKey()));
+                if (sources.stream().anyMatch(slot -> !slot.items.isEmpty())) roundFailed.stream().filter(counted::add).forEach(slot -> bench.failed(slot.benchId));
                 roundFailed.clear();
+                List<SourceSlot> stillAwake = bench.active(sources, slot -> slot.benchId);
+                for (SourceSlot slot : sources) slot.resting = !stillAwake.contains(slot);
                 publish(token, true, callback);
             }
         } catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); }
@@ -296,7 +313,7 @@ public final class SourceDiscoveryRunner {
         slot.failed = outcome.error();
         if (outcome.error()) roundFailed.add(slot);
         else slot.retryBudget.succeeded();
-        if (outcome.result != null && !outcome.result.getList().isEmpty()) bench.answered(slot.site.getKey());
+        if (outcome.result != null && !outcome.result.getList().isEmpty()) bench.answered(slot.benchId);
         if (stats != null) stats.error(outcome.errorType);
         if (outcome.error() || outcome.result == null) return;
         PageSlot page = work.page == null ? slot.next() : work.page;
@@ -351,6 +368,13 @@ public final class SourceDiscoveryRunner {
         Batch batch = new Batch(List.copyOf(visible.values()), more, failed, unsupported, finished);
         published = batch;
         App.post(() -> { if (valid(token) && current()) callback.accept(batch); });
+        if (finished) {
+            long delay = sources.stream().filter(slot -> slot.resting).mapToLong(slot -> bench.remaining(slot.benchId))
+                    .filter(left -> left > 0).min().orElse(0);
+            if (delay > 0) restWake = Task.scheduler().schedule(() -> {
+                if (valid(token) && current()) next(false, false, callback);
+            }, delay + 50, TimeUnit.MILLISECONDS);
+        }
     }
     private static double number(String text) {
         try { return Double.parseDouble(text); } catch (RuntimeException ignored) { return 0; }
@@ -358,6 +382,7 @@ public final class SourceDiscoveryRunner {
     public void cancel() {
         closed = true; epoch.incrementAndGet();
         if (round != null) round.cancel(true);
+        if (restWake != null) restWake.cancel(false);
         running.forEach(Work::cancel); running.clear(); coordinator.shutdownNow(); WORKERS.purge();
     }
 }

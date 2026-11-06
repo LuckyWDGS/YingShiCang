@@ -504,7 +504,7 @@ public class SiteApi {
             return result;
         } catch (Exception error) {
             timing("source_player", key, start, failure(error) + " drive=" + drive(flag) + spiderMs() + " " + net.end());
-            if (!com.fongmi.android.tv.resource.ResourceHealth.isCancellation(error)) com.fongmi.android.tv.cloudlogin.DriveLogins.played(flag, false);
+            com.fongmi.android.tv.cloudlogin.DriveLogins.failed(flag, error);
             throw error;
         } finally {
             net.end();

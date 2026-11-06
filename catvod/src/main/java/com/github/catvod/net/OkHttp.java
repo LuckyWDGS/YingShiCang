@@ -41,6 +41,7 @@ public class OkHttp {
     private OkHttpClient client;
     private OkHttpClient player;
     private OkHttpClient media;
+    private OkHttpClient verified;
     private OkDns dns;
 
     public static OkHttp get() {
@@ -85,6 +86,33 @@ public class OkHttp {
     public static synchronized OkHttpClient player() {
         if (get().player != null) return get().player;
         return get().player = getBuilder().build();
+    }
+
+    /** Configuration and executable downloads use platform certificate and hostname validation. */
+    public static synchronized OkHttpClient verified() {
+        if (get().verified != null) return get().verified;
+        OkHttpClient.Builder builder = getBuilder(false);
+        builder.interceptors().add(0, chain -> chain.proceed(chain.request().newBuilder()
+                .tag(VerifiedHttps.class, new VerifiedHttps(chain.request().url().isHttps())).build()));
+        builder.addNetworkInterceptor(chain -> {
+            VerifiedHttps policy = chain.request().tag(VerifiedHttps.class);
+            if (policy != null && policy.required && !chain.request().url().isHttps())
+                throw new javax.net.ssl.SSLPeerUnverifiedException("HTTPS downgrade refused");
+            return chain.proceed(chain.request());
+        });
+        return get().verified = builder.build();
+    }
+
+    private static final class VerifiedHttps {
+        final boolean required;
+        VerifiedHttps(boolean required) { this.required = required; }
+    }
+
+    public static String verifiedString(String url) throws java.io.IOException {
+        try (Response response = newCall(verified(), url).execute()) {
+            if (!response.isSuccessful() || response.body() == null) throw new java.io.IOException("HTTP " + response.code());
+            return response.body().string();
+        }
     }
 
     /**
@@ -182,6 +210,7 @@ public class OkHttp {
 
     public static void cancel(String tag) {
         cancel(client(), tag);
+        if (get().verified != null) cancel(get().verified, tag);
     }
 
     public static void cancel(OkHttpClient client, String tag) {
@@ -191,6 +220,7 @@ public class OkHttp {
 
     public static void cancelAll() {
         cancelAll(client());
+        if (get().verified != null) cancelAll(get().verified);
     }
 
     public static void cancelAll(OkHttpClient client) {
@@ -210,8 +240,13 @@ public class OkHttp {
     }
 
     private static OkHttpClient.Builder getBuilder() {
+        return getBuilder(true);
+    }
+
+    private static OkHttpClient.Builder getBuilder(boolean compatibleTls) {
         OkProxySelector selector = selector();
-        OkHttpClient.Builder builder = new OkHttpClient.Builder().addInterceptor(requestInterceptor()).addInterceptor(authInterceptor()).addInterceptor(new ProxyRedirectInterceptor(selector)).addNetworkInterceptor(new ProxyRedirectInterceptor.HideLocation()).addNetworkInterceptor(responseInterceptor()).connectTimeout(TIMEOUT, TimeUnit.MILLISECONDS).readTimeout(TIMEOUT, TimeUnit.MILLISECONDS).writeTimeout(TIMEOUT, TimeUnit.MILLISECONDS).dns(dns()).hostnameVerifier((hostname, session) -> true).sslSocketFactory(getSSLContext().getSocketFactory(), trustAllCertificates());
+        OkHttpClient.Builder builder = new OkHttpClient.Builder().addInterceptor(requestInterceptor()).addInterceptor(authInterceptor()).addInterceptor(new ProxyRedirectInterceptor(selector)).addNetworkInterceptor(new ProxyRedirectInterceptor.HideLocation()).addNetworkInterceptor(responseInterceptor()).connectTimeout(TIMEOUT, TimeUnit.MILLISECONDS).readTimeout(TIMEOUT, TimeUnit.MILLISECONDS).writeTimeout(TIMEOUT, TimeUnit.MILLISECONDS).dns(dns());
+        if (compatibleTls) builder.hostnameVerifier((hostname, session) -> true).sslSocketFactory(getSSLContext().getSocketFactory(), trustAllCertificates());
         HttpLoggingInterceptor logging = new HttpLoggingInterceptor().setLevel(HttpLoggingInterceptor.Level.BODY);
         builder.proxyAuthenticator(authenticator());
         builder.eventListenerFactory(NetTrace.FACTORY);

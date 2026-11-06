@@ -449,6 +449,17 @@ public abstract class PlaybackActivity extends BaseActivity implements MediaCont
         playerView.setDanmakuConfig(DanmakuSetting.getConfig());
         playerView.getDanmakuController().setListener(new DanmakuController.Listener() {
             @Override
+            public void onLoadStarted(Uri uri) {
+                App.removeCallbacks(mDanmakuExpired);
+                App.post(mDanmakuExpired, DANMAKU_LOAD_MS);
+            }
+
+            @Override
+            public void onLoadCancelled(Uri uri) {
+                App.removeCallbacks(mDanmakuExpired);
+            }
+
+            @Override
             public void onLoadCompleted(Uri uri, int count) {
                 mDanmakuRetries = 0;
                 App.removeCallbacks(mDanmakuExpired);
@@ -476,9 +487,8 @@ public abstract class PlaybackActivity extends BaseActivity implements MediaCont
     }
 
     private void setDanmakuSource(Uri uri) {
-        App.removeCallbacks(mDanmakuExpired);
+        if (uri == null) App.removeCallbacks(mDanmakuRetry, mDanmakuExpired);
         getPlayerView().setDanmakuSource(uri);
-        if (uri != null) App.post(mDanmakuExpired, DANMAKU_LOAD_MS);
     }
 
     /**

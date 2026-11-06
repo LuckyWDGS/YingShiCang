@@ -457,7 +457,7 @@ public class ViewModelSearchRunnerTest {
         try {
             for (int i = 0; i < 3; i++) search(runner, java.util.List.of(bad, good), 1, tasks);
             assertEquals(3, badAsked.get());
-            assertTrue(bench.resting("bad"));
+            assertTrue(bench.resting(com.fongmi.android.tv.resource.SourceIdentity.of("", bad)));
             search(runner, java.util.List.of(bad, good), 1, tasks);
             assertEquals(3, badAsked.get());
         } finally { runner.stop(); workers.shutdownNow(); timer.shutdownNow(); }
@@ -472,8 +472,8 @@ public class ViewModelSearchRunnerTest {
             for (int i = 0; i < 4; i++) search(runner, java.util.List.of(named("a"), named("b")), 1, (site, query) -> () -> {
                 throw new java.io.IOException("network down");
             });
-            assertFalse(bench.resting("a"));
-            assertFalse(bench.resting("b"));
+            assertFalse(bench.resting(com.fongmi.android.tv.resource.SourceIdentity.of("", named("a"))));
+            assertFalse(bench.resting(com.fongmi.android.tv.resource.SourceIdentity.of("", named("b"))));
         } finally { runner.stop(); workers.shutdownNow(); timer.shutdownNow(); }
     }
 

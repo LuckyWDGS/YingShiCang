@@ -27,7 +27,7 @@ public class Decoder {
     }
 
     public static String getJson(String url, String tag, long timeoutMillis) throws Exception {
-        Call call = OkHttp.newCall(url, tag);
+        Call call = OkHttp.newCall(OkHttp.verified(), url, tag);
         if (timeoutMillis > 0) call.timeout().timeout(timeoutMillis, TimeUnit.MILLISECONDS);
         try (Response res = call.execute()) {
             if (!res.isSuccessful()) {

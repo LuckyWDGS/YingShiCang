@@ -30,12 +30,14 @@ public final class DriveLogins {
     private static final String BAIDU = "baidu";
     private static final int FAILING_PLAYS = 3;
 
-    private static Predicate<String> scanned = DriveLogins::hasLogin;
+    private static final Predicate<String> LOGIN_CHECK = DriveLogins::hasLogin;
+    private static Predicate<String> scanned = LOGIN_CHECK;
 
-    /** For the settings page. failing: its last plays all failed, which is what an expired login looks like. */
-    public record Status(String name, boolean scanned, boolean failing) {
+    /** Only explicit authentication failures are evidence of a possibly expired login. */
+    public record Status(String name, boolean scanned, boolean failing, boolean known) {
+        public Status(String name, boolean scanned, boolean failing) { this(name, scanned, failing, true); }
         String text() {
-            return name + " " + (!scanned ? "未扫码" : failing ? "可能已失效" : "已扫码");
+            return name + " " + (!known ? "状态未知" : !scanned ? "未扫码" : failing ? "可能已失效" : "已扫码");
         }
     }
 
@@ -70,16 +72,6 @@ public final class DriveLogins {
         return file.isFile() && file.length() > 0;
     }
 
-    // Not seen with a real UC login yet: named like the plugin's quark_ck, quark_fid and quark_ut.
-    private static boolean hasUc(Context context) {
-        for (Map.Entry<String, ?> entry : prefs(context).getAll().entrySet()) {
-            if (entry.getKey().toLowerCase(Locale.ROOT).startsWith(UC) && entry.getValue() instanceof String value && !value.isEmpty()) return true;
-        }
-        File[] files = context.getFilesDir().listFiles((dir, name) -> name.startsWith("uc_"));
-        if (files != null) for (File file : files) if (file.length() > 0) return true;
-        return false;
-    }
-
     private static SharedPreferences prefs(Context context) {
         return context.getSharedPreferences("spUtils", Context.MODE_PRIVATE);
     }
@@ -88,7 +80,8 @@ public final class DriveLogins {
         Context context = App.get();
         return switch (family) {
             case QUARK -> hasQuark(context);
-            case UC -> hasUc(context);
+            // The encrypted plugin's UC login storage is not established. Cache names are not proof.
+            case UC -> false;
             case BAIDU -> hasBaidu(context);
             default -> false;
         };
@@ -105,6 +98,7 @@ public final class DriveLogins {
 
     /** The line to open: the saved one, unless it is a drive not scanned in and another drive is. */
     public static Flag entry(List<Flag> flags, Flag saved) {
+        if (saved != null && scanned == LOGIN_CHECK && UC.equals(family(saved.getFlag()))) return saved;
         return entry(flags, saved, scanned);
     }
 
@@ -135,6 +129,29 @@ public final class DriveLogins {
 
     /** A line of a scanned-in drive got an address or failed to. */
     public static void played(String flag, boolean ok) {
+        if (!ok) return;
+        record(flag, true);
+    }
+
+    public static void failed(String flag, Throwable error) {
+        if (authenticationFailure(error)) record(flag, false);
+    }
+
+    static boolean authenticationFailure(Throwable error) {
+        if (com.fongmi.android.tv.resource.ResourceHealth.isCancellation(error)) return false;
+        for (int depth = 0; error != null && depth < 8; depth++, error = error.getCause()) {
+            // A generic 401/403 or a broken share says nothing about the drive login.
+            String message = error.getMessage();
+            if (message == null) continue;
+            String text = message.toLowerCase(Locale.ROOT).replace(" ", "");
+            if (text.contains("登录已过期") || text.contains("登录失效") || text.contains("登录过期")
+                    || text.contains("cookie已失效") || text.contains("cookie过期")
+                    || text.contains("请重新扫码") || text.contains("请先登录")) return true;
+        }
+        return false;
+    }
+
+    private static synchronized void record(String flag, boolean ok) {
         String family = family(flag);
         if (!needsScan(family) || !scanned.test(family)) return;
         int failed = Prefers.getInt(failedKey(family));
@@ -147,11 +164,11 @@ public final class DriveLogins {
     }
 
     private static Status status(String name, String family) {
-        return new Status(name, scanned.test(family), Prefers.getInt(failedKey(family)) >= FAILING_PLAYS);
+        return new Status(name, scanned.test(family), Prefers.getInt(failedKey(family)) >= FAILING_PLAYS, !UC.equals(family));
     }
 
     private static String failedKey(String family) {
-        return "drive_failed_" + family;
+        return "drive_auth_failed_" + family;
     }
 
     public static String summary(List<Status> statuses) {
@@ -162,6 +179,6 @@ public final class DriveLogins {
 
     @VisibleForTesting
     public static void setScanned(Predicate<String> value) {
-        scanned = value == null ? DriveLogins::hasLogin : value;
+        scanned = value == null ? LOGIN_CHECK : value;
     }
 }

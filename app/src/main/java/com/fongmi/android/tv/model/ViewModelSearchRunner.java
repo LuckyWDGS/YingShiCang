@@ -7,6 +7,7 @@ import com.fongmi.android.tv.bean.Site;
 import com.fongmi.android.tv.bean.Vod;
 import com.fongmi.android.tv.resource.ResourceHealth;
 import com.fongmi.android.tv.resource.SourceBench;
+import com.fongmi.android.tv.resource.SourceIdentity;
 import com.fongmi.android.tv.utils.Task;
 import com.google.common.util.concurrent.FluentFuture;
 import com.google.common.util.concurrent.MoreExecutors;
@@ -32,6 +33,8 @@ final class ViewModelSearchRunner {
     private final int parallelism;
     private final int crawlerParallelism;
     private final SourceBench bench;
+    private Supplier<String> configScope = () -> "";
+    private final Map<Site, String> sourceIds = new IdentityHashMap<>();
     private final Map<Site, Integer> runFailures = new IdentityHashMap<>();
     private boolean answered;
     private int activeHttp, activeCrawlers;
@@ -39,6 +42,7 @@ final class ViewModelSearchRunner {
     ViewModelSearchRunner() {
         this(Task.searchExecutor(), Task.searchExecutor(true), Task.scheduler(), Constant.TIMEOUT_SEARCH,
                 Task.SEARCH_PARALLELISM, Task.SEARCH_CRAWLER_PARALLELISM, SourceBench.search());
+        configScope = VodConfig::getUrl;
     }
     ViewModelSearchRunner(com.google.common.util.concurrent.ListeningExecutorService workers, ScheduledExecutorService scheduler, long timeout) {
         this(workers, scheduler, timeout, 4);
@@ -91,7 +95,10 @@ final class ViewModelSearchRunner {
         stop(); int current = epoch.get();
         pending = new ArrayDeque<>();
         revision = VodConfig.getDiscoveryRevision();
-        List<Site> active = bench.active(sites, Site::getKey);
+        sourceIds.clear();
+        String scope = configScope.get();
+        for (Site site : sites) sourceIds.put(site, SourceIdentity.of(scope, site));
+        List<Site> active = bench.active(sites, sourceIds::get);
         for (int query = 0; query < queries; query++) for (Site site : active) pending.add(new Attempt(site, 0, query));
         total = active.size() * queries; completed = failed = hits = 0; lastError = ""; status = progress;
         runFailures.clear(); answered = false;
@@ -201,7 +208,7 @@ final class ViewModelSearchRunner {
     /** One failed round per source and search, and only once another source has shown the network works. */
     private void sourceFailed(Site site) {
         int failures = runFailures.merge(site, 1, Integer::sum);
-        if (answered && failures == 1) bench.failed(site.getKey());
+        if (answered && failures == 1) bench.failed(sourceIds.get(site));
         if (failures < RUN_FAILURES) return;
         for (Iterator<Attempt> iterator = pending.iterator(); iterator.hasNext();) {
             if (iterator.next().site != site) continue;
@@ -211,8 +218,8 @@ final class ViewModelSearchRunner {
 
     private void sourceAnswered(Site site) {
         runFailures.remove(site);
-        bench.answered(site.getKey());
-        if (!answered) runFailures.keySet().forEach(failing -> bench.failed(failing.getKey()));
+        bench.answered(sourceIds.get(site));
+        if (!answered) runFailures.keySet().forEach(failing -> bench.failed(sourceIds.get(failing)));
         answered = true;
     }
 

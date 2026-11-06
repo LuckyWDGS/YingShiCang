@@ -12,6 +12,7 @@ import com.fongmi.android.tv.impl.Callback;
 import com.fongmi.android.tv.server.Server;
 import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.Task;
+import com.fongmi.android.tv.utils.ReadyWait;
 import com.fongmi.android.tv.utils.UrlUtil;
 import com.github.catvod.bean.Header;
 import com.github.catvod.bean.Proxy;
@@ -26,6 +27,7 @@ import java.util.List;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
+import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -50,25 +52,32 @@ abstract class BaseConfig {
 
     protected abstract boolean isLoaded();
 
-    public synchronized void ensureLoaded() {
-        try {
-            if (isLoaded()) return;
-            if (config == null) config = defaultConfig();
-            Server.get().start();
-            load(config);
-        } catch (Throwable e) {
-            e.printStackTrace();
-        }
+    public void ensureLoaded() {
+        awaitReady(45_000);
     }
 
-    public boolean isReady() {
-        return isLoaded();
+    public synchronized boolean isReady() {
+        Future<?> loading = future;
+        return isLoaded() && (loading == null || loading.isDone());
     }
 
-    /** Off the main thread: until the load under way ends, or loads it if none is (Home closed, opened from outside). */
+    private synchronized void startIfNeeded() {
+        if (isLoaded() || (future != null && !future.isDone())) return;
+        if (config == null) config = defaultConfig();
+        load(new Callback());
+    }
+
+    /** Starts at most one shared load; callers only observe it and own their cancellation. */
+    public java.util.concurrent.CompletableFuture<Void> whenReady(long timeoutMs) {
+        startIfNeeded();
+        return ReadyWait.observe(Task.scheduler(), timeoutMs, this::isReady, () -> future);
+    }
+
+    /** Off the main thread. The entire wait, including an on-demand load, uses one deadline. */
     public void awaitReady(long timeoutMs) {
         long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs);
-        while (!isLoaded()) {
+        startIfNeeded();
+        while (!isReady()) {
             Future<?> loading = future;
             if (loading == null || loading.isDone()) break;
             long left = deadline - System.nanoTime();
@@ -78,11 +87,12 @@ abstract class BaseConfig {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 return;
-            } catch (ExecutionException | TimeoutException | CancellationException e) {
+            } catch (TimeoutException e) {
+                return;
+            } catch (ExecutionException | CancellationException e) {
                 // A replaced load is looked at again; the deadline ends the wait.
             }
         }
-        if (!isLoaded()) ensureLoaded();
     }
 
     protected void postEvent() {
@@ -109,10 +119,16 @@ abstract class BaseConfig {
         OkHttp.dns().addAll(hosts);
     }
 
-    public void load(Callback callback) {
+    public synchronized void load(Callback callback) {
         int id = taskId.incrementAndGet();
-        if (future != null && !future.isDone()) future.cancel(true);
-        future = Task.submit(() -> loadConfig(id, config, callback));
+        if (config == null) config = defaultConfig();
+        Config requested = config;
+        Future<?> previous = future;
+        FutureTask<Void> next = new FutureTask<>(() -> { loadConfig(id, requested, callback); return null; });
+        // Publish the replacement before cancelling the old task, so observers cannot see a gap.
+        future = next;
+        if (previous != null && !previous.isDone()) previous.cancel(true);
+        Task.execute(next);
         callback.start();
     }
 
@@ -161,7 +177,7 @@ abstract class BaseConfig {
 
     private JsonArray fetch(String url) {
         try {
-            JsonElement parsed = Json.parse(OkHttp.string(UrlUtil.convert(url)));
+            JsonElement parsed = Json.parse(OkHttp.verifiedString(UrlUtil.convert(url)));
             return parsed.isJsonArray() ? parsed.getAsJsonArray() : new JsonArray();
         } catch (Exception e) {
             return new JsonArray();

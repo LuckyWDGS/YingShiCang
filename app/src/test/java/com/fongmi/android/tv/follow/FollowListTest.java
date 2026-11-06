@@ -26,6 +26,7 @@ public class FollowListTest {
         assertTrue(list.checked("a", 13, NOW));
         assertTrue(list.updated("a"));
         assertEquals(List.of("a"), list.untold());
+        list.announced(list.pending(List.of("a")));
         assertEquals(List.of(), list.untold());
         assertTrue(list.updated("a"));
     }
@@ -86,7 +87,7 @@ public class FollowListTest {
         FollowList list = new FollowList("");
         list.checked("a", 12, NOW);
         list.checked("a", 13, NOW);
-        list.untold();
+        list.announced(list.pending(List.of("a")));
         FollowList next = new FollowList(list.save());
         assertTrue(next.updated("a"));
         assertEquals(List.of(), next.untold());
@@ -103,6 +104,37 @@ public class FollowListTest {
         assertTrue(next.updated("marked"));
         assertEquals(List.of("t0"), next.due(List.of("t0"), NOW, 5));
         assertTrue(next.checked("t" + (FollowList.MAX_ENTRIES + 19), 6, NOW));
+    }
+
+    @Test public void firstSuccessAfterFailuresEstablishesBaseline() {
+        FollowList list = new FollowList("");
+        list.checked("a", 0, NOW);
+        list = new FollowList(list.save());
+        assertFalse(list.checked("a", 12, NOW + FollowList.CHECK_EVERY_MS));
+        assertFalse(list.updated("a"));
+        assertTrue(list.checked("a", 13, NOW + FollowList.CHECK_EVERY_MS * 2));
+    }
+
+    @Test public void skippedUiDeliveryRemainsPendingAfterRestart() {
+        FollowList list = new FollowList("");
+        list.checked("a", 12, NOW);
+        list.checked("a", 13, NOW);
+        list.pending(List.of("a"));
+        FollowList next = new FollowList(list.save());
+        assertEquals(List.of("a"), next.untold());
+        next.announced(next.pending(List.of("a")));
+        assertEquals(List.of(), new FollowList(next.save()).untold());
+    }
+
+    @Test public void oldDeliveryCannotConsumeNewerUpdateOrAnotherConfigurationsTitle() {
+        FollowList list = new FollowList("");
+        list.checked("a", 12, NOW);
+        list.checked("a", 13, NOW);
+        var old = list.pending(List.of("a"));
+        list.checked("a", 14, NOW);
+        list.announced(old);
+        assertEquals(List.of("a"), list.untold());
+        assertTrue(list.pending(List.of("another config")).isEmpty());
     }
 
     @Test

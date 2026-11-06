@@ -53,8 +53,8 @@ public final class FollowList {
     /** count 0: the source did not answer, so only the time is noted. True when there are new episodes. */
     synchronized boolean checked(String key, int count, long now) {
         Entry entry = entries.get(key);
-        boolean first = entry == null;
-        if (first) entries.put(key, entry = new Entry());
+        if (entry == null) entries.put(key, entry = new Entry());
+        boolean first = entry.count == 0;
         entry.checked = now;
         if (count <= entry.count) return false;
         entry.count = count;
@@ -78,15 +78,30 @@ public final class FollowList {
         return entry != null && entry.updated;
     }
 
-    /** Updated titles not announced yet; each is returned once. */
+    /** A snapshot; delivery must be acknowledged only after the notice is shown. */
     synchronized List<String> untold() {
         List<String> keys = new ArrayList<>();
         entries.forEach((key, entry) -> {
             if (!entry.updated || entry.told) return;
-            entry.told = true;
             keys.add(key);
         });
         return keys;
+    }
+
+    synchronized Map<String, Integer> pending(List<String> eligible) {
+        Map<String, Integer> pending = new LinkedHashMap<>();
+        for (String key : eligible) {
+            Entry entry = entries.get(key);
+            if (entry != null && entry.updated && !entry.told) pending.put(key, entry.count);
+        }
+        return pending;
+    }
+
+    synchronized void announced(Map<String, Integer> delivered) {
+        delivered.forEach((key, count) -> {
+            Entry entry = entries.get(key);
+            if (entry != null && entry.count == count && entry.updated) entry.told = true;
+        });
     }
 
     private void load(String saved) {
