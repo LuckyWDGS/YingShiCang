@@ -6,6 +6,11 @@ import java.util.List;
 
 public interface VodDataSource {
 
+    /** Runs ready once the configuration has its sites, on the main thread. */
+    default void awaitConfig(Runnable ready) {
+        ready.run();
+    }
+
     void detailContent(String key, String id);
 
     void playerContent(VodPlayRequest request);

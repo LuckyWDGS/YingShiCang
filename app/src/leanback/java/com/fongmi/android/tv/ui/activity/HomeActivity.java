@@ -13,11 +13,9 @@ import android.view.ViewTreeObserver;
 import androidx.annotation.NonNull;
 import androidx.core.splashscreen.SplashScreen;
 import androidx.leanback.widget.ArrayObjectAdapter;
-import androidx.leanback.widget.FocusHighlight;
-import androidx.leanback.widget.HorizontalGridView;
+import androidx.leanback.widget.DiffCallback;
 import androidx.leanback.widget.ItemBridgeAdapter;
 import androidx.leanback.widget.ListRow;
-import androidx.leanback.widget.ListRowPresenter;
 import androidx.lifecycle.ViewModelProvider;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.recyclerview.widget.GridLayoutManager;
@@ -50,7 +48,6 @@ import com.fongmi.android.tv.player.extractor.Source;
 import com.fongmi.android.tv.server.Server;
 import com.fongmi.android.tv.service.DLNARendererService;
 import com.fongmi.android.tv.service.PlaybackService;
-import com.fongmi.android.tv.ui.adapter.BaseDiffCallback;
 import com.fongmi.android.tv.ui.base.BaseActivity;
 import com.fongmi.android.tv.ui.custom.CustomRowPresenter;
 import com.fongmi.android.tv.ui.custom.CustomSelector;
@@ -93,9 +90,17 @@ import java.util.Map;
 
 public class HomeActivity extends BaseActivity implements CustomTitleView.Listener, VodPresenter.OnClickListener, FuncPresenter.OnClickListener, HistoryPresenter.OnClickListener {
 
+    private static final DiffCallback<Object> HISTORY_DIFF = new DiffCallback<>() {
+        @Override public boolean areItemsTheSame(@NonNull Object oldItem, @NonNull Object newItem) {
+            return oldItem instanceof History item && newItem instanceof History other ? item.isSameItem(other) : oldItem.equals(newItem);
+        }
+
+        @Override public boolean areContentsTheSame(@NonNull Object oldItem, @NonNull Object newItem) {
+            return !(oldItem instanceof History item) || !(newItem instanceof History other) || item.isSameContent(other);
+        }
+    };
+
     private ActivityHomeBinding mBinding;
-    private ArrayObjectAdapter mHistoryAdapter;
-    private ListRow mHistoryRow;
     private ArrayObjectAdapter mAdapter;
     private HistoryPresenter mPresenter;
     private SiteViewModel mViewModel;
@@ -105,7 +110,6 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
     private com.fongmi.android.tv.ui.custom.HomeDiscovery discovery;
     private boolean mInitialFocus = true;
     private boolean mResumed;
-    private boolean mHistorySizeDirty;
     private String mHistoryReturnKey;
     private int mHistoryFocusGeneration;
     private ViewTreeObserver.OnPreDrawListener mHistoryFocusRestore;
@@ -148,7 +152,6 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         Updater.create().start(this);
         setRecyclerView();
         setViewModel();
-        setAdapter();
         setFunc();
         initConfig();
         setTitle();
@@ -194,13 +197,13 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
                 () -> discovery != null && discovery.isHome(),
                 () -> discovery != null && discovery.isAiDrama()));
         selector.addPresenter(ListRow.class, new CustomRowPresenter(16), VodPresenter.class);
-        selector.addPresenter(ListRow.class, new CustomRowPresenter(16, FocusHighlight.ZOOM_FACTOR_SMALL, HorizontalGridView.FOCUS_SCROLL_ALIGNED), HistoryPresenter.class);
+        selector.addPresenter(History.class, mPresenter = new HistoryPresenter(this));
         mBinding.recycler.setAdapter(new ItemBridgeAdapter(mAdapter = new ArrayObjectAdapter(selector)));
         GridLayoutManager layout = new GridLayoutManager(this, 5);
         layout.setSpanSizeLookup(new GridLayoutManager.SpanSizeLookup() {
             @Override
             public int getSpanSize(int position) {
-                return position < mAdapter.size() && mAdapter.get(position) instanceof Vod ? 1 : 5;
+                return position < mAdapter.size() && isCard(mAdapter.get(position)) ? 1 : 5;
             }
         });
         // Without the caches every layout recounts spans from position 0, which grows with each discovery page.
@@ -216,7 +219,7 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
                 if (position < 0 || position >= mAdapter.size()) return;
                 int gap = ResUtil.dp2px(12);
                 out.bottom = gap;
-                if (mAdapter.get(position) instanceof Vod) {
+                if (isCard(mAdapter.get(position))) {
                     int column = layout.getSpanSizeLookup().getSpanIndex(position, 5);
                     out.left = column * gap / 5;
                     out.right = gap - (column + 1) * gap / 5;
@@ -233,9 +236,8 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         });
     }
 
-    private void setAdapter() {
-        mHistoryAdapter = new ArrayObjectAdapter(mPresenter = new HistoryPresenter(this));
-        mHistoryRow = new ListRow(mHistoryAdapter);
+    private static boolean isCard(Object item) {
+        return item instanceof Vod || item instanceof History;
     }
 
     private void renderDiscovery(List<Vod> items) {
@@ -358,58 +360,34 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         }
     }
 
+    /** History fills the same five-column grid as Home and scrolls down the same way (user 2026-11-05). */
     private void getHistory() {
-        getHistory(false);
-    }
-
-    private void getHistory(boolean renew) {
-        mHistorySizeDirty |= renew;
         if (discovery != null && !discovery.isHistory()) {
             cancelHistoryFocus(true);
             return;
         }
         String focusedKey = mHistoryReturnKey != null ? mHistoryReturnKey : getFocusedHistoryKey();
         boolean showingHistory = mAdapter.size() > 0 && Integer.valueOf(R.string.home_history).equals(mAdapter.get(0));
-        // Only a size-setting change needs new card dimensions. Ordinary progress
-        // events retain the row, presenter and horizontal scroll/focus ownership.
-        if (mHistorySizeDirty) {
-            boolean delete = mPresenter.isDelete();
-            setAdapter();
-            mPresenter.setDelete(delete);
-            mHistorySizeDirty = false;
-            showingHistory = false;
-        }
-        if (!showingHistory) {
-            mAdapter.clear();
-            mAdapter.add(R.string.home_history);
-        }
+        if (!showingHistory) mAdapter.clear();
         List<History> items = History.get();
-        mHistoryAdapter.setItems(items, new BaseDiffCallback<History>());
-        if (!items.isEmpty() && mAdapter.indexOf(mHistoryRow) < 0) mAdapter.add(mHistoryRow);
-        else if (items.isEmpty()) {
-            mAdapter.remove(mHistoryRow);
-            mPresenter.setDelete(false);
-        }
+        List<Object> rows = new ArrayList<>(items.size() + 1);
+        rows.add(R.string.home_history);
+        rows.addAll(items);
+        // Ordinary progress events keep the cards in place, so scroll and focus stay put.
+        mAdapter.setItems(rows, HISTORY_DIFF);
+        if (items.isEmpty()) mPresenter.setDelete(false);
         if (mResumed && focusedKey != null) restoreHistoryFocus(focusedKey);
     }
 
-    private HorizontalGridView getHistoryGrid() {
-        int position = mAdapter.indexOf(mHistoryRow);
-        RecyclerView.ViewHolder holder = position < 0 ? null : mBinding.recycler.findViewHolderForAdapterPosition(position);
-        if (!(holder instanceof ItemBridgeAdapter.ViewHolder bridge) || !(bridge.getPresenter() instanceof ListRowPresenter presenter)) return null;
-        return ((ListRowPresenter.ViewHolder) presenter.getRowViewHolder(bridge.getViewHolder())).getGridView();
-    }
-
     private String getFocusedHistoryKey() {
-        HorizontalGridView grid = getHistoryGrid();
-        if (grid == null || !grid.hasFocus()) return null;
-        RecyclerView.ViewHolder holder = grid.findContainingViewHolder(grid.findFocus());
+        View focused = mBinding.recycler.getFocusedChild();
+        RecyclerView.ViewHolder holder = focused == null ? null : mBinding.recycler.findContainingViewHolder(focused);
         return holder instanceof ItemBridgeAdapter.ViewHolder bridge && bridge.getItem() instanceof History item ? item.getKey() : null;
     }
 
     private int findHistoryPosition(String key) {
-        for (int i = 0; i < mHistoryAdapter.size(); i++) {
-            if (key.equals(((History) mHistoryAdapter.get(i)).getKey())) return i;
+        for (int i = 0; i < mAdapter.size(); i++) {
+            if (mAdapter.get(i) instanceof History item && key.equals(item.getKey())) return i;
         }
         return RecyclerView.NO_POSITION;
     }
@@ -438,19 +416,22 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         // Wait for the diff/outer row to be laid out, then select the watched
         // identity at its new time-descending position, rather than its old index.
         mHistoryFocusRestore = new ViewTreeObserver.OnPreDrawListener() {
+            private boolean scrolled;
+
             @Override public boolean onPreDraw() {
+                int position = findHistoryPosition(key);
+                RecyclerView.ViewHolder holder = position == RecyclerView.NO_POSITION ? null : mBinding.recycler.findViewHolderForAdapterPosition(position);
+                // A card scrolled out has no view yet: bring it in and take focus on the next frame.
+                if (holder == null && position != RecyclerView.NO_POSITION && canRestoreHistoryFocus(generation) && !scrolled) {
+                    scrolled = true;
+                    mBinding.recycler.scrollToPosition(position);
+                    return true;
+                }
                 mBinding.recycler.getViewTreeObserver().removeOnPreDrawListener(this);
                 if (mHistoryFocusRestore == this) mHistoryFocusRestore = null;
-                if (!canRestoreHistoryFocus(generation)) return true;
-                HorizontalGridView grid = getHistoryGrid();
-                int position = findHistoryPosition(key);
-                if (grid == null || position == RecyclerView.NO_POSITION) return true;
-                grid.setSelectedPosition(position, holder -> {
-                    if (!canRestoreHistoryFocus(generation) || !(holder instanceof ItemBridgeAdapter.ViewHolder bridge)
-                            || !(bridge.getItem() instanceof History item) || !key.equals(item.getKey())) return;
-                    holder.itemView.requestFocus();
-                    mHistoryReturnKey = null;
-                });
+                if (!canRestoreHistoryFocus(generation) || holder == null) return true;
+                holder.itemView.requestFocus();
+                mHistoryReturnKey = null;
                 return true;
             }
         };
@@ -460,18 +441,14 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
 
     private void setHistoryDelete(boolean delete) {
         mPresenter.setDelete(delete);
-        mHistoryAdapter.notifyArrayItemRangeChanged(0, mHistoryAdapter.size());
+        mAdapter.notifyArrayItemRangeChanged(0, mAdapter.size());
     }
 
     private void clearHistory() {
-        mAdapter.removeItems(getHistoryIndex(), 1);
         History.clear(VodConfig.getCid());
         mPresenter.setDelete(false);
-        mHistoryAdapter.clear();
-    }
-
-    private int getHistoryIndex() {
-        return mAdapter.indexOf(R.string.home_history) + 1;
+        mAdapter.removeItems(1, mAdapter.size() - 1);
+        if (discovery != null) discovery.focusCurrentTab();
     }
 
     private int getDoubanIndex() {
@@ -524,7 +501,7 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
                 break;
             case SIZE:
                 getVideo();
-                getHistory(true);
+                getHistory();
                 break;
         }
     }
@@ -614,10 +591,15 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
 
     @Override
     public void onItemDelete(History item) {
-        mHistoryAdapter.remove(item.delete());
-        if (mHistoryAdapter.size() > 0) return;
-        mAdapter.removeItems(getHistoryIndex(), 1);
+        int position = mAdapter.indexOf(item);
+        mAdapter.remove(item.delete());
+        if (mAdapter.size() > 1) {
+            // The card that had focus is gone: the one taking its place gets it.
+            if (mAdapter.get(Math.min(position, mAdapter.size() - 1)) instanceof History next) restoreHistoryFocus(next.getKey());
+            return;
+        }
         mPresenter.setDelete(false);
+        if (discovery != null) discovery.focusCurrentTab();
     }
 
     @Override
@@ -670,6 +652,7 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         mWeather.refresh();
         if (discovery != null) discovery.setActive(true);
         if (mHistoryReturnKey != null) getHistory();
+        DLNARendererService.start(this);
         FollowChecker.resume(Notify::show);
     }
 

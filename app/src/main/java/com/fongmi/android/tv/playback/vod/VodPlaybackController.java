@@ -73,10 +73,13 @@ public class VodPlaybackController {
     }
 
     public void requestDetail() {
-        String key = host.getVodKey();
-        String id = host.getVodId();
-        state.setDetailRequest(key, id);
-        dataSource.detailContent(key, id);
+        // After the wait: a result is checked against the revision of the configuration it was asked under.
+        dataSource.awaitConfig(() -> {
+            String key = host.getVodKey();
+            String id = host.getVodId();
+            state.setDetailRequest(key, id);
+            dataSource.detailContent(key, id);
+        });
     }
 
     public void onDetailResult(VodDetailResult detail) {
@@ -359,6 +362,7 @@ public class VodPlaybackController {
     private void moveEpisode(int offset, boolean notify, boolean reversed) {
         if (!state.hasEpisode()) return;
         Episode item = state.getRelativeEpisode(offset);
+        DiagnosticLog.write(App.get(), "vod_episode_move", "offset=" + offset + " from=" + state.getFlag().getPosition() + " to=" + state.getFlag().getEpisodes().indexOf(item) + " of=" + state.getFlag().getEpisodes().size());
         if (!item.isSelected()) selectEpisode(item);
         else if (notify && offset > 0) host.showNoNext(reversed);
         else if (notify) host.showNoPrev(reversed);

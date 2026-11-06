@@ -60,7 +60,9 @@ public abstract class PlaybackActivity extends BaseActivity implements MediaCont
     // A source plugin can pass the 30s read timeout preparing its danmaku, then answers at once.
     private static final int DANMAKU_RETRIES = 2;
     private static final long DANMAKU_RETRY_MS = 2_000;
+    private static final long DANMAKU_LOAD_MS = 60_000;
     private final Runnable mDanmakuRetry = this::syncDanmakuSource;
+    private final Runnable mDanmakuExpired = this::onDanmakuExpired;
     private int mDanmakuRetries;
     private ListenableFuture<MediaController> mControllerFuture;
     private MediaController mController;
@@ -449,11 +451,13 @@ public abstract class PlaybackActivity extends BaseActivity implements MediaCont
             @Override
             public void onLoadCompleted(Uri uri, int count) {
                 mDanmakuRetries = 0;
+                App.removeCallbacks(mDanmakuExpired);
                 DiagnosticLog.write(App.get(), "danmaku_load", "outcome=ok count=" + count);
             }
 
             @Override
             public void onLoadError(Uri uri, IOException error) {
+                App.removeCallbacks(mDanmakuExpired);
                 DiagnosticLog.write(App.get(), "danmaku_load", "outcome=" + NetTrace.reason(error));
                 if (mDanmakuRetries++ < DANMAKU_RETRIES) App.post(mDanmakuRetry, DANMAKU_RETRY_MS);
                 else onDanmakuFailed();
@@ -468,11 +472,28 @@ public abstract class PlaybackActivity extends BaseActivity implements MediaCont
 
     private void syncDanmakuSource() {
         if (mService == null || !isOwner()) return;
-        getPlayerView().setDanmakuSource(player().getSelectedDanmakuUri());
+        setDanmakuSource(player().getSelectedDanmakuUri());
+    }
+
+    private void setDanmakuSource(Uri uri) {
+        App.removeCallbacks(mDanmakuExpired);
+        getPlayerView().setDanmakuSource(uri);
+        if (uri != null) App.post(mDanmakuExpired, DANMAKU_LOAD_MS);
+    }
+
+    /**
+     * A source's danmaku is its plugin's local proxy, and the plugin can hold the response open for good
+     * in its native code (LDPlayer: nothing after 75s, a read timeout never fires on the open stream).
+     * Danmaku then just never came, without a word.
+     */
+    private void onDanmakuExpired() {
+        DiagnosticLog.write(App.get(), "danmaku_load", "outcome=expired");
+        if (isOwner()) getPlayerView().setDanmakuSource(null);
+        onDanmakuFailed();
     }
 
     private void releasePlaybackService() {
-        App.removeCallbacks(mDanmakuRetry);
+        App.removeCallbacks(mDanmakuRetry, mDanmakuExpired);
         if (mService != null) releaseService(isOwner());
         detach();
     }
@@ -567,7 +588,7 @@ public abstract class PlaybackActivity extends BaseActivity implements MediaCont
         public void onDanmakuSourceChanged(Uri uri) {
             mDanmakuRetries = 0;
             App.removeCallbacks(mDanmakuRetry);
-            if (isOwner()) getPlayerView().setDanmakuSource(uri);
+            if (isOwner()) setDanmakuSource(uri);
         }
 
         @Override

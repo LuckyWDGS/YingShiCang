@@ -1,10 +1,12 @@
 package com.fongmi.android.tv.api.config;
 
+import android.os.SystemClock;
 import android.text.TextUtils;
 
 import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.bean.Config;
+import com.fongmi.android.tv.diagnostics.DiagnosticLog;
 import com.fongmi.android.tv.event.ConfigEvent;
 import com.fongmi.android.tv.impl.Callback;
 import com.fongmi.android.tv.server.Server;
@@ -21,7 +23,11 @@ import com.google.gson.JsonObject;
 
 import java.io.InterruptedIOException;
 import java.util.List;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 
 abstract class BaseConfig {
@@ -53,6 +59,30 @@ abstract class BaseConfig {
         } catch (Throwable e) {
             e.printStackTrace();
         }
+    }
+
+    public boolean isReady() {
+        return isLoaded();
+    }
+
+    /** Off the main thread: until the load under way ends, or loads it if none is (Home closed, opened from outside). */
+    public void awaitReady(long timeoutMs) {
+        long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs);
+        while (!isLoaded()) {
+            Future<?> loading = future;
+            if (loading == null || loading.isDone()) break;
+            long left = deadline - System.nanoTime();
+            if (left <= 0) return;
+            try {
+                loading.get(left, TimeUnit.NANOSECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            } catch (ExecutionException | TimeoutException | CancellationException e) {
+                // A replaced load is looked at again; the deadline ends the wait.
+            }
+        }
+        if (!isLoaded()) ensureLoaded();
     }
 
     protected void postEvent() {
@@ -87,11 +117,13 @@ abstract class BaseConfig {
     }
 
     protected void loadConfig(int id, Config config, Callback callback) {
+        long started = SystemClock.elapsedRealtime();
         try {
             Server.get().start();
             OkHttp.cancel(getTag());
             load(config);
             if (taskId.get() != id) return;
+            DiagnosticLog.write(App.get(), "config_load", "type=" + getTag() + " ms=" + (SystemClock.elapsedRealtime() - started) + " outcome=ok saved=" + !TextUtils.isEmpty(config.getNotice()));
             if (config.equals(this.config)) config.update();
             App.post(() -> Notify.show(config.getNotice()));
             App.post(callback::success);
@@ -99,6 +131,7 @@ abstract class BaseConfig {
             e.printStackTrace();
             if (Thread.currentThread().isInterrupted() || "Canceled".equals(e.getMessage())) return;
             if (taskId.get() != id) return;
+            DiagnosticLog.write(App.get(), "config_load", "type=" + getTag() + " ms=" + (SystemClock.elapsedRealtime() - started) + " outcome=" + e.getClass().getSimpleName());
             if (TextUtils.isEmpty(config.getUrl())) App.post(() -> callback.error(""));
             else App.post(() -> callback.error(Notify.getError(R.string.error_config_get, e)));
         } finally {

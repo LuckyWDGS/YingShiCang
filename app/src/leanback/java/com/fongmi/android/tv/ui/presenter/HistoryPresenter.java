@@ -9,7 +9,6 @@ import androidx.annotation.NonNull;
 import androidx.leanback.widget.Presenter;
 
 import com.bumptech.glide.Glide;
-import com.fongmi.android.tv.Product;
 import com.fongmi.android.tv.bean.History;
 import com.fongmi.android.tv.databinding.AdapterVodBinding;
 import com.fongmi.android.tv.follow.FollowChecker;
@@ -38,10 +37,9 @@ public class HistoryPresenter extends Presenter {
         boolean onLongClick();
     }
 
+    // Home's five columns: 32dp at each side and 12dp between cards.
     private void setLayoutSize() {
-        int space = ResUtil.dp2px(48) + ResUtil.dp2px(16 * (Product.getColumn() - 1));
-        int base = ResUtil.getScreenWidth() - space;
-        width = base / Product.getColumn();
+        width = (ResUtil.getScreenWidth() - ResUtil.dp2px(64) - ResUtil.dp2px(12) * 4) / 5;
         height = (int) (width / 0.75f);
     }
 

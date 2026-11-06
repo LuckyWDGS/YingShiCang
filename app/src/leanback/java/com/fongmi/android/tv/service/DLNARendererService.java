@@ -3,6 +3,8 @@ package com.fongmi.android.tv.service;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+
+import com.fongmi.android.tv.diagnostics.DiagnosticLog;
 import android.content.ServiceConnection;
 import android.os.Build;
 import android.os.IBinder;
@@ -55,11 +57,24 @@ public class DLNARendererService extends AndroidUpnpServiceImpl implements Servi
     private Object dlnaOwner;
     private boolean bound;
 
+    private static boolean started;
+
+    /**
+     * Android 9 refused this on a CM311-5 box as Home was being created, the app still counted as in the
+     * background, and three launches in a row closed at once. Home asks again when it resumes.
+     */
     public static void start(Context context) {
-        context.startService(new Intent(context, DLNARendererService.class));
+        if (started) return;
+        try {
+            context.startService(new Intent(context, DLNARendererService.class));
+            started = true;
+        } catch (IllegalStateException refused) {
+            DiagnosticLog.write(context, "dlna_start_refused", refused.getClass().getSimpleName());
+        }
     }
 
     public static void stop(Context context) {
+        started = false;
         context.stopService(new Intent(context, DLNARendererService.class));
     }
 

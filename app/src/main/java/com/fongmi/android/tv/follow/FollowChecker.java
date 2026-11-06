@@ -88,6 +88,10 @@ public final class FollowChecker {
 
     private static void start() {
         if (running || notice == null) return;
+        if (!VodConfig.get().isReady()) {
+            App.post(START, START_DELAY_MS);
+            return;
+        }
         running = true;
         ROUND.execute(() -> {
             try {

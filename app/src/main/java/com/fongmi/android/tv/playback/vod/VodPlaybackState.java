@@ -143,7 +143,12 @@ public class VodPlaybackState {
 
     Episode getRelativeEpisode(int offset) {
         List<Episode> episodes = getFlag().getEpisodes();
-        int position = Math.clamp(getFlag().getPosition() + offset, 0, episodes.size() - 1);
+        int from = getFlag().getPosition();
+        int position = Math.clamp(from + offset, 0, episodes.size() - 1);
+        if (from < 0 || from >= episodes.size()) return episodes.get(position);
+        // A drive share can hold the same episode twice under one name (two folders): stepping onto the
+        // copy looked like 下一集 did nothing, the same number at the same time (user 2026-11-05).
+        for (int i = from + offset; i >= 0 && i < episodes.size(); i += offset) if (!episodes.get(i).matchesName(episodes.get(from))) return episodes.get(i);
         return episodes.get(position);
     }
 

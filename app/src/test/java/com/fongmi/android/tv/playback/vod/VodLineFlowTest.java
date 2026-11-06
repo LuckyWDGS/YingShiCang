@@ -67,6 +67,12 @@ public class VodLineFlowTest {
         return flag;
     }
 
+    private static Flag named(String line, String... names) {
+        Flag flag = new Flag(line);
+        for (int i = 0; i < names.length; i++) flag.getEpisodes().add(Episode.create(names[i], line + "/" + i));
+        return flag;
+    }
+
     private void open(Flag... lines) {
         Vod vod = new Vod() {
             @Override public String getName() { return "QA"; }
@@ -211,6 +217,37 @@ public class VodLineFlowTest {
         addressFails();
         assertEquals("线路一", last().getFlag());
         assertTrue(searches.isEmpty());
+    }
+
+    @Test
+    public void nextSkipsASecondCopyOfTheSameEpisode() {
+        saved("线路一", "22.mp4");
+        open(named("线路一", "21.mp4", "22.mp4", "22.mp4", "23.mp4"));
+        assertEquals("线路一/1", last().getId());
+        addressArrives();
+        controller.nextEpisode(true);
+        assertEquals("线路一/3", last().getId());
+    }
+
+    @Test
+    public void previousSkipsItToo() {
+        saved("线路一", "23.mp4");
+        open(named("线路一", "21.mp4", "21.mp4", "22.mp4", "22.mp4", "23.mp4"));
+        addressArrives();
+        controller.prevEpisode(true);
+        assertEquals("线路一/3", last().getId());
+        addressArrives();
+        controller.prevEpisode(true);
+        assertEquals("线路一/1", last().getId());
+    }
+
+    @Test
+    public void aLineOfOneNameStillSteps() {
+        saved("线路一", "正片");
+        open(named("线路一", "正片", "正片", "正片"));
+        addressArrives();
+        controller.nextEpisode(true);
+        assertEquals("线路一/1", last().getId());
     }
 
     private final class SavedHistory extends VodHistoryPolicy {

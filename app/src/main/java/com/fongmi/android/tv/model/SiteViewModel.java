@@ -4,6 +4,7 @@ import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
 import androidx.lifecycle.ViewModel;
 
+import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.Constant;
 import com.fongmi.android.tv.api.SiteApi;
 import com.fongmi.android.tv.api.config.VodConfig;
@@ -17,16 +18,21 @@ import com.github.catvod.utils.Trans;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import com.fongmi.android.tv.utils.Task;
+
 import java.util.concurrent.Callable;
 import java.util.function.Consumer;
 
 public class SiteViewModel extends ViewModel {
+
+    private static final long CONFIG_WAIT_MS = 45_000;
 
     private final MutableLiveData<Result> result;
     private final MutableLiveData<Result> search;
     private final MutableLiveData<Result> action;
     private final MutableLiveData<String> searchStatus = new MutableLiveData<>();
     private int searchGeneration;
+    private int configWait;
 
     public LiveData<String> getSearchStatus() { return searchStatus; }
 
@@ -74,6 +80,24 @@ public class SiteViewModel extends ViewModel {
 
     public void detailContent(String key, String id) {
         execute(TaskType.RESULT, result, () -> SiteApi.detailContent(key, id));
+    }
+
+    /**
+     * A title opened during launch has no sites yet: its detail failed at once and the page was left
+     * empty. A configuration address that stops answering takes 20s to fall back to the saved copy.
+     */
+    public void awaitConfig(Runnable ready) {
+        int request = ++configWait;
+        if (VodConfig.get().isReady()) {
+            ready.run();
+            return;
+        }
+        Task.execute(() -> {
+            VodConfig.get().awaitReady(CONFIG_WAIT_MS);
+            App.post(() -> {
+                if (request == configWait) ready.run();
+            });
+        });
     }
 
     public void searchContent(Site site, String keyword, boolean quick, String page) {
@@ -138,6 +162,7 @@ public class SiteViewModel extends ViewModel {
 
     @Override
     protected void onCleared() {
+        configWait++;
         stopSearch();
         tasks.cancelAll();
     }

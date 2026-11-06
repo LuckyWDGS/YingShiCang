@@ -222,7 +222,7 @@ public class JarLoader {
                 // Cache only that case; transient download/init/network failures
                 // remain retryable on a later search.
                 if (hasMissingClass(e)) deterministicFailures.putIfAbsent(spKey, message);
-                com.fongmi.android.tv.diagnostics.DiagnosticLog.write(App.get(), "plugin_load_failed", message + " " + cause.getClass().getSimpleName());
+                com.fongmi.android.tv.diagnostics.DiagnosticLog.write(App.get(), "plugin_load_failed", message + " " + cause.getClass().getSimpleName() + " api=" + api);
                 throw failure;
             }
         });

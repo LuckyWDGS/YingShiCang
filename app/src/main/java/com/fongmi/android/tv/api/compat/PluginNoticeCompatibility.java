@@ -1,5 +1,7 @@
 package com.fongmi.android.tv.api.compat;
 
+import com.fongmi.android.tv.App;
+import com.fongmi.android.tv.diagnostics.DiagnosticLog;
 import android.app.Application;
 import android.os.Handler;
 import android.os.Looper;
@@ -13,6 +15,7 @@ import java.lang.reflect.Modifier;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 
 import dalvik.system.DexClassLoader;
@@ -31,6 +34,7 @@ public final class PluginNoticeCompatibility {
     private static final String ORIGIN = "com.github.catvod.spider.InitOrigin";
     private static final String REPEATING_NOTICE = ORIGIN + "$1";
     static final long REPEAT_GAP_FACTOR = 3;
+    private static final Set<String> RECORDED = ConcurrentHashMap.newKeySet();
     private static final Pattern AD_COUNT = Pattern.compile("^已过滤视频中广告\\([0-9]+条\\)$");
     private static final String BILI_GUEST = "哔哩游客模式，可前往【哔哔】主页扫码登录解锁高分辨率";
     // The danmaku itself shows that it loaded; the toast covered the picture (user 1.7.4 screenshot).
@@ -184,11 +188,21 @@ public final class PluginNoticeCompatibility {
                     if (ordinaryKind.getInt(callback) != 3) return false;
                     text = ordinaryText.get(callback);
                 } else return false;
-                return text instanceof String && isSilentNotice((String) text);
+                if (!(text instanceof String notice)) return false;
+                if (isSilentNotice(notice)) return true;
+                record(notice);
+                return false;
             } catch (Throwable ignored) {
                 return false;
             }
         }
+    }
+
+    /** What a plugin told the user, once per text: its strings are encrypted, so this is the only way to see them. */
+    private static void record(String notice) {
+        String text = notice.replaceAll("https?://\\S+|《[^》]*》|【[^】]*】", "…");
+        text = text.substring(0, Math.min(text.length(), 40));
+        if (RECORDED.size() < 32 && RECORDED.add(text)) DiagnosticLog.write(App.get(), "plugin_notice", text);
     }
 
     private static final class NoticeHandler extends Handler {
