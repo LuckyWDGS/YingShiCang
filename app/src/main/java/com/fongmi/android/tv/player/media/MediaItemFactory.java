@@ -23,6 +23,7 @@ import com.fongmi.android.tv.utils.ResUtil;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.IntStream;
 
@@ -51,6 +52,13 @@ public final class MediaItemFactory {
 
     public static MediaItem from(PlaySpec spec) {
         return buildUpon(spec).build();
+    }
+
+    /** Media3 compares tags by identity and does not compare request-extra contents. */
+    public static boolean matchesPreload(PlaySpec preloaded, PlaySpec requested) {
+        return preloaded != null && requested != null
+                && Objects.equals(preloaded.getHeaders(), requested.getHeaders())
+                && from(preloaded).buildUpon().setTag(requested).build().equals(from(requested));
     }
 
     private static MediaItem.Builder buildUpon(PlaySpec spec) {

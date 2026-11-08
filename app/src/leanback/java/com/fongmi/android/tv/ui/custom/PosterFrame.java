@@ -9,8 +9,10 @@ public class PosterFrame extends FrameLayout {
     public PosterFrame(Context context, AttributeSet attrs) { super(context, attrs); }
     @Override protected void onMeasure(int width, int height) {
         super.onMeasure(width, height);
+        int cardHeight = Math.round(getMeasuredWidth() * 4f / 3f)
+                + Math.round(36 * getResources().getDisplayMetrics().density);
+        if (getParent() instanceof HomeGridView grid) cardHeight = grid.fitCardHeight(cardHeight);
         super.onMeasure(MeasureSpec.makeMeasureSpec(getMeasuredWidth(), MeasureSpec.EXACTLY),
-                MeasureSpec.makeMeasureSpec(Math.round(getMeasuredWidth() * 4f / 3f)
-                        + Math.round(36 * getResources().getDisplayMetrics().density), MeasureSpec.EXACTLY));
+                MeasureSpec.makeMeasureSpec(cardHeight, MeasureSpec.EXACTLY));
     }
 }

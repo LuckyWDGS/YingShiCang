@@ -1,5 +1,7 @@
 package com.fongmi.android.tv.setting;
 
+import com.fongmi.android.tv.R;
+import com.fongmi.android.tv.utils.ResUtil;
 import com.github.catvod.utils.Prefers;
 
 public class PreloadSetting {
@@ -17,12 +19,34 @@ public class PreloadSetting {
         return Prefers.getBoolean("preload");
     }
 
+    /**
+     * Short dramas are commonly only a few minutes long. Keep their next-episode
+     * preload useful on a fresh install, while respecting an explicit user choice.
+     */
+    public static boolean isEnabledForShortDrama() {
+        return isEnabled() || !Prefers.getPrefers().contains("preload");
+    }
+
+    public static String getEnabledText() {
+        return PlayerSetting.isExo() && !Prefers.getPrefers().contains("preload")
+                ? ResUtil.getString(R.string.player_preload_short_drama_auto) : Setting.getSwitch(isEnabled());
+    }
+
+    public static String getNextEpisodeText() {
+        return PlayerSetting.isExo() && !Prefers.getPrefers().contains("preload_next_episode")
+                ? ResUtil.getString(R.string.player_preload_short_drama_auto) : Setting.getSwitch(isNextEpisodeEnabled());
+    }
+
     public static void putEnabled(boolean preload) {
         Prefers.put("preload", preload);
     }
 
     public static boolean isNextEpisodeEnabled() {
         return Prefers.getBoolean("preload_next_episode");
+    }
+
+    public static boolean isNextEpisodeEnabledForShortDrama() {
+        return isNextEpisodeEnabled() || !Prefers.getPrefers().contains("preload_next_episode");
     }
 
     public static void putNextEpisodeEnabled(boolean enabled) {

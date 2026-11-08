@@ -12,7 +12,6 @@ import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.databinding.FragmentSettingPreloadBinding;
 import com.fongmi.android.tv.setting.PlayerSetting;
 import com.fongmi.android.tv.setting.PreloadSetting;
-import com.fongmi.android.tv.setting.Setting;
 import com.fongmi.android.tv.ui.base.BaseFragment;
 import com.fongmi.android.tv.ui.dialog.PreloadDialog;
 import com.fongmi.android.tv.utils.FileUtil;
@@ -45,8 +44,8 @@ public class SettingPreloadFragment extends BaseFragment {
     }
 
     private void refresh() {
-        mBinding.preloadText.setText(Setting.getSwitch(PreloadSetting.isEnabled()));
-        mBinding.preloadNextText.setText(Setting.getSwitch(PreloadSetting.isNextEpisodeEnabled()));
+        mBinding.preloadText.setText(PreloadSetting.getEnabledText());
+        mBinding.preloadNextText.setText(PreloadSetting.getNextEpisodeText());
         setPreloadThreadsText();
         setPreloadSizeText();
         setPreloadTimeText();
@@ -57,20 +56,20 @@ public class SettingPreloadFragment extends BaseFragment {
         boolean exo = PlayerSetting.isExo();
         boolean preload = PreloadSetting.isEnabled();
         mBinding.preloadTime.setVisibility(preload ? View.VISIBLE : View.GONE);
-        mBinding.preloadNext.setVisibility(preload && exo ? View.VISIBLE : View.GONE);
+        mBinding.preloadNext.setVisibility(PreloadSetting.isEnabledForShortDrama() && exo ? View.VISIBLE : View.GONE);
         mBinding.preloadSize.setVisibility(preload && exo ? View.VISIBLE : View.GONE);
         mBinding.preloadThread.setVisibility(preload && exo ? View.VISIBLE : View.GONE);
     }
 
     private void setPreload(View view) {
-        PreloadSetting.putEnabled(!PreloadSetting.isEnabled());
-        mBinding.preloadText.setText(Setting.getSwitch(PreloadSetting.isEnabled()));
+        PreloadSetting.putEnabled(!(PlayerSetting.isExo() ? PreloadSetting.isEnabledForShortDrama() : PreloadSetting.isEnabled()));
+        mBinding.preloadText.setText(PreloadSetting.getEnabledText());
         setVisible();
     }
 
     private void setPreloadNext(View view) {
-        PreloadSetting.putNextEpisodeEnabled(!PreloadSetting.isNextEpisodeEnabled());
-        mBinding.preloadNextText.setText(Setting.getSwitch(PreloadSetting.isNextEpisodeEnabled()));
+        PreloadSetting.putNextEpisodeEnabled(!PreloadSetting.isNextEpisodeEnabledForShortDrama());
+        mBinding.preloadNextText.setText(PreloadSetting.getNextEpisodeText());
     }
 
     public void setPreload(int type, int value) {

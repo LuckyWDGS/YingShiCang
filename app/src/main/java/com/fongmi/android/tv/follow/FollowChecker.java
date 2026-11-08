@@ -114,7 +114,7 @@ public final class FollowChecker {
             asked++;
             int count;
             try {
-                count = DETAIL.call(() -> episodes(titles.get(key)), DETAIL_TIMEOUT_MS, value -> {});
+                count = DETAIL.call(() -> FollowCheckScope.call(() -> episodes(titles.get(key))), DETAIL_TIMEOUT_MS, value -> {});
                 if (count > 0) answered++;
             } catch (InterruptedException cancelled) {
                 Thread.currentThread().interrupt();

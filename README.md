@@ -2,7 +2,9 @@
 
 面向电视和盒子遥控操作的 Android 影视播放器，同时提供手机版。兼容 TVBox 配置，内置点播、直播、投屏和局域网配置。
 
-当前版本：**3.2.0**（versionCode 107）· [下载最新版](https://github.com/LuckyWDGS/YingShiCang/releases/latest)
+当前版本：**3.3.0**（versionCode 108）· [下载最新版](https://github.com/LuckyWDGS/YingShiCang/releases/latest)
+
+本版改进默认音轨、短剧下一集预加载及首页遥控焦点；两行导航分别循环，宽屏卡片标题完整显示，并保护首页不被后台追剧插件调用意外关闭。
 
 ## 下载与安装
 

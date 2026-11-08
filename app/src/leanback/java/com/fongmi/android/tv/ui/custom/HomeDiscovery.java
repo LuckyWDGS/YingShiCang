@@ -115,6 +115,7 @@ public final class HomeDiscovery {
             binding.categories.addView(view);
             view.setOnClickListener(v -> select(index));
         }
+        wireCategoryFocus();
         // The filter indicator is a fixed end drawable, hidden unless the tab is open: as an inline text
         // span it changed the tab's width each time it appeared or flipped, so the row jumped on OK and
         // a full row clipped it. Every tab, 主页 included, reserves the same end space, so the labels
@@ -141,6 +142,17 @@ public final class HomeDiscovery {
             if (tabs.indexOf(newFocus) != active) binding.categories.postDelayed(focusSelect, FOCUS_SELECT_MS);
         });
         select(0);
+    }
+
+    /** Keep horizontal focus inside the category row. Android's geometric fallback otherwise
+     * picks a shortcut or a card when the first/last tab is reached. */
+    private void wireCategoryFocus() {
+        if (tabs.isEmpty()) return;
+        for (int i = 0; i < tabs.size(); i++) {
+            TextView tab = tabs.get(i);
+            tab.setNextFocusLeftId(tabs.get((i + tabs.size() - 1) % tabs.size()).getId());
+            tab.setNextFocusRightId(tabs.get((i + 1) % tabs.size()).getId());
+        }
     }
 
     private static final int FILTER_INDICATOR_DP = 10;
@@ -275,9 +287,12 @@ public final class HomeDiscovery {
         for (android.view.ViewParent parent = focused.getParent(); parent != null; parent = parent.getParent()) if (parent == binding.recycler) inCards = true;
         if (!inCards) return false;
         View next = android.view.FocusFinder.getInstance().findNextFocus((android.view.ViewGroup) binding.getRoot(), focused, View.FOCUS_UP);
-        View open = tabs.get(isHistory() ? 0 : active);
-        if (!tabs.contains(next) || (next == open && !isHistory())) return false;
-        focusCurrentTab();
+        // A non-focusable section header inside RecyclerView can make its
+        // focusSearch return the current card even at the top. Route the known
+        // outside target directly instead of getting stuck beneath that header.
+        if (tabs.contains(next)) focusCurrentTab();
+        else if (next != null && next.getParent() == binding.actions) next.requestFocus();
+        else return false;
         focused.playSoundEffect(android.view.SoundEffectConstants.NAVIGATION_UP);
         return true;
     }
@@ -518,7 +533,13 @@ public final class HomeDiscovery {
         if (!visible) binding.recycler.post(this::loadNearEnd);
     }
 
+    public void shortcutsChanged() {
+        updateDownFocus();
+    }
+
     private void updateDownFocus() {
+        // Inactive tabs must not keep links to hidden filters or rebuilt shortcuts.
+        for (TextView tab : tabs) tab.setNextFocusDownId(View.NO_ID);
         if (active < tabs.size()) {
             int next = View.NO_ID;
             if (binding.filterPanel.getVisibility() == View.VISIBLE && !options.isEmpty()) {
@@ -527,6 +548,9 @@ public final class HomeDiscovery {
             }
             if (next == View.NO_ID && binding.discoveryAction.getVisibility() == View.VISIBLE)
                 next = binding.discoveryAction.getId();
+            if (next == View.NO_ID && isHome() && binding.shortcutHeader.getVisibility() == View.VISIBLE
+                    && binding.actions.getChildCount() > 0)
+                next = binding.actions.getChildAt(0).getId();
             tabs.get(active).setNextFocusDownId(next);
             binding.discoveryAction.setNextFocusUpId(tabs.get(active).getId());
             binding.discoveryAction.setNextFocusDownId(binding.recycler.getId());

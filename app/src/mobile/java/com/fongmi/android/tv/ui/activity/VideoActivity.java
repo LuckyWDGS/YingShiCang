@@ -510,7 +510,13 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
 
     @Override
     public boolean canPreloadNext() {
-        return service() != null && isOwner() && player().canPreloadNext();
+        return service() != null && isOwner() && player().canPreloadNext(isShortDrama());
+    }
+
+    private boolean isShortDrama() {
+        Site site = getSite();
+        if (site == null || site.getType() != 3) return false;
+        return "csp_AiDj".equals(site.getApi()) || "csp_AiDjGuard".equals(site.getApi());
     }
 
     @Override
@@ -576,7 +582,7 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
 
     @Override
     public boolean preloadPlayback(Result result, long startPositionMs, MediaMetadata metadata) {
-        return player().preload(PlaySpec.from(result, getHistoryKey(), metadata), startPositionMs);
+        return player().preload(PlaySpec.from(result, getHistoryKey(), metadata), startPositionMs, isShortDrama());
     }
 
     @Override

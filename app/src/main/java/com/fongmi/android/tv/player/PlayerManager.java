@@ -35,8 +35,10 @@ import com.fongmi.android.tv.player.engine.PlayerEngine;
 import com.fongmi.android.tv.player.engine.PlayerEngineFactory;
 import com.fongmi.android.tv.player.engine.SoftwareHevcFallback;
 import com.fongmi.android.tv.player.media.PlaySpec;
+import com.fongmi.android.tv.player.media.MediaItemFactory;
 import com.fongmi.android.tv.player.parse.ParseJob;
 import com.fongmi.android.tv.player.track.TrackUtil;
+import com.fongmi.android.tv.player.track.TrackSelectionState;
 import com.fongmi.android.tv.player.mpv.MpvPlayerEngine;
 import com.fongmi.android.tv.setting.DanmakuSetting;
 import com.fongmi.android.tv.setting.PlayerSetting;
@@ -60,6 +62,7 @@ public class PlayerManager implements ParseCallback {
     private final Runnable runnable;
     private final Callback callback;
     private PendingPreload pendingPreload;
+    private PlaySpec preloadedSpec;
     private PlayerEngine engine;
     private VideoSize videoSize;
     private ParseJob parseJob;
@@ -73,7 +76,7 @@ public class PlayerManager implements ParseCallback {
     /** Timeout used by the current prepare, including an engine fallback. */
     private long playbackTimeoutMs;
     private boolean danmakuEnabled;
-    private boolean initTrack;
+    private final TrackSelectionState trackSelection = new TrackSelectionState();
     private int retry;
     private int decode;
     /** The current PlaySpec that has already had one ephemeral MPV fallback. */
@@ -202,7 +205,13 @@ public class PlayerManager implements ParseCallback {
     }
 
     public boolean canPreloadNext() {
-        return PreloadSetting.isEnabled() && PreloadSetting.isNextEpisodeEnabled() && engine != null && engine.getType() == PlayerEngine.Type.EXO;
+        return canPreloadNext(false);
+    }
+
+    public boolean canPreloadNext(boolean shortDrama) {
+        boolean enabled = shortDrama ? PreloadSetting.isEnabledForShortDrama() : PreloadSetting.isEnabled();
+        boolean next = shortDrama ? PreloadSetting.isNextEpisodeEnabledForShortDrama() : PreloadSetting.isNextEpisodeEnabled();
+        return enabled && next && engine != null && engine.getType() == PlayerEngine.Type.EXO;
     }
 
     public boolean isPortrait() {
@@ -507,13 +516,19 @@ public class PlayerManager implements ParseCallback {
     }
 
     public boolean preload(PlaySpec spec, long startPositionMs) {
-        if (!canPreloadNext() || spec == null || !PlayerEngineFactory.matches(engine, spec)) return false;
-        pendingPreload = new PendingPreload(spec.checkUa(), Math.max(0, startPositionMs));
+        return preload(spec, startPositionMs, false);
+    }
+
+    public boolean preload(PlaySpec spec, long startPositionMs, boolean shortDrama) {
+        if (!canPreloadNext(shortDrama) || spec == null || !PlayerEngineFactory.matches(engine, spec)) return false;
+        preloadedSpec = spec.checkUa();
+        pendingPreload = new PendingPreload(preloadedSpec, Math.max(0, startPositionMs));
         startPreloadIfReady();
         return true;
     }
 
     public void clearPreload() {
+        preloadedSpec = null;
         pendingPreload = null;
         if (engine != null) engine.clearPreload();
     }
@@ -602,6 +617,11 @@ public class PlayerManager implements ParseCallback {
     }
 
     public void start(PlaySpec spec, long timeout, long startPositionMs) {
+        // Keep the exact tag used to prepare the next source. Rebuilding PlaySpec
+        // otherwise defeats MediaItem.equals and discards the buffered episode.
+        if (preloadedSpec != null && spec != null
+                && MediaItemFactory.matchesPreload(preloadedSpec, spec.checkUa())) spec = preloadedSpec;
+        preloadedSpec = null;
         if (this.spec != spec) softwareHevcFallbackSpec = null;
         this.spec = spec;
         fallbackSelection.onPlaybackStarted(spec);
@@ -644,7 +664,7 @@ public class PlayerManager implements ParseCallback {
         // carry Exo's preload request or one-time track initialization state
         // into that session.
         pendingPreload = null;
-        initTrack = false;
+        trackSelection.reset();
         engine = replacement;
         setPlayer(replacement.getPlayer());
         try {
@@ -717,7 +737,7 @@ public class PlayerManager implements ParseCallback {
         health.start(spec);
         ensureEngine(spec.checkUa());
         pendingPreload = null;
-        initTrack = false;
+        trackSelection.reset();
         engine.start(spec, startPositionMs);
         notifyDanmakuSourceChanged();
         App.post(runnable, timeout);
@@ -877,10 +897,9 @@ public class PlayerManager implements ParseCallback {
         @Override
         public void onTracksChanged(@NonNull Tracks tracks) {
             if (!currentMediaMatchesSpec()) return;
-            if (tracks.isEmpty() || initTrack) return;
-            setTrack(Track.find(getKey()));
+            if (tracks.isEmpty()) return;
+            trackSelection.apply(player, () -> Track.find(getKey()));
             callback.onTracksChanged();
-            initTrack = true;
             int text = TrackUtil.count(tracks, C.TRACK_TYPE_TEXT);
             if (text > 0) DiagnosticLog.write(App.get(), "playback_text_tracks", "count=" + text + " selected=" + tracks.isTypeSelected(C.TRACK_TYPE_TEXT));
         }

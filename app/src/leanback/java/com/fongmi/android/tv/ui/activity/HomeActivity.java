@@ -37,10 +37,12 @@ import com.fongmi.android.tv.bean.Site;
 import com.fongmi.android.tv.bean.Vod;
 import com.fongmi.android.tv.databinding.ActivityHomeBinding;
 import com.fongmi.android.tv.db.BackupManager;
+import com.fongmi.android.tv.diagnostics.DiagnosticLog;
 import com.fongmi.android.tv.event.CastEvent;
 import com.fongmi.android.tv.event.ConfigEvent;
 import com.fongmi.android.tv.event.RefreshEvent;
 import com.fongmi.android.tv.follow.FollowChecker;
+import com.fongmi.android.tv.follow.FollowCheckScope;
 import com.fongmi.android.tv.event.ServerEvent;
 import com.fongmi.android.tv.impl.Callback;
 import com.fongmi.android.tv.model.SiteViewModel;
@@ -199,7 +201,15 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         selector.addPresenter(ListRow.class, new CustomRowPresenter(16), VodPresenter.class);
         selector.addPresenter(History.class, mPresenter = new HistoryPresenter(this));
         mBinding.recycler.setAdapter(new ItemBridgeAdapter(mAdapter = new ArrayObjectAdapter(selector)));
-        GridLayoutManager layout = new GridLayoutManager(this, 5);
+        GridLayoutManager layout = new GridLayoutManager(this, 5) {
+            @Override
+            public boolean requestChildRectangleOnScreen(RecyclerView parent, View child, Rect rect, boolean immediate, boolean focusedChildVisible) {
+                return super.requestChildRectangleOnScreen(parent, child, rect,
+                        immediate || mBinding.recycler.isHoldingDirection(), focusedChildVisible);
+            }
+        };
+        // Card height follows the viewport when the Home headers appear/disappear.
+        layout.setMeasurementCacheEnabled(false);
         layout.setSpanSizeLookup(new GridLayoutManager.SpanSizeLookup() {
             @Override
             public int getSpanSize(int position) {
@@ -340,6 +350,7 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
             Func item = items.get(i);
             var button = com.fongmi.android.tv.databinding.AdapterFuncBinding.inflate(getLayoutInflater(), mBinding.actions, false);
             var params = new android.widget.LinearLayout.LayoutParams(0, ResUtil.dp2px(44), 1);
+            button.getRoot().setId(View.generateViewId());
             button.getRoot().setBackgroundResource(R.drawable.home_shortcut);
             button.text.setTextSize(16);
             button.text.setTextColor(androidx.core.content.ContextCompat.getColorStateList(this, R.color.tv_shortcut_text));
@@ -357,6 +368,20 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
             button.getRoot().setOnClickListener(view -> onItemClick(item));
             mBinding.actions.addView(button.getRoot());
             if (Integer.valueOf(item.getResId()).equals(focusTag)) button.getRoot().requestFocus();
+        }
+        wireShortcutFocus();
+        if (discovery != null) discovery.shortcutsChanged();
+    }
+
+    /** The shortcut row is its own horizontal loop; never let FocusFinder jump to the tabs. */
+    private void wireShortcutFocus() {
+        int count = mBinding.actions.getChildCount();
+        for (int i = 0; i < count; i++) {
+            View action = mBinding.actions.getChildAt(i);
+            action.setNextFocusLeftId(mBinding.actions.getChildAt((i + count - 1) % count).getId());
+            action.setNextFocusRightId(mBinding.actions.getChildAt((i + 1) % count).getId());
+            action.setNextFocusUpId(mBinding.home.getId());
+            action.setNextFocusDownId(mBinding.recycler.getId());
         }
     }
 
@@ -684,6 +709,17 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
             if (PlaybackService.isRunning()) Util.moveToBackground(this);
             else super.onBackInvoked();
         }
+    }
+
+    @Override
+    public void finish() {
+        // Some source plugins close the foreground Activity from detailContent.
+        // A background episode check must not dismiss Home on the user's behalf.
+        if (FollowCheckScope.isActive()) {
+            DiagnosticLog.write(this, "follow_ui_blocked", "action=finish");
+            return;
+        }
+        super.finish();
     }
 
     @Override

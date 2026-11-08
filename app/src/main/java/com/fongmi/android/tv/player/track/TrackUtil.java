@@ -58,6 +58,52 @@ public class TrackUtil {
         player.setTrackSelectionParameters(builder.build());
     }
 
+    /**
+     * Pick the first audio format when the user has not saved an audio override.
+     *
+     * Media3's default selector may prefer a later language or codec (for example
+     * the AAC preference), which makes the initial track differ between sources.
+     * A saved TrackDialog choice is represented by an audio override and must win.
+     * The player is reused between episodes, so an override for the previous
+     * media item must not count as a saved choice for the current one.
+     */
+    public static boolean selectFirstAudioTrackIfUnset(Player player) {
+        Tracks tracks = player.getCurrentTracks();
+        TrackSelectionParameters parameters = player.getTrackSelectionParameters();
+        boolean hasStaleAudioOverride = false;
+        for (TrackSelectionOverride override : parameters.overrides.values()) {
+            if (override.getType() != C.TRACK_TYPE_AUDIO) continue;
+            boolean current = false;
+            for (Tracks.Group trackGroup : tracks.getGroups()) {
+                if (trackGroup.getType() == C.TRACK_TYPE_AUDIO
+                        && trackGroup.getMediaTrackGroup().equals(override.mediaTrackGroup)) {
+                    current = true;
+                    break;
+                }
+            }
+            if (current) return false;
+            hasStaleAudioOverride = true;
+        }
+        for (Tracks.Group trackGroup : tracks.getGroups()) {
+            if (trackGroup.getType() != C.TRACK_TYPE_AUDIO) continue;
+            for (int i = 0; i < trackGroup.length; i++) {
+                if (!trackGroup.isTrackSupported(i)) continue;
+                TrackSelectionOverride override = new TrackSelectionOverride(trackGroup.getMediaTrackGroup(), List.of(i));
+                TrackSelectionParameters.Builder builder = parameters.buildUpon();
+                // This also removes a previous episode's group before selecting
+                // the first format in the current media item.
+                builder.clearOverridesOfType(C.TRACK_TYPE_AUDIO).setOverrideForType(override);
+                player.setTrackSelectionParameters(builder.build());
+                return true;
+            }
+        }
+        if (hasStaleAudioOverride) {
+            player.setTrackSelectionParameters(parameters.buildUpon()
+                    .clearOverridesOfType(C.TRACK_TYPE_AUDIO).build());
+        }
+        return false;
+    }
+
     private static TrackInfo find(Player player, Track track) {
         if (track.getFormat() == null) return null;
         Tracks currentTracks = player.getCurrentTracks();

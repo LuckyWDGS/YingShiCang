@@ -460,4 +460,5 @@
         <item>选择字幕</item>
     </string-array>
 
+    <string name="player_preload_short_drama_auto">自动（短剧漫剧）</string>
 </resources>
