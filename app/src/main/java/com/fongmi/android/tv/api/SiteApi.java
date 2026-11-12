@@ -168,11 +168,29 @@ public class SiteApi {
         return cached != null ? cached : withPermit(CRAWLER_INIT_GATE, scope, site::spider);
     }
 
-    private static <T> T crawlerCall(Spider spider, Callable<T> operation) throws Exception {
-        return crawlerCall(spider, null, operation);
+    private static <T> T crawlerCall(Spider spider, String op, Callable<T> operation) throws Exception {
+        return crawlerCall(spider, null, op, operation);
     }
 
-    private static <T> T crawlerCall(Spider spider, SearchRequestScope scope, Callable<T> operation) throws Exception {
+    /** The call is on the crash trail while it runs: the log names it only once it has returned. */
+    private static <T> T crawlerCall(Spider spider, SearchRequestScope scope, String op, Callable<T> operation) throws Exception {
+        long trail = com.fongmi.android.tv.diagnostics.CrashTrail.begin(trailName(spider) + "." + op);
+        try {
+            return gatedCall(spider, scope, operation);
+        } finally {
+            com.fongmi.android.tv.diagnostics.CrashTrail.end(trail);
+        }
+    }
+
+    private static String trailName(Spider spider) {
+        try {
+            return apiLabel(VodConfig.get().getSite(spider.siteKey).getApi());
+        } catch (RuntimeException unknown) {
+            return "none";
+        }
+    }
+
+    private static <T> T gatedCall(Spider spider, SearchRequestScope scope, Callable<T> operation) throws Exception {
         // Chaquopy exposes one Python interpreter to the whole process.  A
         // class-loader gate alone cannot protect Python-backed spiders because
         // they may be loaded by different JARs, so serialize all bridge calls.
@@ -239,17 +257,17 @@ public class SiteApi {
         return site.getType() == 3;
     }
 
-    private static <T> T spiderCall(Spider spider, long budgetMillis, Callable<T> operation) throws Exception {
-        return crawlerCall(spider, () -> WoggAddressCompatibility.call(spider, budgetMillis, () -> {}, operation));
+    private static <T> T spiderCall(Spider spider, String op, long budgetMillis, Callable<T> operation) throws Exception {
+        return crawlerCall(spider, op, () -> WoggAddressCompatibility.call(spider, budgetMillis, () -> {}, operation));
     }
 
     /** Like spiderCall, but time the source spends in its own login dialog does not use up the budget. */
-    private static <T> T loginAwareCall(Spider spider, long budgetMillis, Callable<T> operation) throws Exception {
+    private static <T> T loginAwareCall(Spider spider, String op, long budgetMillis, Callable<T> operation) throws Exception {
         java.util.function.LongSupplier paused = com.fongmi.android.tv.cloudlogin.LoginWait::pausedMillis;
         long started = System.nanoTime(), base = paused.getAsLong();
         WoggAddressCompatibility.RemainingMillis remaining = () -> budgetMillis + (paused.getAsLong() - base)
                 - java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
-        return crawlerCall(spider, () -> WoggAddressCompatibility.call(spider, remaining, paused, () -> {}, operation));
+        return crawlerCall(spider, op, () -> WoggAddressCompatibility.call(spider, remaining, paused, () -> {}, operation));
     }
 
     private static long discoveryBudget(Site site) {
@@ -281,7 +299,7 @@ public class SiteApi {
             // parallel on a TV device.
             Spider spider = crawler(site);
             String home = com.fongmi.android.tv.api.compat.AiDramaFilterCompatibility.classes(site, spider,
-                    spiderCall(spider, discoveryBudget(site), () -> spider.homeContent(true)), client, calls);
+                    spiderCall(spider, "home", discoveryBudget(site), () -> spider.homeContent(true)), client, calls);
             Result result = discoveryResult(home, 3, "class");
             setDiscoveryTypes(site, result);
             return result;
@@ -299,7 +317,7 @@ public class SiteApi {
         if (!isSpider(site)) throw new IOException("AI source native runtime unavailable");
         Spider spider = crawler(site);
         Result result = discoveryResult(com.fongmi.android.tv.api.compat.AiDramaFilterCompatibility.nativeClasses(
-                spider, spiderCall(spider, discoveryBudget(site), () -> spider.homeContent(true))), 3, "class");
+                spider, spiderCall(spider, "home", discoveryBudget(site), () -> spider.homeContent(true))), 3, "class");
         setDiscoveryTypes(site, result);
         return result;
     }
@@ -311,7 +329,7 @@ public class SiteApi {
             Spider spider = crawler(site);
             String compatible = com.fongmi.android.tv.api.compat.AiDramaFilterCompatibility.page(site, spider, tid, page, extend, client, calls);
             return discoveryResult(compatible != null ? compatible
-                    : spiderCall(spider, discoveryBudget(site),
+                    : spiderCall(spider, "category", discoveryBudget(site),
                             () -> spider.categoryContent(tid, String.valueOf(page), true, new HashMap<>(extend))), 3, "list");
         }
         ArrayMap<String, String> params = new ArrayMap<>();
@@ -412,8 +430,8 @@ public class SiteApi {
         if (isSpider(site)) {
             Spider spider = recentCrawler(site);
             boolean crash = Prefers.getBoolean("crash");
-            String home = crash ? "" : spiderCall(spider, Constant.TIMEOUT_VOD, () -> spider.homeContent(true));
-            String video = crash ? "" : spiderCall(spider, Constant.TIMEOUT_VOD, spider::homeVideoContent);
+            String home = crash ? "" : spiderCall(spider, "home", Constant.TIMEOUT_VOD, () -> spider.homeContent(true));
+            String video = crash ? "" : spiderCall(spider, "homeVideo", Constant.TIMEOUT_VOD, spider::homeVideoContent);
             Prefers.put("crash", false);
             SpiderDebug.log("home", home);
             SpiderDebug.log("homeVideo", video);
@@ -449,7 +467,7 @@ public class SiteApi {
         Site site = VodConfig.get().getSite(key);
         if (isSpider(site)) {
             Spider spider = recentCrawler(site);
-            String categoryContent = spiderCall(spider, Constant.TIMEOUT_VOD,
+            String categoryContent = spiderCall(spider, "category", Constant.TIMEOUT_VOD,
                     () -> spider.categoryContent(tid, page, filter, extend));
             SpiderDebug.log("category", categoryContent);
             return Result.fromJson(categoryContent);
@@ -578,7 +596,7 @@ public class SiteApi {
             long spiderStart = SystemClock.elapsedRealtime();
             String detailContent;
             try {
-                detailContent = spiderCall(spider, Constant.TIMEOUT_VOD, () -> spider.detailContent(Arrays.asList(id)));
+                detailContent = spiderCall(spider, "detail", Constant.TIMEOUT_VOD, () -> spider.detailContent(Arrays.asList(id)));
             } finally {
                 SPIDER_MS.set(SystemClock.elapsedRealtime() - spiderStart);
             }
@@ -630,7 +648,7 @@ public class SiteApi {
             long spiderStart = SystemClock.elapsedRealtime();
             String playerContent;
             try {
-                playerContent = loginAwareCall(spider, Constant.TIMEOUT_VOD,
+                playerContent = loginAwareCall(spider, "player", Constant.TIMEOUT_VOD,
                         () -> spider.playerContent(flag, id, VodConfig.get().getFlags()));
             } finally {
                 SPIDER_MS.set(SystemClock.elapsedRealtime() - spiderStart);
@@ -721,7 +739,7 @@ public class SiteApi {
             Spider spider = searchSpider(site, scope);
             // Only the verified base implementation has no optional pagination.
             if (hasPage && SpiderSearchCapability.hasDefaultPagination(spider)) return Result.empty();
-            String searchContent = crawlerCall(spider, scope, () -> WoggAddressCompatibility.search(spider,
+            String searchContent = crawlerCall(spider, scope, "search", () -> WoggAddressCompatibility.search(spider,
                     scope::remainingMillis, scope::checkCancellation,
                     () -> hasPage ? spider.searchContent(keyword, quick, page) : spider.searchContent(keyword, quick)));
             scope.checkCancellation();
@@ -808,7 +826,7 @@ public class SiteApi {
         SpiderDebug.log("action", "key=%s,action=%s", key, action);
         if (site.getType() == 3) {
             Spider spider = recentCrawler(site);
-            return Result.fromJson(spiderCall(spider, Constant.TIMEOUT_VOD, () -> spider.action(action)));
+            return Result.fromJson(spiderCall(spider, "action", Constant.TIMEOUT_VOD, () -> spider.action(action)));
         }
         if (site.getType() == 4) {
             if (!action.startsWith("http")) return Result.empty();

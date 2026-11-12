@@ -18,6 +18,9 @@ public final class PlaybackHealth {
     private int state, buffers;
     private boolean active, playRequested = true, seeking;
     private String error = "";
+    private final java.util.function.LongSupplier clock;
+    public PlaybackHealth() { this(SystemClock::elapsedRealtime); }
+    PlaybackHealth(java.util.function.LongSupplier clock) { this.clock = clock; }
     public static Stream lastStream() { return lastStream; }
     public static Summary lastSummary() { return lastSummary; }
     public static boolean active() { return ACTIVE.get() > 0; }
@@ -25,13 +28,13 @@ public final class PlaybackHealth {
         finish();
         if (spec == null || spec.getUrl() == null || spec.getUrl().trim().isEmpty()) return;
         lastStream = new Stream(spec.getUrl(), Collections.unmodifiableMap(spec.getHeaders() == null ? Map.of() : new HashMap<>(spec.getHeaders())));
-        id = UUID.randomUUID().toString(); started = mark = SystemClock.elapsedRealtime();
+        id = UUID.randomUUID().toString(); started = mark = clock.getAsLong();
         played = buffered = 0; ready = -1; buffers = 0; error = ""; seeking = false; state = 0;
         playRequested = true; active = true; ACTIVE.incrementAndGet();
         log("start", "");
     }
     private void account() {
-        long now = SystemClock.elapsedRealtime(), delta = Math.max(0, now - mark); mark = now;
+        long now = clock.getAsLong(), delta = Math.max(0, now - mark); mark = now;
         if (playRequested && ready >= 0 && !seeking) {
             if (state == 3) played += delta;
             if (state == 2) buffered += delta;
@@ -57,6 +60,8 @@ public final class PlaybackHealth {
         }
     }
     public void error(String value) { error = value; log("error", value); finish(); }
+    /** The player carried on by itself (a live stream that fell behind its window): the session goes on. */
+    public void recovered(String value) { if (active) { account(); log("recovered", value + " playedMs=" + played); } }
     public void finish() {
         if (!active) return;
         account(); lastSummary = new Summary(ready, played, buffered, buffers, error);

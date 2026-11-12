@@ -130,25 +130,104 @@ public final class DriveLogins {
     /** A line of a scanned-in drive got an address or failed to. */
     public static void played(String flag, boolean ok) {
         if (!ok) return;
+        REFUSED.remove(family(flag));
         record(flag, true);
     }
 
     public static void failed(String flag, Throwable error) {
+        LoginNeeded login = loginNeeded(flag, error);
+        if (login != null) REFUSED.add(login.family());
         if (authenticationFailure(error)) record(flag, false);
     }
 
+    // Drives a source has just refused for want of a login, until one of their lines plays: the stored
+    // login the mark stands for may be another plugin's, or expired.
+    private static final Set<String> REFUSED = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    /** Whether a line's chip may carry the scanned-in mark. */
+    public static boolean marked(Set<String> scanned, String flag) {
+        String family = family(flag);
+        return scanned.contains(family) && !REFUSED.contains(family);
+    }
+
     static boolean authenticationFailure(Throwable error) {
-        if (com.fongmi.android.tv.resource.ResourceHealth.isCancellation(error)) return false;
+        return said(error, DriveLogins::expired) != null;
+    }
+
+    // A generic 401/403 or a broken share says nothing about the drive login.
+    private static boolean expired(String text) {
+        return text.contains("登录已过期") || text.contains("登录失效") || text.contains("登录过期")
+                || text.contains("cookie已失效") || text.contains("cookie过期")
+                || text.contains("请重新扫码") || text.contains("请先登录");
+    }
+
+    /** Never logged in, as the AiNew… plugins put it: 还没有配置夸克 Cookie，请先去配置中心登录夸克 (TCL log 2026-11-10). */
+    private static boolean missing(String text) {
+        return (text.contains("还没有配置") && (text.contains("cookie") || text.contains("登录")))
+                || text.contains("请先去配置中心登录") || text.contains("未登录") || text.contains("尚未登录");
+    }
+
+    private static String said(Throwable error, Predicate<String> match) {
+        if (com.fongmi.android.tv.resource.ResourceHealth.isCancellation(error)) return null;
         for (int depth = 0; error != null && depth < 8; depth++, error = error.getCause()) {
-            // A generic 401/403 or a broken share says nothing about the drive login.
             String message = error.getMessage();
-            if (message == null) continue;
-            String text = message.toLowerCase(Locale.ROOT).replace(" ", "");
-            if (text.contains("登录已过期") || text.contains("登录失效") || text.contains("登录过期")
-                    || text.contains("cookie已失效") || text.contains("cookie过期")
-                    || text.contains("请重新扫码") || text.contains("请先登录")) return true;
+            if (message != null && match.test(message.toLowerCase(Locale.ROOT).replace(" ", ""))) return message;
         }
-        return false;
+        return null;
+    }
+
+    /** A line that cannot play until the user logs in to its drive, with the source's own words. */
+    public record LoginNeeded(String family, boolean missing, String said) {
+        public String drive() {
+            return switch (family) {
+                case QUARK -> "夸克网盘";
+                case BAIDU -> "百度网盘";
+                case UC -> "UC 网盘";
+                case "ali" -> "阿里云盘";
+                case "115" -> "115 网盘";
+                case "123" -> "123 云盘";
+                case "xunlei" -> "迅雷云盘";
+                case "tianyi" -> "天翼云盘";
+                case "yidong" -> "移动云盘";
+                default -> "网盘";
+            };
+        }
+    }
+
+    /** Null unless the source refused the line for want of a login. */
+    public static LoginNeeded loginNeeded(String flag, Throwable error) {
+        String never = said(error, DriveLogins::missing);
+        String said = never != null ? never : said(error, DriveLogins::expired);
+        if (said == null) return null;
+        String family = family(flag);
+        // The line's name need not name the drive; the source's message usually does.
+        if (!needsScan(family) && needsScan(family(said))) family = family(said);
+        return new LoginNeeded(family, never != null, readable(said));
+    }
+
+    /** The source's sentence without its tags ([quark](auth)), addresses or line breaks. */
+    static String readable(String said) {
+        String text = said.replaceAll("https?://\\S+", "…").replaceAll("\\s+", " ").trim();
+        text = text.replaceFirst("^(\\[[^\\]]*\\]|\\([^)]*\\)|\\s)+", "");
+        return text.length() > 60 ? text.substring(0, 60) + "…" : text;
+    }
+
+    /** What the screen says once lines were refused for want of a login; empty if none was. */
+    public static String loginText(java.util.Collection<LoginNeeded> needed) {
+        if (needed.isEmpty()) return "";
+        List<String> never = new ArrayList<>();
+        List<String> lost = new ArrayList<>();
+        String said = "";
+        for (LoginNeeded item : needed) {
+            List<String> names = item.missing() ? never : lost;
+            if (!names.contains(item.drive())) names.add(item.drive());
+            said = item.said();
+        }
+        List<String> lines = new ArrayList<>();
+        if (!never.isEmpty()) lines.add(String.join("、", never) + "还没有登录");
+        if (!lost.isEmpty()) lines.add(String.join("、", lost) + "的登录可能已失效");
+        if (!said.isEmpty()) lines.add("源提示：" + said);
+        return String.join("\n", lines);
     }
 
     private static synchronized void record(String flag, boolean ok) {

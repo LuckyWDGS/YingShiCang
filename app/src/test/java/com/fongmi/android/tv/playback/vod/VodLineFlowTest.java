@@ -33,6 +33,7 @@ public class VodLineFlowTest {
     private final List<VodPlayRequest> requests = new ArrayList<>();
     private final List<String> switched = new ArrayList<>();
     private final List<String> searches = new ArrayList<>();
+    private final List<String> errors = new ArrayList<>();
     private final History saved = new History();
     private final VodPlaybackState state = new VodPlaybackState();
     private long now = 1_000;
@@ -93,6 +94,15 @@ public class VodLineFlowTest {
 
     private void addressFails() {
         controller.onPlaybackResult(new PlaybackResult<>(last(), null, new java.io.IOException("connection reset")));
+    }
+
+    /** As ResourceResponseSchema hands a source's refusal on: its words ride along as the cause. */
+    private void sourceSays(String words) {
+        controller.onPlaybackResult(new PlaybackResult<>(last(), null, new java.io.IOException("Source response unavailable", new java.io.IOException(words))));
+    }
+
+    private String shown() {
+        return errors.get(errors.size() - 1);
     }
 
     private void addressArrives() {
@@ -220,6 +230,85 @@ public class VodLineFlowTest {
     }
 
     @Test
+    public void aDriveNotLoggedInIsSaidSoAndItsOtherLinesArePassedOver() {
+        DriveLogins.setScanned(family -> false);
+        saved("夸克1", "第5集");
+        open(line("夸克1", 24), line("夸克2", 24), line("百度1", 24), line("百度2", 24), line("线路一", 24));
+        sourceSays("[quark](auth) 还没有配置夸克 Cookie，请先去配置中心登录夸克");
+        assertEquals("夸克网盘还没有登录\n源提示：还没有配置夸克 Cookie，请先去配置中心登录夸克", shown());
+        assertEquals("百度1", last().getFlag());
+        sourceSays("[baidu](auth) 还没有配置百度网盘 Cookie，请先去配置中心登录百度网盘");
+        assertEquals("夸克网盘、百度网盘还没有登录\n源提示：还没有配置百度网盘 Cookie，请先去配置中心登录百度网盘", shown());
+        assertEquals("线路一", last().getFlag());
+        assertEquals(3, requests.size());
+        addressFails();
+        assertEquals("此线路暂时无法连接\n其余线路需要先登录夸克网盘、百度网盘", shown());
+        assertEquals(3, requests.size());
+        assertEquals(List.of("QA"), searches);
+    }
+
+    @Test
+    public void aLinePickedByHandIsAskedAndALoginSinceIsNoticed() {
+        DriveLogins.setScanned(family -> false);
+        saved("夸克1", "第5集");
+        open(line("夸克1", 24), line("夸克2", 24), line("夸克3", 24));
+        sourceSays("还没有配置夸克 Cookie，请先去配置中心登录夸克");
+        assertEquals(1, requests.size());
+        assertEquals(List.of("QA"), searches);
+        // The user logs in and picks another line of that drive.
+        controller.selectFlag(state.getFlags().get(1));
+        assertEquals("夸克2", last().getFlag());
+        addressArrives();
+        controller.playbackReady();
+        // Later that line breaks for another reason: the drive's other lines get their turn again.
+        for (int i = 0; i < 2; i++) {
+            controller.playbackError("stalled");
+            addressArrives();
+        }
+        controller.playbackError("stalled");
+        assertEquals("夸克3", last().getFlag());
+        assertEquals("stalled", shown());
+    }
+
+    @Test
+    public void aSourceTriedInsteadStartsOnALineWhoseDriveWasNotRefused() {
+        DriveLogins.setScanned(family -> false);
+        saved("夸克1", "第5集");
+        open(line("夸克1", 24), line("夸克2", 24));
+        sourceSays("还没有配置夸克 Cookie，请先去配置中心登录夸克");
+        assertEquals(List.of("QA"), searches);
+        int asked = requests.size();
+        state.setAutoFallback(true);
+        open(line("夸克原画", 24), line("线路一", 24));
+        assertEquals(asked + 1, requests.size());
+        assertEquals("线路一", last().getFlag());
+    }
+
+    @Test
+    public void theLineRowReportingTheAppsOwnChangeDoesNotCancelTheChangeOfSource() {
+        saved("线路一", "第5集");
+        open(line("线路一", 24), line("线路二", 24));
+        addressFails();
+        addressFails();
+        assertEquals(List.of("QA"), searches);
+        // The TV's row reports the last automatic change of line a moment later.
+        controller.selectFlag(state.getFlag());
+        assertTrue(state.isSelectFirstSource());
+        // A line the user picks does cancel it.
+        controller.selectFlag(state.getFlags().get(0));
+        org.junit.Assert.assertFalse(state.isSelectFirstSource());
+    }
+
+    @Test
+    public void anOrdinaryFailureSaysNothingAboutLogins() {
+        saved("夸克1", "第5集");
+        open(line("夸克1", 24), line("夸克2", 24));
+        addressFails();
+        assertEquals("此线路暂时无法连接", shown());
+        assertEquals("夸克2", last().getFlag());
+    }
+
+    @Test
     public void nextSkipsASecondCopyOfTheSameEpisode() {
         saved("线路一", "22.mp4");
         open(named("线路一", "21.mp4", "22.mp4", "22.mp4", "23.mp4"));
@@ -282,7 +371,7 @@ public class VodLineFlowTest {
         @Override public void onPlaybackRequested() {}
         @Override public void prepareSource(Vod item) {}
         @Override public void stopPlaybackForRefresh() {}
-        @Override public void resetPlaybackForError(String msg) {}
+        @Override public void resetPlaybackForError(String msg) { errors.add(msg); }
         @Override public void replay(long position) {}
         @Override public void startPlayback(Result result, boolean useParse, long startPositionMs, MediaMetadata metadata) {}
         @Override public boolean preloadPlayback(Result result, long startPositionMs, MediaMetadata metadata) { return false; }
@@ -294,7 +383,8 @@ public class VodLineFlowTest {
         @Override public void renderFallbackName(String name) {}
         @Override public void renderFlags(List<Flag> items) {}
         @Override public void renderEpisodes(List<Episode> items) {}
-        @Override public void renderFlagSelection(Flag item) {}
+        // As on the TV: the line row reports the app's own change of line as a pick too.
+        @Override public void renderFlagSelection(Flag item) { controller.selectFlag(item); }
         @Override public void renderEpisodeSelection(Episode item) {}
         @Override public void renderReverseEpisodes(List<Episode> items, boolean scroll) {}
         @Override public void renderQuality(Result result, boolean visible) {}

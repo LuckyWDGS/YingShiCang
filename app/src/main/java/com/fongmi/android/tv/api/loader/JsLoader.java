@@ -43,7 +43,12 @@ public class JsLoader {
             try {
                 spider = loader.spider(api, BaseLoader.get().dex(jar));
                 spider.siteKey = key;
-                spider.init(App.get(), ext);
+                long trail = com.fongmi.android.tv.diagnostics.CrashTrail.begin("js.init");
+                try {
+                    spider.init(App.get(), ext);
+                } finally {
+                    com.fongmi.android.tv.diagnostics.CrashTrail.end(trail);
+                }
                 return spider;
             } catch (Throwable e) {
                 if (spider != null) spider.abortInitialization();

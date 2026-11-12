@@ -107,6 +107,7 @@ public class App extends Application implements Application.ActivityLifecycleCal
     @Override
     public void onActivityResumed(@NonNull Activity activity) {
         if (activity != activity()) this.activity = activity;
+        com.fongmi.android.tv.diagnostics.CrashTrail.screen(activity.getClass().getSimpleName());
     }
 
     @Override

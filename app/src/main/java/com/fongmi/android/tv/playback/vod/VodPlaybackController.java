@@ -133,11 +133,46 @@ public class VodPlaybackController {
         if (health != ResourceHealth.Status.AVAILABLE) {
             recordPlaybackHealth(playback.request(), health);
             preloader.clear();
-            host.resetPlaybackForError(health == ResourceHealth.Status.INVALID ? "此线路暂时没有可播放内容" : "此线路暂时无法连接");
+            boolean login = loginNeeded(playback);
+            host.resetPlaybackForError(login ? DriveLogins.loginText(state.getLoginNeeded())
+                    : withLoginHint(health == ResourceHealth.Status.INVALID ? "此线路暂时没有可播放内容" : "此线路暂时无法连接"));
             fallbackPolicy.playbackError();
             return;
         }
+        // The drive answered with an address: the user has logged in since it was refused. (The TV's line row
+        // reports every change of line as a pick, the app's own too, so a pick alone cannot clear this.)
+        state.loggedIn(playback.request().getFlag());
         applyPlaybackResult(playback.result(), playback.request());
+    }
+
+    /**
+     * The source refused the line for want of a drive login (TCL log 2026-11-10: three sources and
+     * thirteen lines were asked in turn, each answering 还没有配置夸克 Cookie, and the screen only said
+     * it was changing lines). The screen now says so in the source's words, and the other lines of that
+     * drive are passed over, in this source and in the ones tried after it.
+     */
+    private boolean loginNeeded(PlaybackResult<VodPlayRequest> playback) {
+        DriveLogins.LoginNeeded login = DriveLogins.loginNeeded(playback.request().getFlag(), playback.error());
+        if (login == null) return false;
+        if (state.addLoginNeeded(login)) DiagnosticLog.write(App.get(), "drive_login_needed", "family=" + login.family() + " kind=" + (login.missing() ? "missing" : "expired") + " lines=" + DriveLogins.describe(state.getFlags()) + " center=" + hasLoginCenter());
+        return true;
+    }
+
+    /** Whether the configuration has a source named 配置中心, where such plugins take their logins. */
+    private static boolean hasLoginCenter() {
+        try {
+            for (com.fongmi.android.tv.bean.Site site : VodConfig.get().getSites()) if (site.getName().contains("配置中心")) return true;
+        } catch (RuntimeException ignored) {
+        }
+        return false;
+    }
+
+    /** A failure of another kind, with the drives still waiting for a login named below it. */
+    private String withLoginHint(String msg) {
+        if (state.getLoginNeeded().isEmpty()) return msg;
+        java.util.List<String> drives = new java.util.ArrayList<>();
+        for (DriveLogins.LoginNeeded login : state.getLoginNeeded()) if (!drives.contains(login.drive())) drives.add(login.drive());
+        return msg + "\n其余线路需要先登录" + String.join("、", drives);
     }
 
     private void applyPlaybackResult(Result result, VodPlayRequest request) {
@@ -179,6 +214,10 @@ public class VodPlaybackController {
     }
 
     public void selectFlag(Flag item) {
+        // The TV's line row reports the app's own change of line as a pick, a layout pass later. When the
+        // line had failed by then and the search for another source had begun, that late report cancelled
+        // the change of source (LDPlayer 2026-11-12, lines failing within milliseconds).
+        if (state.hasFlags() && resolveFlag(item).isSelected()) return;
         state.setSelectFirstSource(false);
         selectFlag(item, false);
     }
@@ -286,7 +325,7 @@ public class VodPlaybackController {
             return;
         }
         preloader.clear();
-        host.resetPlaybackForError(msg);
+        host.resetPlaybackForError(withLoginHint(msg));
         // Player/decoder events do not carry a resource request token. Never use
         // an old stream's error to blacklist a newly selected resource.
         fallbackPolicy.playbackError();
@@ -489,6 +528,8 @@ public class VodPlaybackController {
         List<Flag> flags = item.getFlags();
         DriveLogins.prefer(flags);
         state.clearFailedLines();
+        // A source tried in place of a failed one meets the same drives: what they need is kept.
+        if (!state.isAutoFallback()) state.clearLoginNeeded();
         state.setFlags(flags);
         History history = historyPolicy.findOrCreate(host.getHistoryKey(), host.getVodMark(), item);
         state.setHistory(history);
@@ -509,6 +550,8 @@ public class VodPlaybackController {
 
     private Flag entryFlag(History history) {
         Flag entry = DriveLogins.entry(state.getFlags(), findFlag(history.getFlag()));
+        // A source tried in place of a failed one: start on a line whose drive was not just refused.
+        if (state.needsLogin(entry)) for (Flag flag : state.getFlags()) if (!state.needsLogin(flag)) { entry = flag; break; }
         DiagnosticLog.write(App.get(), "vod_lines", "lines=" + DriveLogins.describe(state.getFlags()) + " saved=" + DriveLogins.family(history.getVodFlag()) + " open=" + DriveLogins.family(entry.getFlag()));
         return entry;
     }

@@ -72,7 +72,7 @@ public class FlagAdapter extends RecyclerView.Adapter<FlagAdapter.ViewHolder> {
     @Override
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
         Flag item = mItems.get(position);
-        holder.binding.text.setText(scanned.contains(DriveLogins.family(item.getFlag())) ? item.getShow() + " ✓" : item.getShow());
+        holder.binding.text.setText(DriveLogins.marked(scanned, item.getFlag()) ? item.getShow() + " ✓" : item.getShow());
         holder.binding.text.setSelected(item.isSelected());
         holder.binding.text.setNextFocusDownId(nextFocusDown);
         holder.binding.getRoot().setOnClickListener(v -> mListener.onItemClick(item));

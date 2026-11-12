@@ -21,4 +21,15 @@ public class PlaybackHealthTest {
                 || !"  ".equals(PlaybackHealth.lastStream().url()));
     }
 
+    @Test
+    public void anErrorThePlayerRecoveredFromKeepsTheSession() {
+        PlaybackHealth health = new PlaybackHealth(() -> 1_000);
+        health.start(PlaySpec.from("live", "http://127.0.0.1/live.m3u8", Map.of(), null));
+        health.state(3);
+        health.recovered("ERROR_CODE_BEHIND_LIVE_WINDOW");
+        assertTrue(PlaybackHealth.active());
+        health.error("ERROR_CODE_IO_UNSPECIFIED");
+        assertFalse(PlaybackHealth.active());
+    }
+
 }

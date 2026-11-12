@@ -76,7 +76,7 @@ class VodFallbackPolicy {
         // The line opened need not be the first, so go round: every line gets its turn once.
         for (int i = 1; i < flags.size(); i++) {
             Flag flag = flags.get((position + i) % flags.size());
-            if (state.hasFailedLine(flag)) continue;
+            if (state.hasFailedLine(flag) || state.needsLogin(flag)) continue;
             host.showSwitchLine(flag);
             controller.fallbackFlag(flag);
             return true;

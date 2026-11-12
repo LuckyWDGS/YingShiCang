@@ -19,6 +19,7 @@ public class VodPlaybackState {
 
     private final Set<SourceId> failedSources;
     private final Set<String> failedLines;
+    private final java.util.Map<String, com.fongmi.android.tv.cloudlogin.DriveLogins.LoginNeeded> loginNeeded = new java.util.LinkedHashMap<>();
     private final List<Vod> sources;
     private final List<Flag> flags;
     private VodPlayRequest pendingRequest;
@@ -52,6 +53,7 @@ public class VodPlaybackState {
     public void reset() {
         failedSources.clear();
         failedLines.clear();
+        loginNeeded.clear();
         sources.clear();
         flags.clear();
         clearPlayRequest();
@@ -79,6 +81,28 @@ public class VodPlaybackState {
 
     void clearFailedLines() {
         failedLines.clear();
+    }
+
+    /** True the first time this drive is refused for want of a login. */
+    boolean addLoginNeeded(com.fongmi.android.tv.cloudlogin.DriveLogins.LoginNeeded login) {
+        return loginNeeded.put(login.family(), login) == null;
+    }
+
+    /** A line of a drive the source already refused for want of a login; asking again cannot help. */
+    boolean needsLogin(Flag flag) {
+        return loginNeeded.containsKey(com.fongmi.android.tv.cloudlogin.DriveLogins.family(flag.getFlag()));
+    }
+
+    java.util.Collection<com.fongmi.android.tv.cloudlogin.DriveLogins.LoginNeeded> getLoginNeeded() {
+        return loginNeeded.values();
+    }
+
+    void loggedIn(String flag) {
+        loginNeeded.remove(com.fongmi.android.tv.cloudlogin.DriveLogins.family(flag));
+    }
+
+    void clearLoginNeeded() {
+        loginNeeded.clear();
     }
 
     void addFailedId(String key, String id) {

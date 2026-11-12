@@ -85,6 +85,45 @@ public class DriveLoginsTest {
         org.junit.Assert.assertTrue(DriveLogins.authenticationFailure(new Exception("provider", new Exception("登录已过期，请重新扫码"))));
     }
 
+    @Test public void aRefusalForWantOfALoginNamesTheDriveInTheSourcesWords() {
+        Exception refused = new java.io.IOException("Source response unavailable", new java.io.IOException("[uc](auth) 还没有配置 UC Cookie，请先去配置中心登录 UC 网盘"));
+        DriveLogins.LoginNeeded login = DriveLogins.loginNeeded("UC原画", refused);
+        assertEquals("uc", login.family());
+        assertEquals(true, login.missing());
+        assertEquals("还没有配置 UC Cookie，请先去配置中心登录 UC 网盘", login.said());
+        // The line's name need not name the drive.
+        assertEquals("quark", DriveLogins.loginNeeded("线路3", new Exception("还没有配置夸克 Cookie，请先去配置中心登录夸克")).family());
+        assertEquals("other", DriveLogins.loginNeeded("线路3", new Exception("账号未登录")).family());
+        DriveLogins.LoginNeeded lost = DriveLogins.loginNeeded("百度1", new Exception("登录已过期，请重新扫码"));
+        assertEquals(false, lost.missing());
+        assertEquals("百度网盘的登录可能已失效\n源提示：登录已过期，请重新扫码", DriveLogins.loginText(List.of(lost)));
+        org.junit.Assert.assertNull(DriveLogins.loginNeeded("夸克1", new java.io.IOException("HTTP 403")));
+        org.junit.Assert.assertNull(DriveLogins.loginNeeded("夸克1", new Exception("分享已失效")));
+        org.junit.Assert.assertNull(DriveLogins.loginNeeded("夸克1", new java.util.concurrent.CancellationException("请先登录")));
+        // Never logged in is not an expired login of a scanned drive.
+        org.junit.Assert.assertFalse(DriveLogins.authenticationFailure(new Exception("还没有配置夸克 Cookie，请先去配置中心登录夸克")));
+    }
+
+    @Test public void aRefusedDriveLosesItsMarkUntilALineOfItPlays() {
+        java.util.Set<String> scanned = java.util.Set.of("quark", "baidu");
+        DriveLogins.setScanned(family -> false);
+        org.junit.Assert.assertTrue(DriveLogins.marked(scanned, "夸克1"));
+        DriveLogins.failed("夸克1", new Exception("还没有配置夸克 Cookie，请先去配置中心登录夸克"));
+        org.junit.Assert.assertFalse(DriveLogins.marked(scanned, "夸克2"));
+        org.junit.Assert.assertTrue(DriveLogins.marked(scanned, "百度1"));
+        DriveLogins.failed("夸克1", new java.io.IOException("timeout"));
+        org.junit.Assert.assertFalse(DriveLogins.marked(scanned, "夸克2"));
+        DriveLogins.played("夸克2", true);
+        org.junit.Assert.assertTrue(DriveLogins.marked(scanned, "夸克1"));
+        org.junit.Assert.assertFalse(DriveLogins.marked(scanned, "线路一"));
+        DriveLogins.setScanned(null);
+    }
+
+    @Test public void theSourcesWordsLoseTagsAndAddresses() {
+        assertEquals("请先登录 …", DriveLogins.readable("[quark] (auth)\n请先登录   https://example.com/login?x=1"));
+        assertEquals(61, DriveLogins.readable("请先登录" + "啊".repeat(80)).length());
+    }
+
     @Test public void unverifiedUcStateIsHonestAndSavedLineIsKept() {
         assertEquals("UC 状态未知", DriveLogins.summary(List.of(new DriveLogins.Status("UC", false, false, false))));
         var flags = lines("夸克", "UC");

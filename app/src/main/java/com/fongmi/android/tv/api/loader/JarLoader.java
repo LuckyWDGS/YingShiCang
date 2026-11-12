@@ -209,7 +209,12 @@ public class JarLoader {
                     context = PythonPluginCompatibility.hostContext(context);
                 }
                 checkCancellation();
-                spider.init(context, ext);
+                long trail = com.fongmi.android.tv.diagnostics.CrashTrail.begin(api + ".init");
+                try {
+                    spider.init(context, ext);
+                } finally {
+                    com.fongmi.android.tv.diagnostics.CrashTrail.end(trail);
+                }
                 checkCancellation();
                 return spider;
             } catch (Throwable e) {

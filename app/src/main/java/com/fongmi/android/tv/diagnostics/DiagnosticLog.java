@@ -26,6 +26,7 @@ public final class DiagnosticLog {
         try { store = new RingLog(new File(context.getFilesDir(), "diagnostics"), MAX_BYTES); }
         catch (IOException ignored) { return; }
         crashMarker = new File(context.getFilesDir(), "diagnostics-crash-pending");
+        CrashTrail.install(new File(context.getFilesDir(), "diagnostics-trail"));
         Thread.UncaughtExceptionHandler previous = Thread.getDefaultUncaughtExceptionHandler();
         Thread.setDefaultUncaughtExceptionHandler((thread, error) -> {
             // Bounded emergency write; preserve the platform/upstream crash handler.
@@ -38,8 +39,19 @@ public final class DiagnosticLog {
             try {
                 android.app.ActivityManager manager = context.getSystemService(android.app.ActivityManager.class);
                 long seen = com.github.catvod.utils.Prefers.getLong(CRASH_EXIT_SEEN), newest = seen;
-                for (android.app.ApplicationExitInfo exit : manager.getHistoricalProcessExitReasons(null, 0, 3)) {
+                java.util.List<android.app.ApplicationExitInfo> exits = manager.getHistoricalProcessExitReasons(null, 0, 3);
+                // The trail is the last main process's: tell it with that process's exit, if it was not a normal one.
+                android.app.ApplicationExitInfo last = null;
+                for (android.app.ApplicationExitInfo exit : exits)
+                    if (context.getPackageName().equals(exit.getProcessName()) && (last == null || exit.getTimestamp() > last.getTimestamp())) last = exit;
+                for (android.app.ApplicationExitInfo exit : exits) {
+                    // An exit already logged by an earlier launch (each launch used to repeat the last three).
+                    if (exit.getTimestamp() <= seen) continue;
                     append("process_exit", "time=" + exit.getTimestamp() + " reason=" + exit.getReason() + " status=" + exit.getStatus());
+                    if (exit == last && abnormal(exit.getReason())) {
+                        String trail = CrashTrail.left(exit.getTimestamp());
+                        if (!trail.isEmpty()) append("crash_context", "reason=" + exit.getReason() + " " + trail);
+                    }
                     // Native (MPV/FFmpeg) crashes bypass the Java handler; mark them from the exit record.
                     if (exit.getReason() == android.app.ApplicationExitInfo.REASON_CRASH_NATIVE && exit.getTimestamp() > seen) {
                         markCrash();
@@ -58,6 +70,12 @@ public final class DiagnosticLog {
                 if (newest > seen) com.github.catvod.utils.Prefers.put(CRASH_EXIT_SEEN, newest);
             } catch (Exception ignored) {}
         });
+        // Older systems keep no exit records: say what was still running, whatever ended the process.
+        else if (CrashTrail.leftCalls()) WRITER.execute(() -> append("last_run", CrashTrail.left(-1)));
+    }
+    /** Killed, out of memory, crashed (Java or native), not responding, failed to start, or over its resource limits. */
+    static boolean abnormal(int reason) {
+        return (reason >= 2 && reason <= 7) || reason == 9;
     }
     /** Exception, top frames and a short cause chain, bounded so a crash cannot flood the log. */
     static String crashSummary(Throwable error) {

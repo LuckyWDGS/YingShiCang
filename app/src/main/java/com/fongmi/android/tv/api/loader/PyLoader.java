@@ -46,7 +46,12 @@ public class PyLoader {
             try {
                 Spider spider = runtime().spider(api);
                 spider.siteKey = key;
-                spider.init(App.get(), ext);
+                long trail = com.fongmi.android.tv.diagnostics.CrashTrail.begin("py.init");
+                try {
+                    spider.init(App.get(), ext);
+                } finally {
+                    com.fongmi.android.tv.diagnostics.CrashTrail.end(trail);
+                }
                 return spider;
             } catch (Throwable e) {
                 e.printStackTrace();

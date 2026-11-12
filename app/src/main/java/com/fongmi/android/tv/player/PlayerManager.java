@@ -923,9 +923,11 @@ public class PlayerManager implements ParseCallback {
             // decode retries, format changes, or an error for the new item.
             if (spec == null || engine == null || !currentMediaMatchesSpec()
                     || player.getPlayerError() != e) return;
-            health.error(e.getErrorCodeName());
-            DiagnosticLog.write(App.get(), "playback_error", e.getErrorCodeName() + " engine=" + engine.getClass().getSimpleName());
+            DiagnosticLog.write(App.get(), "playback_error", e.getErrorCodeName() + " engine=" + (engine instanceof com.fongmi.android.tv.player.exo.ExoPlayerEngine ? "exo" : "mpv"));
             PlayerEngine.ErrorAction action = engine.handleError(e);
+            // Ending the session here left a live stream that carried on with no session in the log (TCL, 2026-11-10).
+            if (action == PlayerEngine.ErrorAction.RECOVERED) health.recovered(e.getErrorCodeName());
+            else health.error(e.getErrorCodeName());
             if (action != PlayerEngine.ErrorAction.RECOVERED) App.removeCallbacks(runnable);
             switch (action) {
                 case DECODE -> handleDecodeError(e);

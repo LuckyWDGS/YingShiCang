@@ -132,6 +132,11 @@ abstract class BaseConfig {
         callback.start();
     }
 
+    /** For the log: class names are shortened in release builds. */
+    private String logType() {
+        return this instanceof VodConfig ? "vod" : this instanceof LiveConfig ? "live" : "wall";
+    }
+
     protected void loadConfig(int id, Config config, Callback callback) {
         long started = SystemClock.elapsedRealtime();
         try {
@@ -139,7 +144,7 @@ abstract class BaseConfig {
             OkHttp.cancel(getTag());
             load(config);
             if (taskId.get() != id) return;
-            DiagnosticLog.write(App.get(), "config_load", "type=" + getTag() + " ms=" + (SystemClock.elapsedRealtime() - started) + " outcome=ok saved=" + !TextUtils.isEmpty(config.getNotice()));
+            DiagnosticLog.write(App.get(), "config_load", "type=" + logType() + " ms=" + (SystemClock.elapsedRealtime() - started) + " outcome=ok saved=" + !TextUtils.isEmpty(config.getNotice()));
             if (config.equals(this.config)) config.update();
             App.post(() -> Notify.show(config.getNotice()));
             App.post(callback::success);
@@ -147,7 +152,7 @@ abstract class BaseConfig {
             e.printStackTrace();
             if (Thread.currentThread().isInterrupted() || "Canceled".equals(e.getMessage())) return;
             if (taskId.get() != id) return;
-            DiagnosticLog.write(App.get(), "config_load", "type=" + getTag() + " ms=" + (SystemClock.elapsedRealtime() - started) + " outcome=" + e.getClass().getSimpleName());
+            DiagnosticLog.write(App.get(), "config_load", "type=" + logType() + " ms=" + (SystemClock.elapsedRealtime() - started) + " outcome=" + e.getClass().getSimpleName());
             if (TextUtils.isEmpty(config.getUrl())) App.post(() -> callback.error(""));
             else App.post(() -> callback.error(Notify.getError(R.string.error_config_get, e)));
         } finally {

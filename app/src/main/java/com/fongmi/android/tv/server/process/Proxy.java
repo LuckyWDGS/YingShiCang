@@ -39,8 +39,15 @@ public class Proxy implements Process {
             params.putAll(files);
             boolean danmaku = "danmu".equalsIgnoreCase(params.get("do")) || "danmaku".equalsIgnoreCase(params.get("do"));
             lane = danmaku ? "danmaku" : "media";
-            return (danmaku ? DANMAKU : MEDIA).call(() -> createResponse(BaseLoader.get().proxy(params)),
-                    danmaku ? 55_000 : 60_000, Proxy::discard);
+            String name = "proxy." + lane;
+            return (danmaku ? DANMAKU : MEDIA).call(() -> {
+                long trail = com.fongmi.android.tv.diagnostics.CrashTrail.begin(name);
+                try {
+                    return createResponse(BaseLoader.get().proxy(params));
+                } finally {
+                    com.fongmi.android.tv.diagnostics.CrashTrail.end(trail);
+                }
+            }, danmaku ? 55_000 : 60_000, Proxy::discard);
         } catch (java.util.concurrent.TimeoutException | java.util.concurrent.RejectedExecutionException error) {
             boolean busy = error instanceof java.util.concurrent.RejectedExecutionException;
             DiagnosticLog.write(App.get(), "plugin_proxy", "lane=" + lane + " outcome=" + (busy ? "busy" : "timeout")
