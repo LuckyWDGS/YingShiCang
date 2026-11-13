@@ -34,6 +34,8 @@ python scripts/ui.py
 
 ## 签名与发版
 
+![发版与应用内更新流程](images/update-flow.svg)
+
 Debug 仅用于测试。Release 从 `YSC_KEYSTORE/YSC_KEY_ALIAS/YSC_STORE_PASSWORD/YSC_KEY_PASSWORD` 环境变量或 `ysc.*` 本地配置读取签名；配置缺失时不能将未签名包当正式版本发布。
 
 ```powershell
@@ -74,7 +76,7 @@ GitHub 发版流程：
 
 提交代码或 `git push` 本身不会发布 APK。仓库没有自动发布流程；需要按上述流程在 [GitHub Releases](https://github.com/LuckyWDGS/YingShiCang/releases) 发布，也可以用 GitHub CLI：`gh release create v3.3.1 --verify-tag --title "影视仓 3.3.1" --notes-file Release/3.3.1/RELEASE_NOTES.md --latest` 后面加两个 APK 和 `release-manifest.json`。此聚合生成器面向 TV `leanback`，不能用作手机版更新清单。
 
-首次需安装包含此更新功能的1.0.7或后续版本。设备按支持的 ABI 顺序选择附件；发现更高 `versionCode` 才提示更新。用户确认后显示下载进度，核验 APK 的版本、包名、大小、SHA-256、系统要求及当前签名，再由 Android 系统确认安装。Android 8 及以上首次更新可能需要允许此应用安装未知来源，返回应用后继续。
+应用内更新从 1.0.7 起提供（更早的版本需手动安装一次新版）。设备按支持的 ABI 顺序选择附件；发现更高 `versionCode` 才提示更新。用户确认后显示下载进度，核验 APK 的版本、包名、大小、SHA-256、系统要求及当前签名，再由 Android 系统确认安装。Android 8 及以上首次更新可能需要允许此应用安装未知来源，返回应用后继续。
 
 显式自定义服务的单包版本清单生成器（不用于 GitHub 的多包清单）：
 

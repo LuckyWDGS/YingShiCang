@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="430" viewBox="0 0 1200 430" font-family="'PingFang SC','Microsoft YaHei','Noto Sans CJK SC','Noto Sans SC','Source Han Sans SC',sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#7F99A6"/>
+    </marker>
+    <style>
+      .t{fill:#E9F3F7;font-size:17px;font-weight:600}
+      .s{fill:#9DB3BE;font-size:13px}
+      .h{fill:#56E0C2;font-size:14px;font-weight:700;letter-spacing:2px}
+      .box{fill:#132631;stroke:#2C4856;stroke-width:1.5}
+      .hi{fill:#173A3A;stroke:#56E0C2;stroke-width:1.5}
+      .ext{fill:#1C1F2B;stroke:#4A4F6A;stroke-width:1.5;stroke-dasharray:6 4}
+      .l{stroke:#7F99A6;stroke-width:1.6;fill:none}
+    </style>
+  </defs>
+  <rect width="1200" height="430" rx="20" fill="#0B1820"/>
+  <text x="40" y="52" fill="#FFFFFF" font-size="26" font-weight="700">发版与应用内更新</text>
+  <text x="40" y="80" class="s">推送代码不会发布 APK；只有在 GitHub 发布正式 Release 后，设备才会收到更新</text>
+
+  <text x="40" y="128" class="h">发版（本机）</text>
+  <rect x="40" y="140" width="250" height="100" rx="12" class="box"/>
+  <text x="60" y="174" class="t">构建签名 APK</text>
+  <text x="60" y="200" class="s">assembleLeanbackRelease</text>
+  <text x="60" y="220" class="s">arm64-v8a + armeabi-v7a</text>
+
+  <rect x="330" y="140" width="250" height="100" rx="12" class="box"/>
+  <text x="350" y="174" class="t">生成清单</text>
+  <text x="350" y="200" class="s">github_release_manifest.py</text>
+  <text x="350" y="220" class="s">→ release-manifest.json</text>
+
+  <rect x="620" y="140" width="250" height="100" rx="12" class="hi"/>
+  <text x="640" y="174" class="t">GitHub Release</text>
+  <text x="640" y="200" class="s">标签 v版本号，标记 Latest</text>
+  <text x="640" y="220" class="s">正文即更新说明</text>
+
+  <rect x="910" y="140" width="250" height="100" rx="12" class="ext"/>
+  <text x="930" y="174" class="t">更新镜像（可选）</text>
+  <text x="930" y="200" class="s">每 10 分钟同步最新正式版</text>
+  <text x="930" y="220" class="s">只提供文件，不决定版本</text>
+
+  <path class="l" d="M290 190 H326" marker-end="url(#a)"/>
+  <path class="l" d="M580 190 H616" marker-end="url(#a)"/>
+  <path class="l" d="M870 190 H906" marker-end="url(#a)"/>
+
+  <text x="40" y="298" class="h">设备</text>
+  <rect x="40" y="310" width="340" height="90" rx="12" class="box"/>
+  <text x="60" y="344" class="t">启动时检查</text>
+  <text x="60" y="370" class="s">先问镜像；失败或无新版时再问 GitHub</text>
+  <text x="60" y="388" class="s">按设备 ABI 选择安装包</text>
+
+  <rect x="420" y="310" width="400" height="90" rx="12" class="box"/>
+  <text x="440" y="344" class="t">下载并校验</text>
+  <text x="440" y="370" class="s">版本、包名、大小、SHA-256、系统要求、当前签名</text>
+  <text x="440" y="388" class="s">任一项不符都不安装</text>
+
+  <rect x="860" y="310" width="300" height="90" rx="12" class="hi"/>
+  <text x="880" y="344" class="t">系统确认安装</text>
+  <text x="880" y="370" class="s">覆盖安装，保留站源、历史、</text>
+  <text x="880" y="388" class="s">收藏和网盘登录状态</text>
+
+  <path class="l" d="M745 240 V270 H210 V306" marker-end="url(#a)"/>
+  <path class="l" d="M1035 240 V270 H745" />
+  <path class="l" d="M380 355 H416" marker-end="url(#a)"/>
+  <path class="l" d="M820 355 H856" marker-end="url(#a)"/>
+</svg>
