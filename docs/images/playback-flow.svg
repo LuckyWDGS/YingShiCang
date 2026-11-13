@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="560" viewBox="0 0 1200 560" font-family="'PingFang SC','Microsoft YaHei','Noto Sans CJK SC','Noto Sans SC','Source Han Sans SC',sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#7F99A6"/>
+    </marker>
+    <marker id="g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#56E0C2"/>
+    </marker>
+    <marker id="r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#F0A35E"/>
+    </marker>
+    <style>
+      .t{fill:#E9F3F7;font-size:17px;font-weight:600}
+      .s{fill:#9DB3BE;font-size:13px}
+      .lab{font-size:13px;font-weight:600}
+      .box{fill:#132631;stroke:#2C4856;stroke-width:1.5}
+      .ok{fill:#173A3A;stroke:#56E0C2;stroke-width:1.5}
+      .warn{fill:#33281C;stroke:#F0A35E;stroke-width:1.5}
+      .l{stroke:#7F99A6;stroke-width:1.6;fill:none}
+      .lg{stroke:#56E0C2;stroke-width:1.6;fill:none}
+      .lr{stroke:#F0A35E;stroke-width:1.6;fill:none}
+    </style>
+  </defs>
+  <rect width="1200" height="560" rx="20" fill="#0B1820"/>
+  <text x="40" y="52" fill="#FFFFFF" font-size="26" font-weight="700">点播：打开影片到开始播放</text>
+  <text x="40" y="80" class="s">播放失败时不用手动换线：先重试，再按顺序换线路，最后换站源</text>
+
+  <!-- row 1 -->
+  <rect x="40" y="120" width="230" height="92" rx="12" class="box"/>
+  <text x="60" y="154" class="t">① 打开影片</text>
+  <text x="60" y="180" class="s">配置还在加载时先等待</text>
+  <text x="60" y="198" class="s">（最长 45 秒）再取详情</text>
+
+  <rect x="320" y="120" width="250" height="92" rx="12" class="box"/>
+  <text x="340" y="154" class="t">② 排列线路</text>
+  <text x="340" y="180" class="s">已扫码登录的网盘线路靠前</text>
+  <text x="340" y="198" class="s">沿用上次看的线路和集数</text>
+
+  <rect x="620" y="120" width="230" height="92" rx="12" class="box"/>
+  <text x="640" y="154" class="t">③ 选中剧集</text>
+  <text x="640" y="180" class="s">按集名 / 集数 / 季找到</text>
+  <text x="640" y="198" class="s">同一集，续播进度</text>
+
+  <rect x="900" y="120" width="260" height="92" rx="12" class="ok"/>
+  <text x="920" y="154" class="t">④ 开始播放</text>
+  <text x="920" y="180" class="s">Exo 默认，MPV 可选</text>
+  <text x="920" y="198" class="s">播放成功后清空失败记录</text>
+
+  <path class="l" d="M270 166 H316" marker-end="url(#a)"/>
+  <path class="l" d="M570 166 H616" marker-end="url(#a)"/>
+  <path class="lg" d="M850 166 H896" marker-end="url(#g)"/>
+
+  <!-- failure branch -->
+  <path class="lr" d="M1030 212 V268" marker-end="url(#r)"/>
+  <text x="1042" y="246" class="lab" fill="#F0A35E">播放失败</text>
+
+  <rect x="900" y="272" width="260" height="92" rx="12" class="warn"/>
+  <text x="920" y="306" class="t">重试当前线路</text>
+  <text x="920" y="332" class="s">每条线路最多重试 2 次</text>
+  <text x="920" y="350" class="s">网络错误显示 HTTP 状态码</text>
+
+  <path class="lr" d="M900 318 H854" marker-end="url(#r)"/>
+
+  <rect x="500" y="272" width="350" height="92" rx="12" class="warn"/>
+  <text x="520" y="306" class="t">换下一条线路</text>
+  <text x="520" y="332" class="s">每条线路轮流试一次（包括排在前面的）</text>
+  <text x="520" y="350" class="s">跳过刚提示「未登录」的网盘的其他线路</text>
+
+  <path class="lr" d="M500 318 H454" marker-end="url(#r)"/>
+
+  <rect x="40" y="272" width="410" height="92" rx="12" class="warn"/>
+  <text x="60" y="306" class="t">换下一个站源</text>
+  <text x="60" y="332" class="s">用片名在其他站源搜索同一部作品</text>
+  <text x="60" y="350" class="s">自动切换，从头再走 ②→④</text>
+
+  <path class="lg" d="M245 272 C245 240 270 236 300 236 H760 C800 236 820 230 850 212" marker-end="url(#g)"/>
+  <text x="430" y="230" class="lab" fill="#56E0C2">新站源找到可播线路</text>
+
+  <!-- login hint -->
+  <rect x="40" y="410" width="1120" height="110" rx="12" fill="#101E27" stroke="#2C4856" stroke-width="1.5"/>
+  <text x="60" y="446" class="t">网盘未登录时（3.3.1 起）</text>
+  <text x="60" y="474" class="s">站源返回「还没有配置夸克 Cookie」「请先登录」等提示时，播放器直接说明是哪个网盘需要登录（夸克 / 百度 / UC），</text>
+  <text x="60" y="496" class="s">并附上站源原话；自动换线时不再逐条尝试这个网盘的其他线路。手动选择的线路始终会请求；该网盘有线路播放成功后恢复正常尝试。</text>
+</svg>

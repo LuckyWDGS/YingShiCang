@@ -49,3 +49,4 @@ __pycache__/
 /docs/*
 !/docs/build.md
 !/docs/日志上传-阿里云OSS部署.md
+!/docs/images/
