@@ -159,7 +159,26 @@ public final class HomeWeather {
         }
     }
 
+    /** A Chinese IP library first: abroad lookups see a proxy's exit or a wrong city (user 2026-11-14: not accurate). */
     private void locateIp(int token) {
+        request("https://myip.ipip.net/json", token, json -> {
+            WeatherLocation.Place place = WeatherLocation.ipip(json);
+            if (place == null) { locateIpAbroad(token); return; }
+            geocode(token, place, place.query(), true);
+        }, () -> locateIpAbroad(token));
+    }
+
+    private void geocode(int token, WeatherLocation.Place place, String name, boolean byCity) {
+        request("https://geocoding-api.open-meteo.com/v1/search?count=10&language=zh&format=json&countryCode=CN&name=" + Uri.encode(name), token, json -> {
+            WeatherLocation location = WeatherLocation.pick(json, byCity ? place : new WeatherLocation.Place(place.province(), ""));
+            if (location != null) forecast(token, location);
+            // A prefecture the geocoder does not know: the province's capital, still nearer than an abroad guess.
+            else if (byCity && !place.city().isEmpty() && !place.city().equals(place.province())) geocode(token, place, place.province(), false);
+            else locateIpAbroad(token);
+        }, () -> locateIpAbroad(token));
+    }
+
+    private void locateIpAbroad(int token) {
         request("https://ipwho.is/?lang=en", token, json -> {
             WeatherLocation location = WeatherLocation.fromIp(json);
             if (!WeatherLocation.chinese(location.country())) { forecast(token, location); return; }
@@ -218,16 +237,19 @@ public final class HomeWeather {
     }
     private interface Result { void accept(JsonObject json) throws Exception; }
     private void request(String url, int token, Result result) {
+        request(url, token, result, () -> fail(token));
+    }
+    private void request(String url, int token, Result result, Runnable failed) {
         if (!valid(token)) return;
         call = client.newCall(new Request.Builder().url(url).build());
         call.enqueue(new Callback() {
-            @Override public void onFailure(Call call, IOException error) { handler.post(() -> fail(token)); }
+            @Override public void onFailure(Call call, IOException error) { handler.post(() -> { if (valid(token)) failed.run(); }); }
             @Override public void onResponse(Call call, Response response) {
                 try (response) {
                     if (!response.isSuccessful() || response.body() == null) throw new IOException("Unavailable");
                     JsonObject json = JsonParser.parseString(response.body().string()).getAsJsonObject();
-                    handler.post(() -> { if (valid(token)) try { result.accept(json); } catch (Exception error) { fail(token); } });
-                } catch (Exception error) { handler.post(() -> fail(token)); }
+                    handler.post(() -> { if (valid(token)) try { result.accept(json); } catch (Exception error) { failed.run(); } });
+                } catch (Exception error) { handler.post(() -> { if (valid(token)) failed.run(); }); }
             }
         });
     }

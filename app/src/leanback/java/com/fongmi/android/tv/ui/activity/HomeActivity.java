@@ -520,6 +520,7 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
                 getVideo();
                 if (discovery != null) discovery.configReady();
                 setTitle();
+                if (mResumed) com.fongmi.android.tv.resource.SourceWarmup.resume();
                 break;
             case HISTORY:
                 getHistory();
@@ -677,6 +678,7 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         mWeather.refresh();
         if (discovery != null) discovery.setActive(true);
         if (mHistoryReturnKey != null) getHistory();
+        com.fongmi.android.tv.resource.SourceWarmup.resume();
         DLNARendererService.start(this);
         FollowChecker.resume(Notify::show);
     }
@@ -684,6 +686,7 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
     @Override
     protected void onPause() {
         mResumed = false;
+        com.fongmi.android.tv.resource.SourceWarmup.pause();
         cancelHistoryFocus(false);
         super.onPause();
         mClock.stop();

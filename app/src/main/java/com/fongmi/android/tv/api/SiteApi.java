@@ -152,6 +152,14 @@ public class SiteApi {
         for (Site site : sites) if (site.isSearchable()) prewarm(site);
     }
 
+    /** Starts one plugin on the calling thread unless it is already running; true when it was started now. */
+    public static boolean warm(Site site) {
+        if (site == null || !isSpider(site) || site.cachedSpider() != null) return false;
+        try { withPermit(CRAWLER_INIT_GATE, site::spider); return true; }
+        catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); return false; }
+        catch (Throwable ignored) { return false; /* Opening or searching reports its own failure. */ }
+    }
+
     /** Starts one plugin in the background unless it is already running. */
     public static void prewarm(Site site) {
         long revision = VodConfig.getDiscoveryRevision();

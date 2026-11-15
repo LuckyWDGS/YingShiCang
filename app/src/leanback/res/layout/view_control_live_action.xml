@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<HorizontalScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<com.fongmi.android.tv.ui.custom.ActionScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:fillViewport="true"
+    android:saveEnabled="false"
     android:scrollbars="none">
 
     <androidx.appcompat.widget.LinearLayoutCompat
@@ -108,4 +109,4 @@
             android:text="@string/play_change" />
 
     </androidx.appcompat.widget.LinearLayoutCompat>
-</HorizontalScrollView>
+</com.fongmi.android.tv.ui.custom.ActionScrollView>

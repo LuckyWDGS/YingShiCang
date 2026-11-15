@@ -34,6 +34,13 @@ public class VodPlaybackController {
     private final VodFallbackPolicy fallbackPolicy;
     private final VodPreloader preloader;
     private History lastHistory;
+    // The episode being watched when the source changed, so the next source opens on it (user 2026-11-14:
+    // 第20集 failed and the next source started at 第1集).
+    private Carry carry;
+    private boolean pickedSource;
+
+    private record Carry(String key, String flag, String remarks, long position, long duration) {
+    }
     // A failing line is retried in place (address fetched again, position kept) before the next line;
     // a short stall used to switch lines at once (user 2026-10-31).
     private final VodRetryBudget retries = new VodRetryBudget();
@@ -56,6 +63,9 @@ public class VodPlaybackController {
 
     public void reset() {
         preloader.clear();
+        carry = null;
+        carried = false;
+        pickedSource = false;
         state.reset();
     }
 
@@ -300,6 +310,8 @@ public class VodPlaybackController {
     }
 
     private void switchSource(Vod item, boolean autoFallback) {
+        carry = carry();
+        pickedSource = !autoFallback;
         state.setSelectFirstSource(false);
         state.setAutoFallback(autoFallback);
         saveCurrentHistory();
@@ -307,6 +319,26 @@ public class VodPlaybackController {
         state.clearPlayRequest();
         host.prepareSource(item);
         requestDetail();
+    }
+
+    /** A pending carry survives a source whose detail failed; otherwise it is taken from what is watched now. */
+    private Carry carry() {
+        if (carry != null) return carry;
+        History history = state.getHistory() != null ? state.getHistory() : lastHistory;
+        if (history == null || history.getVodRemarks() == null || history.getVodRemarks().isEmpty()) return null;
+        return new Carry(history.getKey(), history.getVodFlag(), history.getVodRemarks(), history.getPosition(), history.getDuration());
+    }
+
+    private boolean applyCarry(History history) {
+        Carry value = carry;
+        carry = null;
+        if (value == null || value.key().equals(history.getKey())) return false;
+        if (value.flag() != null && !value.flag().isEmpty()) history.setVodFlag(value.flag());
+        history.setVodRemarks(value.remarks());
+        // Another source's file: the time counts only while it is the same episode (seamless resets it otherwise).
+        history.setPosition(value.duration() > 0 ? value.position() : C.TIME_UNSET);
+        history.setDuration(value.duration() > 0 ? value.duration() : C.TIME_UNSET);
+        return true;
     }
 
     public void search(String keyword) {
@@ -435,8 +467,17 @@ public class VodPlaybackController {
         History history = currentHistory();
         normalizeSkipWindow(history, duration);
         historyPolicy.updateProgress(history, time, position, duration);
-        if (history != null && VodSkipPolicy.shouldAdvance(position, duration, history.getLineOpening(), history.getLineEnding())) nextEpisode(false);
+        if (history == null || !VodSkipPolicy.shouldAdvance(position, duration, history.getLineOpening(), history.getLineEnding())) return;
+        // Once per episode: in the last episode's credits there is no next one, and asking every second
+        // went on for 5.5 hours on a Xiaomi TV left on it (5,437 vod_episode_move lines, 2026-11-14 log).
+        // No playing request: the next episode is already on its way, the old one only still ticking.
+        VodPlayRequest playing = state.getPlayingRequest();
+        if (playing == null || playing.matches(endingAdvanced)) return;
+        endingAdvanced = playing;
+        nextEpisode(false);
     }
+
+    private VodPlayRequest endingAdvanced;
 
     public long startPositionMs() {
         History history = state.getHistory();
@@ -532,6 +573,7 @@ public class VodPlaybackController {
         if (!state.isAutoFallback()) state.clearLoginNeeded();
         state.setFlags(flags);
         History history = historyPolicy.findOrCreate(host.getHistoryKey(), host.getVodMark(), item);
+        carried = applyCarry(history);
         state.setHistory(history);
         lastHistory = history;
         host.renderDetail(item, history);
@@ -543,13 +585,43 @@ public class VodPlaybackController {
 
     private void restoreDetail(VodPlayRequest activeRequest, History history) {
         if (restorePlaybackSelection(activeRequest)) publishPlaybackMetadata(state.getEpisode());
+        else if (missingHere(history)) episodeMissing(history);
         else selectFlag(entryFlag(history), true);
         if (history.isRevSort()) reverseEpisode(true);
         if (state.getPlayingRequest() != null && !host.hasPlaybackSession()) requestSelectedEpisode();
     }
 
+    // The history in hand was the user's own (opened from history) or carried from the source before.
+    private boolean carried;
+
+    private boolean wants(History history) {
+        return carried || history.getPosition() > 0 || history.getDuration() > 0;
+    }
+
+    /** Opened for an episode no line of this source has: look for it in other sources (not when the user picked this source). */
+    private boolean missingHere(History history) {
+        if (pickedSource || !wants(history) || !host.isSiteChangeable()) return false;
+        for (Flag flag : state.getFlags()) if (!flag.lacks(history.getVodRemarks())) return false;
+        return true;
+    }
+
+    private void episodeMissing(History history) {
+        Flag entry = DriveLogins.entry(state.getFlags(), findFlag(history.getFlag()));
+        for (Flag flag : state.getFlags()) flag.setSelected(entry);
+        host.renderFlagSelection(entry);
+        host.renderEpisodes(entry.getEpisodes());
+        int number = Util.getNumber(history.getVodRemarks());
+        DiagnosticLog.write(App.get(), "vod_episode_missing", "number=" + number + " lines=" + state.getFlags().size() + " carried=" + carried);
+        host.resetPlaybackForError("本片源没有第" + number + "集，正在查找其他片源");
+        carry = new Carry(history.getKey(), history.getVodFlag(), history.getVodRemarks(), history.getPosition(), history.getDuration());
+        fallbackPolicy.episodeMissing();
+    }
+
     private Flag entryFlag(History history) {
         Flag entry = DriveLogins.entry(state.getFlags(), findFlag(history.getFlag()));
+        // The episode wanted is on another line of this source: open that one (scanned drives keep their order).
+        if (wants(history) && entry.lacks(history.getVodRemarks()))
+            for (Flag flag : state.getFlags()) if (!flag.lacks(history.getVodRemarks()) && !state.needsLogin(flag)) { entry = flag; break; }
         // A source tried in place of a failed one: start on a line whose drive was not just refused.
         if (state.needsLogin(entry)) for (Flag flag : state.getFlags()) if (!state.needsLogin(flag)) { entry = flag; break; }
         DiagnosticLog.write(App.get(), "vod_lines", "lines=" + DriveLogins.describe(state.getFlags()) + " saved=" + DriveLogins.family(history.getVodFlag()) + " open=" + DriveLogins.family(entry.getFlag()));

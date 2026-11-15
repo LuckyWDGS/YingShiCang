@@ -81,10 +81,11 @@ public class FileActivity extends BaseActivity implements FileAdapter.OnClickLis
 
     @Override
     protected void onBackInvoked() {
-        if (isRoot()) {
+        File parent = dir == null ? null : dir.getParentFile();
+        if (isRoot() || parent == null) {
             super.onBackInvoked();
         } else {
-            update(dir.getParentFile());
+            update(parent);
         }
     }
 }

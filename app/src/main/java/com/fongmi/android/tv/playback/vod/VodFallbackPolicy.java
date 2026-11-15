@@ -36,6 +36,11 @@ class VodFallbackPolicy {
         fallbackToNextSource(false);
     }
 
+    /** This source has no line with the episode wanted (user 2026-11-14: find 第20集 elsewhere, not 第1集 here). */
+    void episodeMissing() {
+        fallbackToNextSource(false);
+    }
+
     void manualSwitchSource() {
         fallbackToNextSource(true);
     }
@@ -73,10 +78,13 @@ class VodFallbackPolicy {
         if (flags.isEmpty()) return false;
         int position = state.getFlagPosition();
         state.addFailedLine(flags.get(position));
-        // The line opened need not be the first, so go round: every line gets its turn once.
+        String episode = state.getHistory() == null ? "" : state.getHistory().getVodRemarks();
+        // The line opened need not be the first, so go round: every line gets its turn once. A line that
+        // clearly lacks the episode being watched is passed over; another source may have it (user
+        // 2026-11-14: rather 第20集 from another source than another episode here).
         for (int i = 1; i < flags.size(); i++) {
             Flag flag = flags.get((position + i) % flags.size());
-            if (state.hasFailedLine(flag) || state.needsLogin(flag)) continue;
+            if (state.hasFailedLine(flag) || state.needsLogin(flag) || flag.lacks(episode)) continue;
             host.showSwitchLine(flag);
             controller.fallbackFlag(flag);
             return true;

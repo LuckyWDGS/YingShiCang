@@ -64,10 +64,12 @@ public class FileActivity extends BaseActivity implements FileAdapter.OnClickLis
 
     @Override
     protected void onBackInvoked() {
-        if (isRoot()) {
+        // Back before the list opened (no storage permission yet) closed the app (HONOR phone, 2026-11-13).
+        File parent = dir == null ? null : dir.getParentFile();
+        if (isRoot() || parent == null) {
             super.onBackInvoked();
         } else {
-            update(dir.getParentFile());
+            update(parent);
         }
     }
 }

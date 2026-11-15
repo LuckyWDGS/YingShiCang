@@ -36,6 +36,8 @@ public class VodLineFlowTest {
     private final List<String> errors = new ArrayList<>();
     private final History saved = new History();
     private final VodPlaybackState state = new VodPlaybackState();
+    private final java.util.Map<String, History> stored = new java.util.HashMap<>();
+    private String key = KEY;
     private long now = 1_000;
     private int retried;
     private VodPlaybackController controller;
@@ -74,13 +76,25 @@ public class VodLineFlowTest {
         return flag;
     }
 
+    /** Another source answers the fallback search with the same title. */
+    private void otherSource(String site) {
+        Vod vod = new Vod() {
+            @Override public String getName() { return "QA"; }
+            @Override public String getId() { return ID; }
+        };
+        vod.setSite(Site.get(site, site.toUpperCase()));
+        Result result = new Result();
+        result.setList(List.of(vod));
+        controller.onSearchResult(result);
+    }
+
     private void open(Flag... lines) {
         Vod vod = new Vod() {
             @Override public String getName() { return "QA"; }
             @Override public String getId() { return ID; }
         };
         vod.getFlags().addAll(List.of(lines));
-        controller.onDetailResult(new VodDetailResult(KEY, ID, Result.vod(vod)));
+        controller.onDetailResult(new VodDetailResult(key, ID, Result.vod(vod)));
     }
 
     private void saved(String line, String episode) {
@@ -136,11 +150,15 @@ public class VodLineFlowTest {
     }
 
     @Test
-    public void aMissingEpisodeLandsOnTheClosestOneFromTheStart() {
+    public void theLineThatHasTheEpisodeOpensAndAPickedLineGivesTheClosest() {
+        // Supersedes 3.1.13 (嘟嘟 第20集 from the start): the user wants 第22集 itself (2026-11-14).
         saved("UC", "第22集");
         saved.setPosition(600_000);
         saved.setDuration(1_200_000);
         open(line("UC", 24), line("嘟嘟", 20));
+        assertEquals("UC/22", last().getId());
+        assertTrue(searches.isEmpty());
+        controller.selectFlag(state.getFlags().get(0));
         assertEquals("嘟嘟/20", last().getId());
         assertEquals(C.TIME_UNSET, saved.getPosition());
     }
@@ -300,6 +318,90 @@ public class VodLineFlowTest {
     }
 
     @Test
+    public void theNextSourceOpensOnTheEpisodeBeingWatchedNotTheFirst() {
+        saved("线路一", "第20集");
+        saved.setPosition(600_000);
+        saved.setDuration(2_400_000);
+        open(line("线路一", 24));
+        assertEquals("线路一/20", last().getId());
+        addressFails();
+        assertEquals(List.of("QA"), searches);
+        otherSource("qb");
+        assertEquals("qb", key);
+        // The other source was seen before at 第1集: what is watched now wins.
+        open(line("线路A", 30), line("线路B", 30));
+        assertEquals("线路A/20", last().getId());
+        History moved = stored.get("qb@@@1@@@0");
+        assertEquals("第20集", moved.getVodRemarks());
+        assertEquals(600_000, moved.getPosition());
+    }
+
+    @Test
+    public void aLineWithoutTheEpisodeIsPassedOverForAnotherSource() {
+        saved("线路一", "第20集");
+        saved.setPosition(600_000);
+        saved.setDuration(2_400_000);
+        open(line("线路一", 24), line("线路二", 12), line("线路三", 24));
+        addressFails();
+        assertEquals("线路三/20", last().getId());
+        addressFails();
+        // 线路二 stops at 第12集: no line left has 第20集, so the search for another source starts.
+        assertEquals(2, requests.size());
+        assertEquals(List.of("QA"), searches);
+    }
+
+    @Test
+    public void openedForAnEpisodeThisSourceLacksLooksElsewhere() {
+        saved("线路一", "第20集");
+        saved.setPosition(600_000);
+        saved.setDuration(2_400_000);
+        open(line("线路一", 12), line("线路二", 12));
+        assertTrue(requests.isEmpty());
+        assertEquals("本片源没有第20集，正在查找其他片源", shown());
+        assertEquals(List.of("QA"), searches);
+        otherSource("qb");
+        open(line("线路A", 24));
+        assertEquals("线路A/20", last().getId());
+    }
+
+    @Test
+    public void aSourceThePickedByHandIsPlayedAsItIs() {
+        saved("线路一", "第20集");
+        saved.setPosition(600_000);
+        saved.setDuration(2_400_000);
+        open(line("线路一", 24));
+        Vod vod = new Vod() {
+            @Override public String getName() { return "QA"; }
+            @Override public String getId() { return ID; }
+        };
+        vod.setSite(Site.get("qc", "QC"));
+        controller.selectSource(vod);
+        open(line("线路C", 12));
+        assertEquals("线路C/12", last().getId());
+        assertTrue(searches.isEmpty());
+    }
+
+    @Test
+    public void theCreditsAskForTheNextEpisodeOnlyOnce() {
+        saved("线路一", "第1集");
+        open(line("线路一", 3));
+        addressArrives();
+        saved.setLineSkip(C.TIME_UNSET, 60_000);
+        // The old episode keeps ticking until the next one's address arrives: it must not skip 第2集.
+        for (int second = 0; second < 5; second++) controller.onTimeChanged(now + second * 1000L, 1_150_000 + second * 1000L, 1_200_000);
+        assertEquals(2, requests.size());
+        assertEquals("线路一/2", last().getId());
+        addressArrives();
+        // The last episode's credits: once, then quiet however long the TV is left on it.
+        for (int second = 0; second < 5; second++) controller.onTimeChanged(now + second * 1000L, 1_150_000 + second * 1000L, 1_200_000);
+        assertEquals("线路一/3", last().getId());
+        addressArrives();
+        int asked = requests.size();
+        for (int second = 0; second < 5; second++) controller.onTimeChanged(now + second * 1000L, 1_150_000 + second * 1000L, 1_200_000);
+        assertEquals(asked, requests.size());
+    }
+
+    @Test
     public void anOrdinaryFailureSaysNothingAboutLogins() {
         saved("夸克1", "第5集");
         open(line("夸克1", 24), line("夸克2", 24));
@@ -340,7 +442,18 @@ public class VodLineFlowTest {
     }
 
     private final class SavedHistory extends VodHistoryPolicy {
-        @Override public History findOrCreate(String key, String mark, Vod item) { return saved; }
+        // The first source's history is the saved one; another source has its own (stale, or none yet).
+        @Override public History findOrCreate(String key, String mark, Vod item) {
+            if (key.equals(saved.getKey())) return saved;
+            return stored.computeIfAbsent(key, k -> {
+                History history = new History();
+                history.setKey(k);
+                history.setPosition(C.TIME_UNSET);
+                history.setDuration(C.TIME_UNSET);
+                history.findEpisode(new ArrayList<>());
+                return history;
+            });
+        }
         @Override public void save(History history) {}
         @Override public void save(History history, boolean exit) {}
         @Override public void saveCurrent(History history) {}
@@ -348,13 +461,13 @@ public class VodLineFlowTest {
     }
 
     private final class Screen implements VodPlaybackHost {
-        @Override public String getVodKey() { return KEY; }
+        @Override public String getVodKey() { return key; }
         @Override public String getVodId() { return ID; }
         @Override public void setVodId(String id) {}
         @Override public String getVodName() { return "QA"; }
         @Override public String getVodPic() { return ""; }
         @Override public String getVodMark() { return ""; }
-        @Override public String getHistoryKey() { return saved.getKey(); }
+        @Override public String getHistoryKey() { return key.equals(KEY) ? saved.getKey() : key + "@@@" + ID + "@@@0"; }
         @Override public boolean isSiteChangeable() { return true; }
         @Override public boolean isFromCollect() { return false; }
         @Override public boolean isHostFinishing() { return false; }
@@ -369,7 +482,7 @@ public class VodLineFlowTest {
         @Override public long getPlayerDuration() { return 0; }
         @Override public void usePushId(String id) {}
         @Override public void onPlaybackRequested() {}
-        @Override public void prepareSource(Vod item) {}
+        @Override public void prepareSource(Vod item) { key = item.getSiteKey(); }
         @Override public void stopPlaybackForRefresh() {}
         @Override public void resetPlaybackForError(String msg) { errors.add(msg); }
         @Override public void replay(long position) {}

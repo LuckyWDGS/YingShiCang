@@ -154,6 +154,17 @@ public class Flag implements Parcelable, Diffable<Flag> {
                 .filter(Episode.Rule::find).max(Comparator.comparingInt(Episode.Rule::score)).map(Episode.Rule::episode).orElse(null);
     }
 
+    /**
+     * True only when this line clearly has no such episode: the name states a number, the line numbers
+     * its episodes, and none matches it. A line naming episodes some other way may still have it.
+     */
+    public boolean lacks(String remarks) {
+        if (remarks == null || remarks.isEmpty() || getEpisodes().size() <= 1) return false;
+        if (same(remarks) != null) return false;
+        if (Util.getNumber(remarks) <= 0) return false;
+        return getEpisodes().stream().anyMatch(episode -> episode.getNumber() > 0);
+    }
+
     private Episode nearest(String remarks) {
         int number = Util.getNumber(remarks);
         if (number < 0) return null;

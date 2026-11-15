@@ -202,6 +202,10 @@ public class Site implements Parcelable {
         return TextUtils.isEmpty(playUrl) ? "" : playUrl;
     }
 
+    public void setType(Integer type) {
+        this.type = type;
+    }
+
     public Integer getType() {
         return type == null ? 0 : type;
     }
