@@ -152,7 +152,8 @@ abstract class BaseConfig {
             e.printStackTrace();
             if (Thread.currentThread().isInterrupted() || "Canceled".equals(e.getMessage())) return;
             if (taskId.get() != id) return;
-            DiagnosticLog.write(App.get(), "config_load", "type=" + logType() + " ms=" + (SystemClock.elapsedRealtime() - started) + " outcome=" + e.getClass().getSimpleName());
+            // A new install has no address yet (HONOR and Lenovo first launches logged NullPointerException).
+            DiagnosticLog.write(App.get(), "config_load", "type=" + logType() + " ms=" + (SystemClock.elapsedRealtime() - started) + " outcome=" + (TextUtils.isEmpty(config.getUrl()) ? "unconfigured" : e.getClass().getSimpleName()));
             if (TextUtils.isEmpty(config.getUrl())) App.post(() -> callback.error(""));
             else App.post(() -> callback.error(Notify.getError(R.string.error_config_get, e)));
         } finally {

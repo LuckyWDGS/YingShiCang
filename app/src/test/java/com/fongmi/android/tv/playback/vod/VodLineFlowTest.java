@@ -34,12 +34,16 @@ public class VodLineFlowTest {
     private final List<String> switched = new ArrayList<>();
     private final List<String> searches = new ArrayList<>();
     private final List<String> errors = new ArrayList<>();
+    private final List<String> notices = new ArrayList<>();
+    // As the database does once another source's history of the same title is saved.
+    private boolean mergedAway;
     private final History saved = new History();
     private final VodPlaybackState state = new VodPlaybackState();
     private final java.util.Map<String, History> stored = new java.util.HashMap<>();
     private String key = KEY;
     private long now = 1_000;
     private int retried;
+    private int quietRetries;
     private VodPlaybackController controller;
 
     @Before
@@ -365,6 +369,137 @@ public class VodLineFlowTest {
     }
 
     @Test
+    public void whenNoOtherSourceAnswersTheClosestEpisodeHerePlays() {
+        saved("线路一", "第20集");
+        saved.setPosition(600_000);
+        saved.setDuration(2_400_000);
+        open(line("线路一", 12), line("线路二", 12));
+        assertTrue(requests.isEmpty());
+        // Every source has answered and none has the title.
+        controller.onSearchFinished();
+        assertEquals("线路一/12", last().getId());
+        assertEquals(List.of("其他片源也没有第20集，改为播放第12集"), notices);
+        // Another episode: the time saved for 第20集 does not apply.
+        assertEquals("第12集", saved.getVodRemarks());
+        assertEquals(C.TIME_UNSET, saved.getPosition());
+        // Once: a later end of search does nothing more.
+        controller.onSearchFinished();
+        assertEquals(1, requests.size());
+    }
+
+    @Test
+    public void whenOtherSourcesLackItTooPlaybackReturnsToTheFirstSource() {
+        saved("线路一", "第20集");
+        saved.setPosition(600_000);
+        saved.setDuration(2_400_000);
+        open(line("线路一", 12), line("线路二", 12));
+        otherSource("qb");
+        assertEquals("qb", key);
+        open(line("线路A", 10));
+        // qb stops at 第10集 and the search is still running: wait.
+        assertTrue(requests.isEmpty());
+        controller.onSearchFinished();
+        assertEquals(KEY, key);
+        assertTrue(requests.isEmpty());
+        open(line("线路一", 12), line("线路二", 12));
+        assertEquals("线路一/12", last().getId());
+        assertEquals(List.of("其他片源也没有第20集，改为播放第12集"), notices);
+        assertEquals("线路一", saved.getVodFlag());
+        assertEquals(List.of("QA"), searches);
+    }
+
+    @Test
+    public void theFirstSourcesHistoryMergedAwayStillReturnsToTheClosestEpisode() {
+        saved("线路二", "第20集");
+        saved.setPosition(600_000);
+        saved.setDuration(2_400_000);
+        open(line("线路一", 12), line("线路二", 12));
+        otherSource("qb");
+        open(line("线路A", 10));
+        mergedAway = true;
+        controller.onSearchFinished();
+        assertEquals(KEY, key);
+        open(line("线路一", 12), line("线路二", 12));
+        // Not 线路一/1, where a new row would start: the line and the closest episode of what was wanted.
+        assertEquals("线路二/12", last().getId());
+        History again = stored.get(saved.getKey());
+        assertEquals("第12集", again.getVodRemarks());
+        assertEquals(C.TIME_UNSET, again.getPosition());
+    }
+
+    @Test
+    public void theLastSourceLackingItAfterTheSearchEndedReturnsToo() {
+        saved("线路一", "第20集");
+        saved.setPosition(600_000);
+        saved.setDuration(2_400_000);
+        open(line("线路一", 12));
+        otherSource("qb");
+        // The search ends while qb's detail is on its way.
+        controller.onSearchFinished();
+        assertEquals("qb", key);
+        open(line("线路A", 10));
+        assertEquals(KEY, key);
+        // Nothing is said yet: qb's lines are still the ones on screen.
+        assertTrue(notices.isEmpty());
+        open(line("线路一", 12));
+        assertEquals("线路一/12", last().getId());
+        assertEquals(List.of("其他片源也没有第20集，改为播放第12集"), notices);
+        // It fails as well: nothing left, and no going round again.
+        addressFails();
+        addressFails();
+        addressFails();
+        int asked = requests.size();
+        controller.onSearchFinished();
+        assertEquals(asked, requests.size());
+        assertEquals(List.of("QA"), searches);
+    }
+
+    @Test
+    public void anotherSourceWithTheEpisodeEndsTheMatter() {
+        saved("线路一", "第20集");
+        saved.setPosition(600_000);
+        saved.setDuration(2_400_000);
+        open(line("线路一", 12));
+        otherSource("qb");
+        open(line("线路A", 24));
+        assertEquals("线路A/20", last().getId());
+        addressArrives();
+        controller.playbackReady();
+        controller.onSearchFinished();
+        assertEquals("qb", key);
+        assertEquals(1, requests.size());
+        assertTrue(notices.isEmpty());
+    }
+
+    @Test
+    public void aPickByHandWhileSearchingIsLeftAlone() {
+        saved("线路一", "第20集");
+        saved.setPosition(600_000);
+        saved.setDuration(2_400_000);
+        Flag first = line("线路一", 12);
+        open(first);
+        controller.selectEpisode(first.getEpisodes().get(2));
+        assertEquals("线路一/3", last().getId());
+        controller.onSearchFinished();
+        assertEquals(1, requests.size());
+        assertTrue(notices.isEmpty());
+    }
+
+    @Test
+    public void linesThatAllFailStillEndWhereTheyDid() {
+        saved("线路一", "第5集");
+        open(line("线路一", 24));
+        addressFails();
+        addressFails();
+        addressFails();
+        assertEquals(List.of("QA"), searches);
+        int asked = requests.size();
+        controller.onSearchFinished();
+        assertEquals(asked, requests.size());
+        assertTrue(notices.isEmpty());
+    }
+
+    @Test
     public void aSourceThePickedByHandIsPlayedAsItIs() {
         saved("线路一", "第20集");
         saved.setPosition(600_000);
@@ -399,6 +534,33 @@ public class VodLineFlowTest {
         int asked = requests.size();
         for (int second = 0; second < 5; second++) controller.onTimeChanged(now + second * 1000L, 1_150_000 + second * 1000L, 1_200_000);
         assertEquals(asked, requests.size());
+    }
+
+    @Test
+    public void aFailureBeforeTheEpisodeEverPlayedRetriesQuietlyOnce() {
+        saved("线路一", "第5集");
+        open(line("线路一", 24), line("线路二", 24));
+        addressArrives();
+        // The first address fails at once; nothing had played yet.
+        controller.playbackError("HTTP 500");
+        assertEquals(1, retried);
+        assertEquals(1, quietRetries);
+        addressArrives();
+        // It fails again: now the notice shows.
+        controller.playbackError("HTTP 500");
+        assertEquals(2, retried);
+        assertEquals(1, quietRetries);
+    }
+
+    @Test
+    public void aStallAfterPlayingStillSaysSo() {
+        saved("线路一", "第5集");
+        open(line("线路一", 24), line("线路二", 24));
+        addressArrives();
+        controller.playbackReady();
+        controller.playbackError("stalled");
+        assertEquals(1, retried);
+        assertEquals(0, quietRetries);
     }
 
     @Test
@@ -444,13 +606,18 @@ public class VodLineFlowTest {
     private final class SavedHistory extends VodHistoryPolicy {
         // The first source's history is the saved one; another source has its own (stale, or none yet).
         @Override public History findOrCreate(String key, String mark, Vod item) {
-            if (key.equals(saved.getKey())) return saved;
+            if (key.equals(saved.getKey()) && !mergedAway) return saved;
             return stored.computeIfAbsent(key, k -> {
                 History history = new History();
                 history.setKey(k);
                 history.setPosition(C.TIME_UNSET);
                 history.setDuration(C.TIME_UNSET);
                 history.findEpisode(new ArrayList<>());
+                if (mergedAway) {
+                    // A new row starts on the first line's first episode.
+                    history.setVodFlag(item.getFlags().get(0).getFlag());
+                    history.setVodRemarks(item.getFlags().get(0).getEpisodes().get(0).getName());
+                }
                 return history;
             });
         }
@@ -477,7 +644,7 @@ public class VodLineFlowTest {
         @Override public boolean isLivePlayback() { return false; }
         @Override public boolean canTrackPlaybackProgress() { return false; }
         @Override public boolean canPreloadNext() { return false; }
-        @Override public void onPlaybackRetry() { retried++; }
+        @Override public void onPlaybackRetry(boolean quiet) { retried++; if (quiet) quietRetries++; }
         @Override public long getPlayerPosition() { return 0; }
         @Override public long getPlayerDuration() { return 0; }
         @Override public void usePushId(String id) {}
@@ -512,7 +679,7 @@ public class VodLineFlowTest {
         @Override public void onDetailFallbackCancelled() {}
         @Override public void onSearchStarted(String keyword) {}
         @Override public void onSearchResult() {}
-        @Override public void showDetailMessage(String msg) {}
+        @Override public void showDetailMessage(String msg) { if (msg != null && !msg.isEmpty()) notices.add(msg); }
         @Override public void showSwitchLine(Flag flag) { switched.add(flag.getFlag()); }
         @Override public void showSwitchSource(Vod item) {}
         @Override public void showNoNext(boolean reversed) {}

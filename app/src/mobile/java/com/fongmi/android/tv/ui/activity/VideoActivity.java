@@ -422,6 +422,7 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         mVod = mViewModel.createPlaybackController(this);
         observeWhenServiceReady(mViewModel.getDetail(), this::onDetailObserved);
         observeWhenServiceReady(mViewModel.getSearch(), this::onSearchObserved);
+        observeWhenServiceReady(mViewModel.getSearchDone(), generation -> { if (mViewModel.isCurrentSearch(generation)) mVod.onSearchFinished(); });
         observeWhenServiceReady(mViewModel.getPreload(), this::onPreloadObserved);
         observeWhenServiceReady(mViewModel.getPlayback(), this::onPlaybackObserved);
     }

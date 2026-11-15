@@ -105,6 +105,10 @@ final class ViewModelSearchRunner {
         report();
         dispatch(current,factory,results);
     }
+    /** Every source has answered (or there was none to ask). */
+    synchronized boolean finished() {
+        return completed == total;
+    }
     synchronized void stop() {
         epoch.incrementAndGet(); jobs.forEach(Job::cancel); jobs.clear();
         retries.forEach(retry -> retry.cancel(false)); retries.clear();

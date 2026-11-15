@@ -1,6 +1,7 @@
 package com.github.catvod.net;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 import java.io.IOException;
 import java.net.SocketTimeoutException;
@@ -47,5 +48,24 @@ public class NetTraceTest {
     @Test
     public void emptyRecordingSummarizesNothing() {
         assertEquals("net=0 fail=0", NetTrace.begin().end());
+    }
+
+    @Test
+    public void failedLoopbackCallsNameThePortsTried() {
+        NetTrace.Recording recording = NetTrace.begin();
+        recording.add(new NetTrace.Entry("quark", -1, 208, 3, 81, "h2", "200", false));
+        recording.add(new NetTrace.Entry("local", 9978, 7, -1, 2, "http/1.1", "200", false));
+        recording.add(new NetTrace.Entry("local", 6677, 101, -1, 15, "http/1.1", "IOException(eos)", true));
+        for (int port = 6678; port <= 6999; port++) recording.add(new NetTrace.Entry("local", port, 20, -1, 5, "", "ConnectException(refused)", true));
+        String text = recording.end();
+        assertTrue(text, text.startsWith("net=325 fail=323 slow=quark:208ms:200:dns3:conn81:h2,local6677:101ms:IOException(eos):conn15:http/1.1,"));
+        assertTrue(text, text.endsWith(" localfail=323 ports=6677-6999"));
+    }
+
+    @Test
+    public void oneFailedLoopbackPortIsNamedAlone() {
+        NetTrace.Recording recording = NetTrace.begin();
+        recording.add(new NetTrace.Entry("local", 9978, 30, -1, 12, "", "ConnectException(refused)", true));
+        assertEquals("net=1 fail=1 slow=local9978:30ms:ConnectException(refused):conn12 localfail=1 ports=9978", recording.end());
     }
 }

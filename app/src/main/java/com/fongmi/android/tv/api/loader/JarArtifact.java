@@ -102,7 +102,7 @@ public final class JarArtifact {
         if (!md5.isEmpty() && !md5.equalsIgnoreCase(hash(file, "MD5"))) throw new IOException("源插件校验失败");
     }
 
-    private static String hash(File file, String algorithm) throws IOException {
+    static String hash(File file, String algorithm) throws IOException {
         try {
             MessageDigest digest = MessageDigest.getInstance(algorithm);
             try (var input = Files.newInputStream(file.toPath())) {

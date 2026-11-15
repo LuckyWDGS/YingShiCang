@@ -28,6 +28,11 @@ final class VodRetryBudget {
         return true;
     }
 
+    /** Retries taken for the request in hand. */
+    int used() {
+        return used;
+    }
+
     void ready(long now) {
         if (readyAt < 0) readyAt = now;
     }

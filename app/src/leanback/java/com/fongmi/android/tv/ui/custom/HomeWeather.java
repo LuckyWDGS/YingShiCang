@@ -19,6 +19,7 @@ import androidx.core.content.ContextCompat;
 import androidx.core.location.LocationManagerCompat;
 import androidx.core.os.CancellationSignal;
 import androidx.fragment.app.FragmentActivity;
+import com.fongmi.android.tv.diagnostics.DiagnosticLog;
 import com.fongmi.android.tv.weather.WeatherInfo;
 import com.fongmi.android.tv.weather.WeatherLocation;
 import com.google.gson.JsonObject;
@@ -41,6 +42,9 @@ import okhttp3.Response;
 /** Fresh foreground location; only an explicit weather tap asks for permission. */
 public final class HomeWeather {
     private static final long MAX_AGE = TimeUnit.MINUTES.toMillis(30);
+    // After Open-Meteo failed and the backup answered, the backup is asked first for this long:
+    // each failed Open-Meteo call costs its whole 12s before any temperature shows.
+    private static final long BACKUP_FIRST = TimeUnit.HOURS.toMillis(6);
     // A slow system geocoder cannot occupy the shared source/configuration workers.
     private static final ThreadPoolExecutor GEOCODER = new ThreadPoolExecutor(1, 1, 30, TimeUnit.SECONDS,
             new ArrayBlockingQueue<>(1), task -> { Thread thread = new Thread(task, "weather-city"); thread.setDaemon(true); return thread; });
@@ -204,15 +208,49 @@ public final class HomeWeather {
         }
         // Do not leave the previous city's temperature beside the newly resolved city.
         info.setText(location.displayCity() + "  —°C"); icon.setWeather(-1, true);
+        long start = SystemClock.elapsedRealtime();
+        // 2026-11-14/15: Open-Meteo's forecast timed out for two days on the QA network while its
+        // geocoder and wttr.in answered, so the pill showed a city and no temperature.
+        long down = System.currentTimeMillis() - prefs.getLong("main_down", 0);
+        if (down >= 0 && down < BACKUP_FIRST) backup(token, location, start, () -> main(token, location, start, () -> forecastFailed(token, start)));
+        else main(token, location, start, () -> backup(token, location, start, () -> forecastFailed(token, start)));
+    }
+
+    private void main(int token, WeatherLocation location, long start, Runnable failed) {
         request("https://api.open-meteo.com/v1/forecast?latitude=" + location.latitude() + "&longitude=" + location.longitude()
                 + "&current=temperature_2m,weather_code,is_day&timezone=auto", token, json -> {
             JsonObject current = json.getAsJsonObject("current");
             double temperature = current.get("temperature_2m").getAsDouble();
             if (!Double.isFinite(temperature)) throw new IOException("Invalid temperature");
             saveLocation(location).putFloat("temperature", (float) temperature).putInt("weather_code", current.get("weather_code").getAsInt())
-                    .putBoolean("is_day", current.get("is_day").getAsInt() == 1).putLong("updated", System.currentTimeMillis()).apply();
-            checkedAt = SystemClock.elapsedRealtime(); checkedNetwork = requestNetwork; showCached(false);
-        });
+                    .putBoolean("is_day", current.get("is_day").getAsInt() == 1).putLong("updated", System.currentTimeMillis()).remove("main_down").apply();
+            forecastShown("main", start);
+        }, failed);
+    }
+
+    /** wttr.in: coordinates to two decimals (about a kilometre), no more than the forecast needs. */
+    private void backup(int token, WeatherLocation location, long start, Runnable failed) {
+        request(String.format(Locale.ROOT, "https://wttr.in/%.2f,%.2f?format=j1", location.latitude(), location.longitude()), token, json -> {
+            WeatherInfo.Current current = WeatherInfo.wttr(json);
+            if (current == null) throw new IOException("Invalid backup forecast");
+            SharedPreferences.Editor editor = saveLocation(location).putFloat("temperature", (float) current.temperature()).putInt("weather_code", current.code())
+                    .putBoolean("is_day", WeatherInfo.daylight(location.latitude(), location.longitude(), System.currentTimeMillis())).putLong("updated", System.currentTimeMillis());
+            // Keep the time of the first failure, so Open-Meteo is tried again once the six hours are over.
+            long down = System.currentTimeMillis() - prefs.getLong("main_down", 0);
+            if (down < 0 || down >= BACKUP_FIRST) editor.putLong("main_down", System.currentTimeMillis());
+            editor.apply();
+            forecastShown("backup", start);
+        }, failed);
+    }
+
+    private void forecastShown(String source, long start) {
+        DiagnosticLog.write(activity, "weather_forecast", "source=" + source + " ms=" + (SystemClock.elapsedRealtime() - start) + " outcome=ok");
+        checkedAt = SystemClock.elapsedRealtime(); checkedNetwork = requestNetwork; showCached(false);
+    }
+
+    private void forecastFailed(int token, long start) {
+        DiagnosticLog.write(activity, "weather_forecast", "source=none ms=" + (SystemClock.elapsedRealtime() - start) + " outcome=failed");
+        fail(token);
     }
 
     private SharedPreferences.Editor saveLocation(WeatherLocation location) {

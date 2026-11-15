@@ -51,6 +51,7 @@ class VodFallbackPolicy {
         state.setSearchKeyword(keyword);
         state.setAutoFallback(autoFallback);
         state.setSelectFirstSource(autoFallback);
+        state.setSearchFinished(false);
         host.onSearchStarted(keyword);
         dataSource.searchContent(getSearchableSites(), keyword, true);
     }
@@ -65,6 +66,17 @@ class VodFallbackPolicy {
         else host.renderSources(state.getSources());
         if (items.isEmpty()) return;
         host.onSearchResult();
+    }
+
+    /** Every source has answered. Still waiting for one to try: there is none. */
+    void searchFinished() {
+        state.setSearchFinished(true);
+        if (state.isSelectFirstSource() && !state.hasSources()) exhausted();
+    }
+
+    private void exhausted() {
+        state.setSelectFirstSource(false);
+        controller.sourcesExhausted();
     }
 
     private void fallbackToNextLineOrSource() {
@@ -97,6 +109,7 @@ class VodFallbackPolicy {
         state.getSources().removeIf(this::mismatch);
         if (state.hasSources()) nextSource();
         else if (!state.hasFallbackSearchStarted() || force) search(host.getVodName(), true);
+        else if (state.isSearchFinished()) exhausted();
         else state.setSelectFirstSource(true); // Wait for later batches; never start a search loop.
     }
 

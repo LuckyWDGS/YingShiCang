@@ -72,6 +72,15 @@ public class AiDramaRunnerTest {
         assertFalse(AiDramaRunner.supportedApi(null));
     }
 
+    @Test public void thePluginsNoResultsAnswerIsNotAFailure() {
+        Exception plugin = new Exception("未获取到筛选结果");
+        org.junit.Assert.assertTrue(AiDramaRunner.noResults(plugin));
+        org.junit.Assert.assertTrue(AiDramaRunner.noResults(new java.util.concurrent.ExecutionException(new RuntimeException("wrapped", plugin))));
+        org.junit.Assert.assertFalse(AiDramaRunner.noResults(new java.io.IOException("timeout")));
+        org.junit.Assert.assertFalse(AiDramaRunner.noResults(new Exception((String) null)));
+        org.junit.Assert.assertFalse(AiDramaRunner.noResults(null));
+    }
+
     @Test public void failedOrEmptyMetadataCannotPreventSuccessfulRetry() {
         var cache = new AiDramaRunner.MetadataCache();
         assertNull(cache.get(1, "original-signature"));

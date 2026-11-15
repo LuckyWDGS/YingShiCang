@@ -41,6 +41,16 @@ public class VodPlaybackController {
 
     private record Carry(String key, String flag, String remarks, long position, long duration) {
     }
+
+    // The first source of this chain with no line holding the episode wanted. When no other source has
+    // it either, playback comes back here on the closest episode instead of stopping with every line
+    // left to pick by hand (user 2026-11-15).
+    private Origin origin;
+    // The episode that was wanted, while that return is under way.
+    private String settling;
+
+    private record Origin(String key, String id, String name, String pic, Carry carry) {
+    }
     // A failing line is retried in place (address fetched again, position kept) before the next line;
     // a short stall used to switch lines at once (user 2026-10-31).
     private final VodRetryBudget retries = new VodRetryBudget();
@@ -64,6 +74,8 @@ public class VodPlaybackController {
     public void reset() {
         preloader.clear();
         carry = null;
+        origin = null;
+        settling = null;
         carried = false;
         pickedSource = false;
         state.reset();
@@ -223,11 +235,55 @@ public class VodPlaybackController {
         fallbackPolicy.onSearchResult(result);
     }
 
+    /** Every source has answered the search for other sources. */
+    public void onSearchFinished() {
+        fallbackPolicy.searchFinished();
+    }
+
+    /** The search is over and no source is left to try. */
+    void sourcesExhausted() {
+        Origin back = origin;
+        origin = null;
+        settling = null;
+        if (back == null) return;
+        boolean here = back.key().equals(host.getVodKey()) && back.id().equals(host.getVodId()) && state.hasFlags() && state.getHistory() != null;
+        DiagnosticLog.write(App.get(), "vod_episode_fallback", "number=" + Util.getNumber(back.carry().remarks()) + " back=" + !here);
+        if (here) {
+            carry = null;
+            pickedSource = true;
+            settling = back.carry().remarks();
+            selectFlag(entryFlag(state.getHistory()), true);
+            settled();
+            return;
+        }
+        // Other sources were tried since: this one's detail is asked again and opens as a source picked by hand.
+        Vod item = new Vod();
+        item.setId(back.id());
+        item.setName(back.name());
+        item.setPic(back.pic());
+        item.setSite(com.fongmi.android.tv.bean.Site.get(back.key(), ""));
+        // Saving the other sources' histories merged this one's away (one row per title), so what was
+        // wanted is put on it again; keyless, because a carry is not applied to the history it came from.
+        carry = new Carry("", back.carry().flag(), back.carry().remarks(), back.carry().position(), back.carry().duration());
+        switchSource(item, false);
+        settling = back.carry().remarks();
+    }
+
+    private void settled() {
+        String wanted = settling;
+        settling = null;
+        if (wanted == null || !state.hasEpisode()) return;
+        String name = state.getEpisode().getName();
+        if (name.length() > 24) name = name.substring(0, 24) + "…";
+        host.showDetailMessage("其他片源也没有第" + Util.getNumber(wanted) + "集，改为播放" + name);
+    }
+
     public void selectFlag(Flag item) {
         // The TV's line row reports the app's own change of line as a pick, a layout pass later. When the
         // line had failed by then and the search for another source had begun, that late report cancelled
         // the change of source (LDPlayer 2026-11-12, lines failing within milliseconds).
         if (state.hasFlags() && resolveFlag(item).isSelected()) return;
+        origin = null;
         state.setSelectFirstSource(false);
         selectFlag(item, false);
     }
@@ -250,6 +306,7 @@ public class VodPlaybackController {
     }
 
     public void selectEpisode(Episode item) {
+        origin = null;
         state.clearFailedLines();
         playSelected(item);
     }
@@ -302,6 +359,7 @@ public class VodPlaybackController {
     }
 
     public void selectSource(Vod item) {
+        origin = null;
         switchSource(item, false);
     }
 
@@ -342,17 +400,21 @@ public class VodPlaybackController {
     }
 
     public void search(String keyword) {
+        origin = null;
         fallbackPolicy.search(keyword, false);
     }
 
     public void manualSwitchSource() {
+        origin = null;
         fallbackPolicy.manualSwitchSource();
     }
 
     public void playbackError(String msg) {
         VodPlayRequest playing = state.getPlayingRequest();
         if (retries.take(playing, clock.getAsLong())) {
-            host.onPlaybackRetry();
+            // Xiaomi TV 2026-11-14: at every episode change the plugin's first address answered 500 for
+            // 3s (its local component was restarting) and the retry played; the screen said 播放中断.
+            host.onPlaybackRetry(retries.used() == 1 && !playing.matches(startedRequest));
             refresh();
             return;
         }
@@ -368,8 +430,13 @@ public class VodPlaybackController {
         ResourceHealth.recordPlayback(host.getVodKey(), host.getVodId(), request, state.getFlags(), status, state.getResourceRevision());
     }
 
+    // The request that last reached READY: a failure of any other request happened before it played.
+    private VodPlayRequest startedRequest;
+
     public void playbackReady() {
         if (state.getPlayingRequest() == null) return;
+        startedRequest = state.getPlayingRequest();
+        origin = null;
         retries.ready(clock.getAsLong());
         state.clearFailedLines();
         state.setSelectFirstSource(false);
@@ -542,6 +609,7 @@ public class VodPlaybackController {
     }
 
     private void detailEmpty(boolean shouldFinish) {
+        settling = null;
         if (shouldFinish || host.isFromCollect()) {
             host.finishVod();
             return;
@@ -586,7 +654,12 @@ public class VodPlaybackController {
     private void restoreDetail(VodPlayRequest activeRequest, History history) {
         if (restorePlaybackSelection(activeRequest)) publishPlaybackMetadata(state.getEpisode());
         else if (missingHere(history)) episodeMissing(history);
-        else selectFlag(entryFlag(history), true);
+        else {
+            selectFlag(entryFlag(history), true);
+            // Only here: a source found lacking above may already have started the return to the first
+            // one, and this detail is not the one it is waiting for.
+            if (settling != null) settled();
+        }
         if (history.isRevSort()) reverseEpisode(true);
         if (state.getPlayingRequest() != null && !host.hasPlaybackSession()) requestSelectedEpisode();
     }
@@ -614,6 +687,7 @@ public class VodPlaybackController {
         DiagnosticLog.write(App.get(), "vod_episode_missing", "number=" + number + " lines=" + state.getFlags().size() + " carried=" + carried);
         host.resetPlaybackForError("本片源没有第" + number + "集，正在查找其他片源");
         carry = new Carry(history.getKey(), history.getVodFlag(), history.getVodRemarks(), history.getPosition(), history.getDuration());
+        if (origin == null) origin = new Origin(host.getVodKey(), host.getVodId(), host.getVodName(), host.getVodPic(), carry);
         fallbackPolicy.episodeMissing();
     }
 

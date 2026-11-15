@@ -418,6 +418,7 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
         mVod = mViewModel.createPlaybackController(this);
         observeWhenServiceReady(mViewModel.getDetail(), this::onDetailObserved);
         observeWhenServiceReady(mViewModel.getSearch(), this::onSearchObserved);
+        observeWhenServiceReady(mViewModel.getSearchDone(), generation -> { if (mViewModel.isCurrentSearch(generation)) mVod.onSearchFinished(); });
         observeWhenServiceReady(mViewModel.getPreload(), this::onPreloadObserved);
         observeWhenServiceReady(mViewModel.getPlayback(), this::onPlaybackObserved);
     }
@@ -557,9 +558,9 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
     }
 
     @Override
-    public void onPlaybackRetry() {
-        DiagnosticLog.write(App.get(), "playback_retry", "same_line");
-        Notify.show(R.string.play_retry);
+    public void onPlaybackRetry(boolean quiet) {
+        DiagnosticLog.write(App.get(), "playback_retry", quiet ? "same_line quiet" : "same_line");
+        if (!quiet) Notify.show(R.string.play_retry);
     }
 
     @Override

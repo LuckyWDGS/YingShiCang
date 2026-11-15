@@ -65,7 +65,68 @@ public class JarLoader {
      */
     private final ConcurrentHashMap<String, String> deterministicFailures;
     private final ConcurrentHashMap<String, Object> locks;
+    // The package behind each loader, its hash (worked out only when a missing class is in question),
+    // the packages that have given at least one source class, and classes found missing before that.
+    private final ConcurrentHashMap<String, File> files = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, String> hashes = new ConcurrentHashMap<>();
+    private final Set<String> proven = ConcurrentHashMap.newKeySet();
+    private final ConcurrentHashMap<String, Set<String>> unproven = new ConcurrentHashMap<>();
     private volatile String recent;
+
+    private static final String MISSING_SAVED = "plugin_missing_classes";
+    private static final String MISSING_MESSAGE = "源插件初始化失败";
+    private static MissingClasses missing;
+
+    private static synchronized MissingClasses missing() {
+        if (missing == null) missing = new MissingClasses(com.github.catvod.utils.Prefers.getString(MISSING_SAVED));
+        return missing;
+    }
+
+    /** The source class itself is not in the package (not a class its start-up went looking for). */
+    private static final class AbsentSpider extends RuntimeException {
+        AbsentSpider(Throwable cause) { super(cause); }
+    }
+
+    /** Known from an earlier launch with this same package. */
+    private static final class KnownAbsent extends RuntimeException {
+    }
+
+    private String artifact(String jaKey) {
+        return hashes.computeIfAbsent(jaKey, key -> {
+            File file = files.get(key);
+            try {
+                return file == null ? "" : JarArtifact.hash(file, "SHA-256");
+            } catch (IOException e) {
+                return "";
+            }
+        });
+    }
+
+    private boolean knownAbsent(String jaKey, String api) {
+        MissingClasses kept = missing();
+        return kept.tracks(api) && kept.known(api, artifact(jaKey), System.currentTimeMillis());
+    }
+
+    /**
+     * Kept across launches only once the same package has given another source class: a packed plugin
+     * whose unpacking failed this time has none of its classes, and must be asked again next launch.
+     */
+    private void absent(String jaKey, String api) {
+        if (!proven.contains(jaKey)) {
+            unproven.computeIfAbsent(jaKey, key -> ConcurrentHashMap.newKeySet()).add(api);
+            return;
+        }
+        if (missing().remember(api, artifact(jaKey), System.currentTimeMillis())) com.github.catvod.utils.Prefers.put(MISSING_SAVED, missing().save());
+    }
+
+    private void present(String jaKey, String api) {
+        boolean changed = missing().tracks(api) && missing().forget(api);
+        if (proven.add(jaKey)) {
+            Set<String> waiting = unproven.remove(jaKey);
+            if (waiting != null) for (String name : waiting) changed |= missing().remember(name, artifact(jaKey), System.currentTimeMillis());
+        }
+        if (changed) com.github.catvod.utils.Prefers.put(MISSING_SAVED, missing().save());
+    }
 
     public JarLoader() {
         loaders = new ConcurrentHashMap<>();
@@ -82,6 +143,10 @@ public class JarLoader {
         spiders.clear();
         deterministicFailures.clear();
         locks.clear();
+        files.clear();
+        hashes.clear();
+        proven.clear();
+        unproven.clear();
         recent = null;
     }
 
@@ -100,6 +165,8 @@ public class JarLoader {
         Log.d("PluginNotice", PluginNoticeCompatibility.install(loader).name());
         invokeProxy(key, loader);
         checkCancellation();
+        files.put(key, file);
+        hashes.remove(key);
         loaders.put(key, loader);
     }
 
@@ -201,7 +268,15 @@ public class JarLoader {
                 parseJar(jaKey, jar);
                 DexClassLoader loader = loaders.get(jaKey);
                 if (loader == null) throw new IllegalStateException("源插件文件未加载");
-                spider = (Spider) loader.loadClass("com.github.catvod.spider." + api.split("csp_")[1]).newInstance();
+                if (knownAbsent(jaKey, api)) throw new KnownAbsent();
+                Class<?> type;
+                try {
+                    type = loader.loadClass("com.github.catvod.spider." + api.split("csp_")[1]);
+                } catch (ClassNotFoundException absent) {
+                    throw new AbsentSpider(absent);
+                }
+                present(jaKey, api);
+                spider = (Spider) type.newInstance();
                 spider.siteKey = key;
                 Context context = App.get();
                 if (PythonPluginCompatibility.requiresRuntime(spider)) {
@@ -218,6 +293,12 @@ public class JarLoader {
                 checkCancellation();
                 return spider;
             } catch (Throwable e) {
+                if (e instanceof KnownAbsent) {
+                    // Said in the log the first time this package was tried; not again at every launch.
+                    deterministicFailures.putIfAbsent(spKey, MISSING_MESSAGE);
+                    throw new IllegalStateException(MISSING_MESSAGE);
+                }
+                if (e instanceof AbsentSpider) absent(jaKey, api);
                 if (spider != null) releaseFailed(spider);
                 String detail = String.valueOf(e);
                 Throwable cause = e;

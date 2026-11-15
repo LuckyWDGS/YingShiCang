@@ -37,6 +37,24 @@ public class SiteViewModel extends ViewModel {
 
     public LiveData<String> getSearchStatus() { return searchStatus; }
 
+    // The generation of the aggregate search that has heard from every source.
+    private final MutableLiveData<Integer> searchDone = new MutableLiveData<>();
+
+    public LiveData<Integer> getSearchDone() { return searchDone; }
+
+    /** A retained value replayed to a new observer may belong to an earlier search. */
+    public boolean isCurrentSearch(Integer generation) { return generation != null && generation == searchGeneration; }
+
+    private void searchStatus(int generation, String status) {
+        // Results are posted before the status of the same answer, so the last cards arrive first.
+        boolean done = searches.finished();
+        com.fongmi.android.tv.App.post(() -> {
+            if (generation != searchGeneration) return;
+            searchStatus.setValue(status);
+            if (done) searchDone.setValue(generation);
+        });
+    }
+
     private final ViewModelTaskRunner<TaskType> tasks;
     private final ViewModelSearchRunner searches;
 
@@ -111,7 +129,7 @@ public class SiteViewModel extends ViewModel {
         int generation = ++searchGeneration;
         searches.start(sites, site -> SearchTask.create(site, keyword, quick),
                 value -> com.fongmi.android.tv.App.post(() -> { if (generation == searchGeneration) search.setValue(value); }),
-                status -> com.fongmi.android.tv.App.post(() -> { if (generation == searchGeneration) searchStatus.setValue(status); }));
+                status -> searchStatus(generation, status));
     }
 
     /** Several keywords over the same sources, as one aggregate search. */
@@ -119,7 +137,7 @@ public class SiteViewModel extends ViewModel {
         int generation = ++searchGeneration;
         searches.start(sites, keywords.size(), (site, query) -> SearchTask.create(site, keywords.get(query), quick),
                 value -> com.fongmi.android.tv.App.post(() -> { if (generation == searchGeneration) search.setValue(value); }),
-                status -> com.fongmi.android.tv.App.post(() -> { if (generation == searchGeneration) searchStatus.setValue(status); }));
+                status -> searchStatus(generation, status));
     }
 
     private void execute(TaskType type, MutableLiveData<Result> liveData, Callable<Result> callable) {

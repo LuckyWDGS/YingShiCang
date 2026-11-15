@@ -36,6 +36,8 @@ public final class NetTrace extends EventListener {
 
     private final List<Recording> recordings;
     private final String host;
+    // Loopback only: a port names no person or source, and tells the app's server from a plugin's own.
+    private final int port;
     private final long start = System.nanoTime();
     private long dnsStart, dnsMs = -1, connectStart, connectMs = -1;
     private int code = -1;
@@ -44,6 +46,7 @@ public final class NetTrace extends EventListener {
     private NetTrace(Call call, List<Recording> recordings) {
         this.recordings = recordings;
         this.host = label(call.request().url().host());
+        this.port = "local".equals(host) ? call.request().url().port() : -1;
     }
 
     public static Recording begin() {
@@ -141,7 +144,7 @@ public final class NetTrace extends EventListener {
     }
 
     private void finish(String outcome, boolean failed) {
-        Entry entry = new Entry(host, ms(start), dnsMs, connectMs, protocol, outcome, failed);
+        Entry entry = new Entry(host, port, ms(start), dnsMs, connectMs, protocol, outcome, failed);
         for (Recording recording : recordings) recording.add(entry);
     }
 
@@ -149,9 +152,9 @@ public final class NetTrace extends EventListener {
         return (System.nanoTime() - since) / 1_000_000;
     }
 
-    private record Entry(String host, long ms, long dns, long connect, String protocol, String outcome, boolean failed) {
+    record Entry(String host, int port, long ms, long dns, long connect, String protocol, String outcome, boolean failed) {
         String text() {
-            StringBuilder builder = new StringBuilder(host).append(':').append(ms).append("ms:").append(outcome);
+            StringBuilder builder = new StringBuilder(host).append(port > 0 ? String.valueOf(port) : "").append(':').append(ms).append("ms:").append(outcome);
             if (dns >= 0) builder.append(":dns").append(dns);
             if (connect >= 0) builder.append(":conn").append(connect);
             if (!protocol.isEmpty()) builder.append(':').append(protocol);
@@ -163,10 +166,18 @@ public final class NetTrace extends EventListener {
     public static final class Recording {
         private final List<Entry> entries = new ArrayList<>();
         private int count, failures;
+        // Failed loopback calls: how many, and the span of ports tried. A plugin that lost its own local
+        // component probes a whole range (Xiaomi TV 2026-11-14: 323 refused in 4.4s at every episode change).
+        private int localFailures, localLow = Integer.MAX_VALUE, localHigh = -1;
 
-        private synchronized void add(Entry entry) {
+        synchronized void add(Entry entry) {
             count++;
             if (entry.failed) failures++;
+            if (entry.failed && entry.port > 0) {
+                localFailures++;
+                localLow = Math.min(localLow, entry.port);
+                localHigh = Math.max(localHigh, entry.port);
+            }
             if (entries.size() < MAX_ENTRIES) entries.add(entry);
         }
 
@@ -177,6 +188,7 @@ public final class NetTrace extends EventListener {
             slowest.sort((a, b) -> Long.compare(b.ms, a.ms));
             StringBuilder builder = new StringBuilder("net=").append(count).append(" fail=").append(failures);
             for (int i = 0; i < Math.min(SLOWEST, slowest.size()); i++) builder.append(i == 0 ? " slow=" : ",").append(slowest.get(i).text());
+            if (localFailures > 0) builder.append(" localfail=").append(localFailures).append(" ports=").append(localLow == localHigh ? String.valueOf(localLow) : localLow + "-" + localHigh);
             return builder.toString();
         }
     }

@@ -400,8 +400,26 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         rows.addAll(items);
         // Ordinary progress events keep the cards in place, so scroll and focus stay put.
         mAdapter.setItems(rows, HISTORY_DIFF);
+        redrawUpdated();
         if (items.isEmpty()) mPresenter.setDelete(false);
         if (mResumed && focusedKey != null) restoreHistoryFocus(focusedKey);
+    }
+
+    // Titles last drawn with 有更新. The mark is not part of a history row, so a card whose row did not
+    // change kept its old label until the page was opened again (a follow round ending, or the title
+    // being opened, while history is on screen).
+    private final java.util.Set<String> mUpdatedShown = new java.util.HashSet<>();
+
+    private void redrawUpdated() {
+        java.util.Set<String> now = new java.util.HashSet<>();
+        for (int i = 0; i < mAdapter.size(); i++) {
+            if (!(mAdapter.get(i) instanceof History item)) continue;
+            boolean updated = FollowChecker.updated(item.getKey());
+            if (updated) now.add(item.getKey());
+            if (updated != mUpdatedShown.contains(item.getKey())) mAdapter.notifyArrayItemRangeChanged(i, 1);
+        }
+        mUpdatedShown.clear();
+        mUpdatedShown.addAll(now);
     }
 
     private String getFocusedHistoryKey() {

@@ -38,6 +38,7 @@ public class VodPlaybackState {
     private boolean autoFallback;
     private boolean useParse;
     private boolean fallbackSearchStarted;
+    private boolean searchFinished;
 
     public VodPlaybackState() {
         this.failedSources = new HashSet<>();
@@ -69,6 +70,7 @@ public class VodPlaybackState {
         autoFallback = false;
         useParse = false;
         fallbackSearchStarted = false;
+        searchFinished = false;
     }
 
     void addFailedLine(Flag flag) {
@@ -124,6 +126,10 @@ public class VodPlaybackState {
 
     boolean hasFallbackSearchStarted() { return fallbackSearchStarted; }
     void setFallbackSearchStarted(boolean value) { fallbackSearchStarted = value; }
+
+    /** Every source has answered the search for other sources: no later batch is coming. */
+    boolean isSearchFinished() { return searchFinished; }
+    void setSearchFinished(boolean value) { searchFinished = value; }
 
     Vod removeFirstSource() {
         return sources.remove(0);

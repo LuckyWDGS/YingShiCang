@@ -48,6 +48,14 @@ public interface VodPlaybackHost {
     default void onPlaybackRetry() {
     }
 
+    /**
+     * quiet: the episode had not started yet (its first address failed at once), so nothing was
+     * interrupted and the screen is still loading; no notice for that first retry.
+     */
+    default void onPlaybackRetry(boolean quiet) {
+        onPlaybackRetry();
+    }
+
     default int preferredQualityPosition(Result result, int previousPosition) {
         return previousPosition;
     }

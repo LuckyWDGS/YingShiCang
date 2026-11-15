@@ -113,6 +113,7 @@ public final class AiDramaRunner {
             accept(raw, pageCount, accepted);
             return true;
         }
+        void end() { exhausted = true; }
         void reset() { next = 1; unproductive = 0; exhausted = false; identities.clear(); items.clear(); }
     }
 
@@ -144,6 +145,8 @@ public final class AiDramaRunner {
         final List<Future<?>> children = new CopyOnWriteArrayList<>();
         volatile boolean cancelled;
         volatile boolean pageAccepted;
+        // The page in hand was the plugin saying "nothing for these filters".
+        volatile boolean noResults;
         volatile boolean metadataAccepted;
         boolean metadataOnly;
         Work(long token, int page, AiDramaCatalog.State state, long timeout) {
@@ -415,7 +418,26 @@ public final class AiDramaRunner {
         // duplicate initialization was a major source of cold-load latency and
         // plugin failures on TV devices.
         if (!valid(work)) throw new CancellationException();
-        return SiteApi.discoveryPage(site, requested.categoryId(), page, requested.extend(), client, work::track);
+        work.noResults = false;
+        try {
+            return SiteApi.discoveryPage(site, requested.categoryId(), page, requested.extend(), client, work::track);
+        } catch (Exception error) {
+            if (!noResults(error)) throw error;
+            // The plugin's way of saying this choice of filters has nothing (more): an empty last page,
+            // not a failure to retry twice and report (Xiaomi TV log 2026-11-08, seven in seven seconds).
+            work.noResults = true;
+            return Result.empty();
+        }
+    }
+
+    /** The plain-Java AiDj plugin throws 未获取到筛选结果 for a filter combination without titles. */
+    static boolean noResults(Throwable error) {
+        for (int depth = 0; error != null && depth < 8; depth++, error = error.getCause()) {
+            String message = error.getMessage();
+            if (message != null && message.contains("未获取到筛选结果")) return true;
+            if (error.getCause() == error) break;
+        }
+        return false;
     }
 
     private synchronized void progressivePage(Work work, AiDramaCatalog metadata,
@@ -520,6 +542,7 @@ public final class AiDramaRunner {
             accepted.putIfAbsent(site.getKey() + "\0" + item.getId(), item);
         }
         pages.accept(raw, result.getPageCount(), accepted);
+        if (work.noResults) pages.end();
     }
 
     private synchronized void publish(Work work, boolean finished, Consumer<Batch> callback) {
