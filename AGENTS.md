@@ -12,7 +12,7 @@
 
 ## Releases
 
-- Current version is 3.5.0 / versionCode 112 (tag v3.5.0). Only TV (leanback) packages are published; phone builds stay local. Build and publishing steps: `docs/build.md`.
+- Current version is 3.6.0 / versionCode 113 (tag v3.6.0). Only TV (leanback) packages are published; phone builds stay local. Build and publishing steps: `docs/build.md`.
 - Release notes keep `<!-- ysc-min-version: 2.1.0 -->` plus a `<!-- ysc-important: … -->` reason line, unchanged, by default: devices below 2.1.0 are forced to update. The app reads only the latest release body, so dropping the marker stops forcing. Never add, raise or drop it unless the user says that release is important; ask first.
 - A published version name is never reused (UpdateNotice.isNewer compares names); fixes go out as a new version.
 - Formal builds need the untracked `local.properties` entries (signing, update mirror URL/pin, log upload URL). Never commit them. Keep each release's `mapping.txt` locally under `Release/<version>/mapping` for retracing.
@@ -90,7 +90,6 @@ Each rule is a user decision or a fixed regression; `docs/开发记录.md` has t
 - Around any device test: back up the installed package and every file of the app's data (including exoplayer_internal.db and companions), then reinstall the original package, restore the data and verify each file's SHA, the inventory, runtime permissions, app-ops, external folders, ADB mappings and screen size; remove probes and temporary files and return Home. Never open authoritative SQLite snapshots directly; copy the database with its WAL/SHM first.
 - Say plainly what was verified where (LDPlayer, JVM, a user's log) and what was not; an emulator result is not proof for a physical TV.
 
-## Unreleased
+## Open
 
-- 2026-11-16, branch claude/heuristic-hugle-583daf (after 3.5.0): see the 2026-11-16 entries at the top of `docs/开发记录.md`.
 - Not looked into: on LDPlayer the warm-up can sit for minutes starting the Python runtime for a Python source (one thread, 100% CPU, no lock contention; 3.5.0 alike), so no source_warmup line appears; not measured on a TV.
