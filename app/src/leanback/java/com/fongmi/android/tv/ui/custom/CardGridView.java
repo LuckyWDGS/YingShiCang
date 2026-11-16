@@ -8,9 +8,18 @@ import android.view.ViewParent;
 
 import androidx.recyclerview.widget.RecyclerView;
 
-/** Keeps downward remote navigation in the cards, including while laying out the next row. */
+import com.bumptech.glide.Glide;
+import com.bumptech.glide.RequestManager;
+
+/**
+ * Keeps downward remote navigation in the cards, including while laying out the next row.
+ * While Up/Down is held, poster loads wait until the key is released: rows passed through at
+ * speed are not fetched or decoded, and the rows the key stops on load at once.
+ */
 public class CardGridView extends RecyclerView {
     private boolean holdingDirection;
+    private RequestManager pausedImages;
+    private Runnable onHoldEnd;
 
     public CardGridView(Context context, AttributeSet attrs) {
         super(context, attrs);
@@ -20,22 +29,64 @@ public class CardGridView extends RecyclerView {
         return holdingDirection;
     }
 
+    /** Runs on the main thread when a held Up/Down is released (or the window loses focus). */
+    public void setOnHoldEnd(Runnable onHoldEnd) {
+        this.onHoldEnd = onHoldEnd;
+    }
+
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
         boolean vertical = event.getKeyCode() == KeyEvent.KEYCODE_DPAD_DOWN
                 || event.getKeyCode() == KeyEvent.KEYCODE_DPAD_UP;
+        boolean wasHolding = holdingDirection;
         holdingDirection = vertical && event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() > 0;
-        if (holdingDirection) stopScroll();
+        if (holdingDirection) {
+            stopScroll();
+            pauseImages();
+        }
         // ViewRoot moves focus after dispatchKeyEvent returns. Keep the repeat
         // state until key-up so requestChildRectangleOnScreen can scroll the
         // newly focused row immediately instead of cancelling it on each repeat.
-        return super.dispatchKeyEvent(event);
+        boolean handled = super.dispatchKeyEvent(event);
+        if (wasHolding && !holdingDirection) endHold();
+        return handled;
     }
 
     @Override
     public void onWindowFocusChanged(boolean hasWindowFocus) {
         super.onWindowFocusChanged(hasWindowFocus);
-        if (!hasWindowFocus) holdingDirection = false;
+        if (!hasWindowFocus && holdingDirection) {
+            holdingDirection = false;
+            endHold();
+        }
+    }
+
+    @Override
+    protected void onDetachedFromWindow() {
+        holdingDirection = false;
+        resumeImages();
+        super.onDetachedFromWindow();
+    }
+
+    private void pauseImages() {
+        if (pausedImages != null) return;
+        try {
+            pausedImages = Glide.with(this);
+            pausedImages.pauseRequests();
+        } catch (IllegalArgumentException destroyed) {
+            pausedImages = null;
+        }
+    }
+
+    private void resumeImages() {
+        RequestManager manager = pausedImages;
+        pausedImages = null;
+        if (manager != null) manager.resumeRequests();
+    }
+
+    private void endHold() {
+        resumeImages();
+        if (onHoldEnd != null) onHoldEnd.run();
     }
 
     @Override
