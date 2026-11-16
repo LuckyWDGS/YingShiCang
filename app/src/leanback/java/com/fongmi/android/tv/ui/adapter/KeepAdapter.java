@@ -19,6 +19,8 @@ public class KeepAdapter extends BaseDiffAdapter<Keep, KeepAdapter.ViewHolder> {
     private final OnClickListener listener;
     private int width, height;
     private boolean delete;
+    // Favorites last drawn with 有更新.
+    private final java.util.Set<String> updatedShown = new java.util.HashSet<>();
 
     public KeepAdapter(OnClickListener listener) {
         this.listener = listener;
@@ -50,6 +52,18 @@ public class KeepAdapter extends BaseDiffAdapter<Keep, KeepAdapter.ViewHolder> {
         notifyItemRangeChanged(0, getItemCount());
     }
 
+    /**
+     * 有更新 is not part of a favorite's row, so the list comparison leaves a card whose row did not
+     * change as it was drawn (the title opened from this page kept its mark until the page was opened
+     * again). Rebinds the cards whose mark differs from what they were last drawn with.
+     */
+    public void redrawUpdated() {
+        for (int i = 0; i < getItemCount(); i++) {
+            String key = getItem(i).getKey();
+            if (FollowChecker.updated(key) != updatedShown.contains(key)) notifyItemChanged(i);
+        }
+    }
+
     private void setClickListener(View root, Keep item) {
         root.setOnLongClickListener(view -> listener.onLongClick());
         root.setOnClickListener(view -> {
@@ -74,7 +88,10 @@ public class KeepAdapter extends BaseDiffAdapter<Keep, KeepAdapter.ViewHolder> {
         holder.binding.name.setText(item.getVodName());
         holder.binding.remark.setVisibility(View.GONE);
         holder.binding.site.setVisibility(View.VISIBLE);
-        holder.binding.site.setText(FollowChecker.updated(item.getKey()) ? "有更新 · " + item.getSiteName() : item.getSiteName());
+        boolean updated = FollowChecker.updated(item.getKey());
+        if (updated) updatedShown.add(item.getKey());
+        else updatedShown.remove(item.getKey());
+        holder.binding.site.setText(updated ? "有更新 · " + item.getSiteName() : item.getSiteName());
         holder.binding.delete.setVisibility(!delete ? View.GONE : View.VISIBLE);
         ImgUtil.load(item.getVodName(), item.getVodPic(), holder.binding.image);
     }

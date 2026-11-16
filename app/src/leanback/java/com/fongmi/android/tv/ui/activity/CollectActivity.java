@@ -105,7 +105,14 @@ public class CollectActivity extends BaseActivity implements VodPresenter.OnClic
     @Override protected ViewBinding getBinding() { return binding = ActivityCollectBinding.inflate(getLayoutInflater()); }
     @Override protected void initView(Bundle savedInstanceState) {
         model = new ViewModelProvider(this).get(SiteViewModel.class);
-        binding.results.setLayoutManager(new GridLayoutManager(this, 5));
+        // A held Down used to outrun the smooth scroll: the next row was not laid out yet, so focus
+        // left the cards for the source list, which then showed that source instead (LDPlayer
+        // 2026-11-15, 482 cards). CardGridView keeps Down in the cards; rows scroll in at once while held.
+        binding.results.setLayoutManager(new GridLayoutManager(this, 5) {
+            @Override public boolean requestChildRectangleOnScreen(RecyclerView parent, View child, android.graphics.Rect rect, boolean immediate, boolean focusedChildVisible) {
+                return super.requestChildRectangleOnScreen(parent, child, rect, immediate || binding.results.isHoldingDirection(), focusedChildVisible);
+            }
+        });
         binding.results.addItemDecoration(new GridSpacing(5, 10));
         binding.results.setItemAnimator(null);
         cards = new ArrayObjectAdapter(new DiscoveryPresenter(this, true)) {

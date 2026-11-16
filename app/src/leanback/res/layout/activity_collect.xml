@@ -6,5 +6,5 @@
 </LinearLayout>
 <LinearLayout android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent" android:orientation="vertical">
 <TextView android:id="@+id/empty" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/tv_theme_text_secondary" android:textSize="15sp" android:text="正在等待搜索结果…"/>
-<androidx.recyclerview.widget.RecyclerView android:id="@+id/results" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:clipToPadding="false"/>
+<com.fongmi.android.tv.ui.custom.CardGridView android:id="@+id/results" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:clipToPadding="false"/>
 </LinearLayout></LinearLayout>
