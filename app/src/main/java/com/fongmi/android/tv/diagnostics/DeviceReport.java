@@ -70,6 +70,7 @@ public final class DeviceReport {
                 + " highestQuality=" + PlayerSetting.isHighestQualityPreferred());
         // Only whether DNS-over-HTTPS is on: its resolver address is a user setting and never reported.
         report.put("network", "doh=" + (com.fongmi.android.tv.setting.Setting.getDoh().isEmpty() ? "off" : "on"));
+        report.put("notifications", androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled() ? "on" : "off");
         report.put("storage", storage(context));
         report.put("decoders", decoders());
         return report;

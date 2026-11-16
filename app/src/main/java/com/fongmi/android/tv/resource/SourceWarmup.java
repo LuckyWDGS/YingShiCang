@@ -55,9 +55,13 @@ public final class SourceWarmup {
     }
 
     private static void start() {
-        if (!onHome || !VodConfig.get().isReady()) return;
+        String skipped = !onHome ? "not_home" : !VodConfig.get().isReady() ? "not_ready" : null;
         long revision = VodConfig.getDiscoveryRevision();
-        if (warmedRevision == revision) return;
+        if (skipped == null && warmedRevision == revision) skipped = "warmed";
+        if (skipped != null) {
+            DiagnosticLog.write(App.get(), "source_warmup", "outcome=skipped:" + skipped);
+            return;
+        }
         warmedRevision = revision;
         List<Site> used = used();
         List<Site> search = searchAllowed() ? VodConfig.get().getSites() : List.of();

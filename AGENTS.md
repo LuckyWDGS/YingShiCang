@@ -34,6 +34,7 @@ Each rule is a user decision or a fixed regression; `docs/开发记录.md` has t
 - Black cinema theme (v42): #080808 backdrop, #141414 panel, #1E1E1E control, #303030 selected, #F2F2F2/#AAAAAA text, white 2dp focus; discovery filter panel at 35% black. No loading spinner, return-to-top, reset/collapse buttons or visible adult row.
 - Weather pill is display only. Location: granted device location, else ipip.net (then Open-Meteo geocoding in that province), else ipwho.is. Forecast: Open-Meteo, then wttr.in; after a backup answer the backup goes first for 6 hours. No 约/≈ prefix.
 - 追剧提醒 (default on): 45s after Home shows, up to 10 favorites/recent series, one detail at a time, every 6h (3 days for single episodes); a count only goes up; the first look reports nothing; opening the title clears the mark. Leaving Home stops the round. FollowCheckScope blocks a plugin's synchronous finish of Home from that background call only.
+- The TV never asks for the notification permission (user 2026-11-16: on Android 13+ the prompt came on every cold start, Back is not a refusal, and Home's start-up waited behind it). The phone build still asks. DeviceReport carries notifications=on|off.
 - SourceWarmup: 10s after Home shows, one plugin at a time (home site, favorites, recent history; searchable plugins only with ≥ 3 GB RAM), stops when Home is left, once per configuration revision.
 
 ### Configuration
@@ -92,4 +93,4 @@ Each rule is a user decision or a fixed regression; `docs/开发记录.md` has t
 ## Unreleased
 
 - 2026-11-16, branch claude/heuristic-hugle-583daf (after 3.5.0): see the 2026-11-16 entries at the top of `docs/开发记录.md`.
-- Open with the user: the notification permission prompt on every cold start (Android 13+; Back does not count as a refusal), not changed yet.
+- Not looked into: on LDPlayer the warm-up can sit for minutes starting the Python runtime for a Python source (one thread, 100% CPU, no lock contention; 3.5.0 alike), so no source_warmup line appears; not measured on a TV.

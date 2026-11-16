@@ -149,7 +149,9 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         mClock = Clock.create(mBinding.clock).format("yyyy年M月d日 HH:mm");
         mWeather = new HomeWeather(this, mBinding.weather, mBinding.weatherInfo, mBinding.weatherIcon);
         mBinding.progressLayout.showProgress();
-        PermissionUtil.requestNotify(this);
+        // No notification prompt on the TV (user 2026-11-16): on Android 13+ it showed on every cold start
+        // until refused twice (Back is not a refusal), held Home's start-up behind it, and the TV needs no
+        // notification to work (the cast service runs without one; update progress is in its dialog).
         DLNARendererService.start(this);
         Updater.create().start(this);
         setRecyclerView();
