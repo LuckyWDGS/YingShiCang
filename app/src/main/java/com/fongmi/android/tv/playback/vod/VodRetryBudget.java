@@ -17,13 +17,18 @@ final class VodRetryBudget {
 
     /** Whether this failure of {@code playing} may retry the same line; counts the retry when it may. */
     boolean take(VodPlayRequest playing, long now) {
+        return take(playing, now, RETRIES);
+    }
+
+    /** As {@link #take(VodPlayRequest, long)}, with at most {@code limit} retries for this kind of failure. */
+    boolean take(VodPlayRequest playing, long now, int limit) {
         if (playing == null) return false;
         if (!playing.matches(request) || (readyAt >= 0 && now - readyAt >= REFILL_MS)) {
             request = playing;
             used = 0;
         }
         readyAt = -1;
-        if (used >= RETRIES) return false;
+        if (used >= limit) return false;
         used++;
         return true;
     }

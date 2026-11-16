@@ -370,6 +370,7 @@
     <string name="play_retry">Playback interrupted, retrying this line</string>
     <string name="error_play_network">Network connection failed</string>
     <string name="error_play_http">Server returned an error (HTTP %1$d)</string>
+    <string name="error_play_source">The source itself returned an error (HTTP %1$d). This is not your network; try again later or use another source</string>
     <string name="error_play_http_unknown">Server returned an error</string>
     <string name="error_play_content_type">The server did not return a playable video</string>
     <string name="error_play_io">Failed to read video data</string>

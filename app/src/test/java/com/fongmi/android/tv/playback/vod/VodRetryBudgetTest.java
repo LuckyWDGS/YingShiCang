@@ -18,6 +18,16 @@ public class VodRetryBudgetTest {
         assertFalse(budget.take(line, 10_000));
     }
 
+    @Test public void aFailureOfAKindAllowedOneRetryStopsAfterIt() {
+        VodRetryBudget budget = new VodRetryBudget();
+        VodPlayRequest line = request("line", "ep1");
+        assertTrue(budget.take(line, 0, 1));
+        assertFalse(budget.take(line, 5_000, 1));
+        // A later failure of the ordinary kind still has the second retry.
+        assertTrue(budget.take(line, 6_000));
+        assertFalse(budget.take(line, 7_000));
+    }
+
     @Test public void aShortRecoveryDoesNotRefillTheRetries() {
         VodRetryBudget budget = new VodRetryBudget();
         VodPlayRequest line = request("line", "ep1");

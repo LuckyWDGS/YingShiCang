@@ -76,6 +76,8 @@ public class PlayerManager implements ParseCallback {
     /** Timeout used by the current prepare, including an engine fallback. */
     private long playbackTimeoutMs;
     private boolean danmakuEnabled;
+    // The error being reported came from the source's own local server (SourceRefusal).
+    private boolean sourceRefused;
     private final TrackSelectionState trackSelection = new TrackSelectionState();
     private int retry;
     private int decode;
@@ -423,6 +425,13 @@ public class PlayerManager implements ParseCallback {
 
     public void previewAudioSetting(boolean original) {
         effects.previewAudioSetting(original);
+    }
+
+    /** Whether the error just reported was the source's local server refusing; read once per error. */
+    public boolean takeSourceRefused() {
+        boolean value = sourceRefused;
+        sourceRefused = false;
+        return value;
     }
 
     private boolean isMpvEngine() {
@@ -923,7 +932,9 @@ public class PlayerManager implements ParseCallback {
             // decode retries, format changes, or an error for the new item.
             if (spec == null || engine == null || !currentMediaMatchesSpec()
                     || player.getPlayerError() != e) return;
-            DiagnosticLog.write(App.get(), "playback_error", e.getErrorCodeName() + " engine=" + (engine instanceof com.fongmi.android.tv.player.exo.ExoPlayerEngine ? "exo" : "mpv"));
+            com.fongmi.android.tv.player.exo.SourceRefusal refusal = com.fongmi.android.tv.player.exo.SourceRefusal.of(e);
+            sourceRefused = refusal != null;
+            DiagnosticLog.write(App.get(), "playback_error", e.getErrorCodeName() + " engine=" + (engine instanceof com.fongmi.android.tv.player.exo.ExoPlayerEngine ? "exo" : "mpv") + (refusal == null ? "" : " " + refusal.log()));
             PlayerEngine.ErrorAction action = engine.handleError(e);
             // Ending the session here left a live stream that carried on with no session in the log (TCL, 2026-11-10).
             if (action == PlayerEngine.ErrorAction.RECOVERED) health.recovered(e.getErrorCodeName());

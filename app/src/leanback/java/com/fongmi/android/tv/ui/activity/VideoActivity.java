@@ -1570,7 +1570,7 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
     @Override
     protected void onError(String msg) {
         cancelPendingSeek();
-        mVod.playbackError(msg);
+        mVod.playbackError(msg, player().takeSourceRefused());
     }
 
     @Override

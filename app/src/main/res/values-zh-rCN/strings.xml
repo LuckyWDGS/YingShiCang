@@ -373,6 +373,7 @@
     <string name="play_retry">播放中断，正在重试当前线路</string>
     <string name="error_play_network">网络连接失败</string>
     <string name="error_play_http">服务器返回错误（HTTP %1$d）</string>
+    <string name="error_play_source">片源接口出错（HTTP %1$d），不是网络问题，可稍后再试或换片源</string>
     <string name="error_play_http_unknown">服务器返回错误</string>
     <string name="error_play_content_type">服务器返回的不是可播放的视频</string>
     <string name="error_play_io">读取视频数据失败</string>

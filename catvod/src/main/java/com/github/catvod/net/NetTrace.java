@@ -89,7 +89,7 @@ public final class NetTrace extends EventListener {
      * run that contains a digit (tokens, phone numbers, ids) and anything with @, = or / (emails, key=value,
      * paths). A message that is nothing but such parts is "other".
      */
-    static String readable(String message) {
+    public static String readable(String message) {
         String value = message.trim();
         value = value.replaceAll("(?i)https?://\\S+", "…");
         value = value.replaceAll("《[^》]*》|「[^」]*」|“[^”]*”|\"[^\"]*\"", "…");

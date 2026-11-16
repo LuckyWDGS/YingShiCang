@@ -271,6 +271,20 @@ public class VodLineFlowTest {
     }
 
     @Test
+    public void aSourceWhoseLocalServerRefusesIsRetriedOnceBeforeMoving() {
+        saved("线路一", "第5集");
+        open(line("线路一", 24), line("线路二", 24));
+        addressArrives();
+        controller.playbackError("refused", true);
+        assertEquals(1, retried);
+        assertEquals("线路一", last().getFlag());
+        addressArrives();
+        controller.playbackError("refused", true);
+        assertEquals(1, retried);
+        assertEquals("线路二", last().getFlag());
+    }
+
+    @Test
     public void aStalledPlayerRetriesTheLineTwiceBeforeMoving() {
         saved("线路一", "第5集");
         open(line("线路一", 24), line("线路二", 24));

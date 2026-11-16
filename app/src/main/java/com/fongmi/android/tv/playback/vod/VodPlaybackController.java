@@ -117,6 +117,7 @@ public class VodPlaybackController {
     private boolean cachedDetail;
     private PlaybackResult<VodPlayRequest> deferredFailure;
     private String deferredError;
+    private boolean deferredRefused;
 
     public void onDetailResult(VodDetailResult detail) {
         if (detail == null || !detail.matches(host.getVodKey(), host.getVodId())) return;
@@ -141,8 +142,10 @@ public class VodPlaybackController {
         cachedDetail = false;
         PlaybackResult<VodPlayRequest> failed = deferredFailure;
         String error = deferredError;
+        boolean refused = deferredRefused;
         deferredFailure = null;
         deferredError = null;
+        deferredRefused = false;
         boolean usable = !result.getList().isEmpty() && ResourceHealth.hasPlayableEntry(result.getVod());
         if (usable) {
             Vod item = result.getVod();
@@ -160,7 +163,7 @@ public class VodPlaybackController {
         // or, when the source gave nothing usable, let that failure count as it would have.
         if (usable) refresh();
         else if (failed != null) onPlaybackResult(failed);
-        else playbackError(error);
+        else playbackError(error, refused);
     }
 
     public void updateVod(Vod item) {
@@ -464,12 +467,27 @@ public class VodPlaybackController {
     }
 
     public void playbackError(String msg) {
+        playbackError(msg, false);
+    }
+
+    // The source's own local server answered the play address with an HTTP error: one retry, not two.
+    static final int REFUSED_RETRIES = 1;
+
+    /**
+     * sourceRefused: the address was the source plugin's local server and it answered with an HTTP error
+     * (phone 2026-11-16: 短剧漫剧's server answered 500 to every request because its own upstream call
+     * came back empty; twelve requests and 27s passed before the screen said anything). The first retry
+     * still asks the address again, which is what a server that was only restarting needs; a second
+     * round of the same answer is not waited for.
+     */
+    public void playbackError(String msg, boolean sourceRefused) {
         if (cachedDetail) {
             deferredError = msg;
+            deferredRefused = sourceRefused;
             return;
         }
         VodPlayRequest playing = state.getPlayingRequest();
-        if (retries.take(playing, clock.getAsLong())) {
+        if (retries.take(playing, clock.getAsLong(), sourceRefused ? REFUSED_RETRIES : VodRetryBudget.RETRIES)) {
             // Xiaomi TV 2026-11-14: at every episode change the plugin's first address answered 500 for
             // 3s (its local component was restarting) and the retry played; the screen said 播放中断.
             host.onPlaybackRetry(retries.used() == 1 && !playing.matches(startedRequest));

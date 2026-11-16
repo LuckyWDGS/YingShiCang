@@ -28,6 +28,8 @@ public class ExoErrorMessageProvider {
     }
 
     private String httpStatus(PlaybackException e) {
+        SourceRefusal refusal = SourceRefusal.of(e);
+        if (refusal != null) return ResUtil.getString(R.string.error_play_source, refusal.status());
         for (Throwable cause = e.getCause(); cause != null; cause = cause.getCause()) {
             if (cause instanceof HttpDataSource.InvalidResponseCodeException response) return ResUtil.getString(R.string.error_play_http, response.responseCode);
         }

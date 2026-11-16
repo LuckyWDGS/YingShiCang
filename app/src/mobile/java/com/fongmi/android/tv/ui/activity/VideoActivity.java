@@ -1341,7 +1341,7 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
 
     @Override
     protected void onError(String msg) {
-        mVod.playbackError(msg);
+        mVod.playbackError(msg, player().takeSourceRefused());
     }
 
     @Override
