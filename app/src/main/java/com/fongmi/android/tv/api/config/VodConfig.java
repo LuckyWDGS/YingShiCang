@@ -1,8 +1,11 @@
 package com.fongmi.android.tv.api.config;
 
+import android.os.SystemClock;
 import android.text.TextUtils;
 
 import com.fongmi.android.tv.App;
+import com.fongmi.android.tv.diagnostics.DiagnosticLog;
+import com.fongmi.android.tv.utils.Task;
 import com.fongmi.android.tv.api.Decoder;
 import com.fongmi.android.tv.api.loader.BaseLoader;
 import com.fongmi.android.tv.bean.Config;
@@ -150,9 +153,43 @@ public class VodConfig extends BaseConfig {
         ConfigEvent.vod();
     }
 
+    private volatile boolean preferSaved;
+    private volatile boolean startedSaved;
+
+    /**
+     * The next automatic load starts from the saved copy when there is a recent one, and checks the address
+     * in the background; a changed configuration is used from the next start. Loads the user asks for
+     * (refresh, another line) still go to the network first.
+     */
+    public VodConfig preferSaved() {
+        preferSaved = true;
+        return this;
+    }
+
+    @Override
+    protected void onDemand() {
+        preferSaved = true;
+    }
+
+    @Override
+    protected boolean startedFromSaved() {
+        return startedSaved;
+    }
+
     @Override
     protected void load(Config config) throws Throwable {
         String url = UrlUtil.convert(config.getUrl());
+        boolean trySaved = preferSaved;
+        preferSaved = false;
+        startedSaved = false;
+        JsonObject saved = trySaved ? VodConfigFetch.saved(url, config.getJson(), System.currentTimeMillis()) : null;
+        if (saved != null) {
+            checkJson(config, saved);
+            if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException();
+            startedSaved = true;
+            checkLater(config, url, saved);
+            return;
+        }
         VodConfigFetch.Loaded loaded = VodConfigFetch.load(url, config.getJson(), System.currentTimeMillis(),
                 () -> Decoder.getJson(url, TAG, VodConfigFetch.ATTEMPT_TIMEOUT_MS));
         checkJson(config, loaded.object());
@@ -164,6 +201,32 @@ public class VodConfig extends BaseConfig {
             config.setJson(VodConfigFetch.snapshot(url, loaded.object(), System.currentTimeMillis()));
             config.save();
         }
+    }
+
+    /** After a start from the saved copy: ask the address once, off the main thread, and keep its answer. */
+    private void checkLater(Config config, String url, JsonObject saved) {
+        Task.execute(() -> {
+            long started = SystemClock.elapsedRealtime();
+            VodConfigFetch.Refreshed result = VodConfigFetch.refresh(saved, () -> Decoder.getJson(url, TAG, VodConfigFetch.ATTEMPT_TIMEOUT_MS));
+            // Another line or a reload since: its own load owns the saved copy.
+            boolean current = Loader.INSTANCE == this && this.config == config;
+            if (current) {
+                switch (result.kind()) {
+                    case SAME, CHANGED -> {
+                        config.setJson(VodConfigFetch.snapshot(url, result.fresh(), System.currentTimeMillis()));
+                        config.save();
+                    }
+                    case REFUSED -> {
+                        config.setJson("");
+                        config.save();
+                    }
+                    case UNREACHABLE -> {
+                    }
+                }
+            }
+            DiagnosticLog.write(App.get(), "config_refresh", "ms=" + (SystemClock.elapsedRealtime() - started)
+                    + " outcome=" + result.kind().name().toLowerCase(java.util.Locale.ROOT) + (current ? "" : " stale"));
+        });
     }
 
     @Override

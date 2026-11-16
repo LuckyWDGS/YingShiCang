@@ -72,6 +72,39 @@ public final class VodConfigFetch {
         return record.toString();
     }
 
+    /**
+     * The saved copy to start from before asking the network (Xiaomi TV: a slow configuration address held
+     * Home for 21s before the saved copy was used): the same address, saved within the cache lifetime.
+     */
+    public static JsonObject saved(String url, String cache, long now) {
+        return cached(url, cache, now);
+    }
+
+    public enum Refresh {
+        /** The address answered the same configuration. */
+        SAME,
+        /** The address answered another configuration: it is saved and used from the next start. */
+        CHANGED,
+        /** No answer (network, timeout, 408/429/5xx): the saved copy stays. */
+        UNREACHABLE,
+        /** An explicit answer that is not a configuration (msg, no sites, other 4xx): the saved copy goes. */
+        REFUSED
+    }
+
+    public record Refreshed(Refresh kind, JsonObject fresh) {}
+
+    /** Checks the address in the background after a start from the saved copy, once. */
+    public static Refreshed refresh(JsonObject saved, Transport transport) {
+        try {
+            JsonObject fresh = parse(transport.fetch());
+            return new Refreshed(fresh.equals(saved) ? Refresh.SAME : Refresh.CHANGED, fresh);
+        } catch (IOException | CancellationException e) {
+            return new Refreshed(Refresh.UNREACHABLE, null);
+        } catch (Exception e) {
+            return new Refreshed(Refresh.REFUSED, null);
+        }
+    }
+
     private static JsonObject cached(String url, String cache, long now) {
         try {
             JsonObject record = JsonParser.parseString(cache).getAsJsonObject();

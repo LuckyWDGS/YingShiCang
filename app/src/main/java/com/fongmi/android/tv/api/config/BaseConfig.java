@@ -64,7 +64,17 @@ abstract class BaseConfig {
     private synchronized void startIfNeeded() {
         if (isLoaded() || (future != null && !future.isDone())) return;
         if (config == null) config = defaultConfig();
+        onDemand();
         load(new Callback());
+    }
+
+    /** A screen needs the configuration before anything loaded it (a screen Android brought back alone). */
+    protected void onDemand() {
+    }
+
+    /** The last successful load started from the saved copy rather than the network. */
+    protected boolean startedFromSaved() {
+        return false;
     }
 
     /** Starts at most one shared load; callers only observe it and own their cancellation. */
@@ -144,7 +154,7 @@ abstract class BaseConfig {
             OkHttp.cancel(getTag());
             load(config);
             if (taskId.get() != id) return;
-            DiagnosticLog.write(App.get(), "config_load", "type=" + logType() + " ms=" + (SystemClock.elapsedRealtime() - started) + " outcome=ok saved=" + !TextUtils.isEmpty(config.getNotice()));
+            DiagnosticLog.write(App.get(), "config_load", "type=" + logType() + " ms=" + (SystemClock.elapsedRealtime() - started) + " outcome=ok saved=" + !TextUtils.isEmpty(config.getNotice()) + (startedFromSaved() ? " first=saved" : ""));
             if (config.equals(this.config)) config.update();
             App.post(() -> Notify.show(config.getNotice()));
             App.post(callback::success);

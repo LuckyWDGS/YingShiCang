@@ -10,13 +10,16 @@ import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.bean.Result;
 import com.fongmi.android.tv.exception.ExtractException;
 import com.fongmi.android.tv.playback.PlaybackResult;
+import com.fongmi.android.tv.diagnostics.DiagnosticLog;
 import com.fongmi.android.tv.playback.vod.VodDataSource;
+import com.fongmi.android.tv.playback.vod.VodDetailCache;
 import com.fongmi.android.tv.playback.vod.VodDetailResult;
 import com.fongmi.android.tv.playback.vod.VodPlayRequest;
 import com.fongmi.android.tv.playback.vod.VodPlaybackController;
 import com.fongmi.android.tv.playback.vod.VodPlaybackHost;
 import com.fongmi.android.tv.playback.vod.VodPlaybackState;
 import com.fongmi.android.tv.resource.ResourceHealth;
+import com.fongmi.android.tv.utils.Task;
 
 public class VideoViewModel extends SiteViewModel implements VodDataSource {
 
@@ -51,20 +54,60 @@ public class VideoViewModel extends SiteViewModel implements VodDataSource {
         return new VodPlaybackController(host, this, playbackState);
     }
 
+    // After a cached detail: the source is asked again once the first play address has answered (so a
+    // plugin serving one call at a time, as WoGG's lock does, answers the address first), or after a while.
+    static final long FRESH_DETAIL_DELAY_MS = 8_000;
+    private Runnable freshDetail;
+    private final Runnable freshDetailDue = this::startFreshDetail;
+
     @Override
     public void detailContent(String key, String id) {
         requestTasks.cancelAll();
         int generation = ++detailGeneration;
         long revision = VodConfig.getDiscoveryRevision();
+        String config = VodConfig.getUrl();
+        clearFreshDetail();
+        Task.execute(() -> {
+            Result cached = VodDetailCache.get(config, key, id, System.currentTimeMillis());
+            App.post(() -> {
+                if (generation != detailGeneration || revision != VodConfig.getDiscoveryRevision()) return;
+                if (cached == null) {
+                    fetchDetail(key, id, config, generation, revision);
+                    return;
+                }
+                freshDetail = () -> fetchDetail(key, id, config, generation, revision);
+                App.post(freshDetailDue, FRESH_DETAIL_DELAY_MS);
+                DiagnosticLog.write(App.get(), "vod_detail_cached", "lines=" + cached.getVod().getFlags().size());
+                detail.setValue(new VodDetailResult(key, id, cached, true));
+            });
+        });
+    }
+
+    private void startFreshDetail() {
+        Runnable start = freshDetail;
+        clearFreshDetail();
+        if (start != null) start.run();
+    }
+
+    private void clearFreshDetail() {
+        freshDetail = null;
+        App.removeCallbacks(freshDetailDue);
+    }
+
+    private void fetchDetail(String key, String id, String config, int generation, long revision) {
         requestTasks.execute(
                 TaskType.DETAIL,
                 Constant.TIMEOUT_VOD,
                 () -> new VodDetailResult(key, id, loadDetail(key, id)),
-                value -> App.post(() -> {
-                    if (generation != detailGeneration || revision != VodConfig.getDiscoveryRevision()) return;
-                    ResourceHealth.recordDetail(key, id, value.result(), revision);
-                    detail.setValue(value);
-                }),
+                value -> {
+                    String kept = VodDetailCache.encode(config, key, id, value.result(), System.currentTimeMillis());
+                    App.post(() -> {
+                        if (generation != detailGeneration || revision != VodConfig.getDiscoveryRevision()) return;
+                        ResourceHealth.recordDetail(key, id, value.result(), revision);
+                        Task.execute(() -> VodDetailCache.write(config, key, id, kept));
+                        detail.setValue(value);
+                    });
+                },
                 error -> App.post(() -> {
                     if (generation != detailGeneration || revision != VodConfig.getDiscoveryRevision()) return;
                     ResourceHealth.recordDetailFailure(key, id, error, revision);
@@ -113,6 +156,7 @@ public class VideoViewModel extends SiteViewModel implements VodDataSource {
             if (detailToken != detailGeneration || revision != VodConfig.getDiscoveryRevision()) return;
             if (token != (type == TaskType.PLAYBACK ? playbackGeneration : preloadGeneration)) return;
             output.setValue(value);
+            if (type == TaskType.PLAYBACK) startFreshDetail();
         });
         // Waiting on the source's own QR/login dialog is the user scanning, not a slow line.
         requestTasks.execute(
@@ -132,6 +176,7 @@ public class VideoViewModel extends SiteViewModel implements VodDataSource {
     @Override
     protected void onCleared() {
         detailGeneration++;
+        clearFreshDetail();
         requestTasks.cancelAll();
         playbackState.reset();
         super.onCleared();

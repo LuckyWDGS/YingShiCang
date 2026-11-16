@@ -14,7 +14,9 @@ import com.bumptech.glide.RequestManager;
 /**
  * Keeps downward remote navigation in the cards, including while laying out the next row.
  * While Up/Down is held, poster loads wait until the key is released: rows passed through at
- * speed are not fetched or decoded, and the rows the key stops on load at once.
+ * speed are not fetched or decoded, and the rows the key stops on load at once. Posters already in
+ * memory wait too: showing them (a request per card, its miss answered on the main thread) cost
+ * most of the gain on LDPlayer (frame median 5ms paused, 9-11ms memory-only, 11-25ms before).
  */
 public class CardGridView extends RecyclerView {
     private boolean holdingDirection;

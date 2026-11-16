@@ -1,6 +1,7 @@
 package com.fongmi.android.tv.playback.vod;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import androidx.media3.common.C;
@@ -99,6 +100,54 @@ public class VodLineFlowTest {
         };
         vod.getFlags().addAll(List.of(lines));
         controller.onDetailResult(new VodDetailResult(key, ID, Result.vod(vod)));
+    }
+
+    /** The copy kept from the last time the title was opened. */
+    private void openCached(Flag... lines) {
+        Vod vod = new Vod() {
+            @Override public String getName() { return "QA"; }
+            @Override public String getId() { return ID; }
+        };
+        vod.getFlags().addAll(List.of(lines));
+        controller.onDetailResult(new VodDetailResult(key, ID, Result.vod(vod), true));
+    }
+
+    @Test
+    public void aCachedAddressThatFailsWaitsForTheSourceAndIsAskedAgain() {
+        saved("线路一", "第3集");
+        openCached(line("线路一", 10), line("线路二", 10));
+        assertEquals("线路一/3", last().getId());
+        addressFails();
+        addressFails();
+        addressFails();
+        assertEquals("nothing changes line while the source's own detail is due", 1, requests.size());
+        assertTrue(errors.isEmpty());
+        open(line("线路一", 10), line("线路二", 10));
+        assertEquals("the same episode is asked again", 2, requests.size());
+        assertEquals("线路一/3", last().getId());
+        addressArrives();
+    }
+
+    @Test
+    public void aCachedStartWithAWorkingAddressIsNotRestartedByTheFreshDetail() {
+        saved("线路一", "第3集");
+        openCached(line("线路一", 10));
+        addressArrives();
+        open(line("线路一", 12));
+        assertEquals(1, requests.size());
+        assertEquals("the fresh detail's new episodes are merged in", 12, state.getFlags().get(0).getEpisodes().size());
+    }
+
+    @Test
+    public void aCachedFailureCountsWhenTheSourceHasNothing() {
+        saved("线路一", "第3集");
+        openCached(line("线路一", 10), line("线路二", 10));
+        addressFails();
+        Vod empty = new Vod() {
+            @Override public String getId() { return ID; }
+        };
+        controller.onDetailResult(new VodDetailResult(key, ID, Result.vod(empty)));
+        assertFalse("the failure is handled as it would have been", errors.isEmpty());
     }
 
     private void saved(String line, String episode) {

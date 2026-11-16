@@ -2,38 +2,65 @@ package com.fongmi.android.tv.ui.activity;
 
 import android.app.Activity;
 import android.content.Intent;
+import android.graphics.Rect;
 import android.os.Bundle;
+import android.os.SystemClock;
+import android.text.TextUtils;
+import android.view.FocusFinder;
+import android.view.Gravity;
+import android.view.KeyEvent;
+import android.view.MotionEvent;
+import android.view.SoundEffectConstants;
 import android.view.View;
+import android.view.ViewGroup;
+import android.view.ViewTreeObserver;
+import android.widget.LinearLayout;
+import android.widget.TextView;
 import androidx.leanback.widget.ArrayObjectAdapter;
+import androidx.leanback.widget.DiffCallback;
 import androidx.leanback.widget.ItemBridgeAdapter;
 import androidx.lifecycle.ViewModelProvider;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.viewbinding.ViewBinding;
 import com.fongmi.android.tv.App;
+import com.fongmi.android.tv.Constant;
 import com.fongmi.android.tv.R;
+import com.fongmi.android.tv.api.SiteApi;
 import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.bean.Result;
 import com.fongmi.android.tv.bean.Site;
 import com.fongmi.android.tv.bean.Vod;
 import com.fongmi.android.tv.databinding.ActivityCollectBinding;
+import com.fongmi.android.tv.discovery.AiDramaRunner;
+import com.fongmi.android.tv.discovery.ShortDramaTitles;
 import com.fongmi.android.tv.event.ConfigEvent;
 import com.fongmi.android.tv.model.SiteViewModel;
 import com.fongmi.android.tv.resource.ResourceHealth;
+import com.fongmi.android.tv.search.SearchPaging;
+import com.fongmi.android.tv.search.SearchResultRanker;
+import com.fongmi.android.tv.search.SearchSourceGate;
+import com.fongmi.android.tv.setting.Setting;
 import com.fongmi.android.tv.ui.base.BaseActivity;
 import com.fongmi.android.tv.ui.custom.GridSpacing;
 import com.fongmi.android.tv.ui.presenter.DiscoveryPresenter;
 import com.fongmi.android.tv.ui.presenter.VodPresenter;
 import com.fongmi.android.tv.utils.ResUtil;
-import com.fongmi.android.tv.search.SearchResultRanker;
-import com.fongmi.android.tv.search.SearchSourceGate;
+import com.fongmi.android.tv.utils.Task;
+import com.github.catvod.utils.Trans;
+import com.google.common.util.concurrent.FluentFuture;
+import com.google.common.util.concurrent.MoreExecutors;
+import com.google.gson.reflect.TypeToken;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.greenrobot.eventbus.Subscribe;
 import org.greenrobot.eventbus.ThreadMode;
 import java.util.*;
 
 public class CollectActivity extends BaseActivity implements VodPresenter.OnClickListener {
-    private static final int MAX_PAGE_AUTO_RETRIES = 2;
-    private static final long PAGE_AUTO_RETRY_DELAY_MS = 700L;
     // Progressive search batches are merged into at most one diff per interval.
     private static final long DISPLAY_INTERVAL_MS = 150L;
     static final String EXTRA_RETURN_HOME = "return_home_from_search";
@@ -53,22 +80,14 @@ public class CollectActivity extends BaseActivity implements VodPresenter.OnClic
     private final Map<Vod, Integer> ranks = new IdentityHashMap<>();
     private final Map<String, Long> cardIds = new HashMap<>();
     private final Map<Vod, Long> objectIds = new IdentityHashMap<>();
-    private final Runnable queuedDisplay = () -> display(false);
+    private final Runnable queuedDisplay = this::flushDisplay;
     private boolean displayQueued;
     private long lastDisplay;
     private final Map<String, Site> sources = new LinkedHashMap<>();
     // Sources with at least one card; only these get a sidebar row (user 2026-10-24: sources that
     // found nothing or failed were listed for nothing).
     private final Set<String> listed = new HashSet<>();
-    private final Map<String, Integer> pages = new HashMap<>();
-    private final Set<String> exhausted = new HashSet<>();
-    private final Map<String, Integer> pageRetryAttempts = new HashMap<>();
-    private final Map<String, Runnable> pendingPageRetries = new HashMap<>();
-    private String selected = "", loadingKey;
-    private java.util.concurrent.Future<?> pageJob;
-    private com.fongmi.android.tv.api.SiteApi.SearchTask pageTask;
-    private int pageEpoch;
-    private int emptyPageScans;
+    private String selected = "";
     private long nextCardId;
     private boolean searchComplete;
     private boolean restoringFocus;
@@ -109,11 +128,13 @@ public class CollectActivity extends BaseActivity implements VodPresenter.OnClic
         // left the cards for the source list, which then showed that source instead (LDPlayer
         // 2026-11-15, 482 cards). CardGridView keeps Down in the cards; rows scroll in at once while held.
         binding.results.setLayoutManager(new GridLayoutManager(this, 5) {
-            @Override public boolean requestChildRectangleOnScreen(RecyclerView parent, View child, android.graphics.Rect rect, boolean immediate, boolean focusedChildVisible) {
+            @Override public boolean requestChildRectangleOnScreen(RecyclerView parent, View child, Rect rect, boolean immediate, boolean focusedChildVisible) {
                 return super.requestChildRectangleOnScreen(parent, child, rect, immediate || binding.results.isHoldingDirection(), focusedChildVisible);
             }
         });
         binding.results.addItemDecoration(new GridSpacing(5, 10));
+        // A batch merged under a held key could cost a 100-200ms frame (LDPlayer, at the end of the list).
+        binding.results.setOnHoldEnd(() -> { if (displayQueued) display(false); });
         binding.results.setItemAnimator(null);
         cards = new ArrayObjectAdapter(new DiscoveryPresenter(this, true)) {
             @Override public long getId(int position) {
@@ -127,27 +148,27 @@ public class CollectActivity extends BaseActivity implements VodPresenter.OnClic
             append(result.getSearchRawList(), false);
         });
         model.getSearchStatus().observe(this, status -> {
-            java.util.regex.Matcher progress = java.util.regex.Pattern.compile("(\\d+)/(\\d+)").matcher(status);
+            Matcher progress = Pattern.compile("(\\d+)/(\\d+)").matcher(status);
             binding.progress.setText(progress.find() ? "搜索(" + progress.group(1) + "/" + progress.group(2) + ")" : "搜索(0/0)");
             searchComplete = status.startsWith("搜索完成") || status.equals("没有启用的搜索源");
-            if (displayQueued) display(false);
+            if (displayQueued) flushDisplay();
             updateEmpty();
         });
         search();
     }
     @Override protected void initEvent() {
         binding.getRoot().getViewTreeObserver().addOnGlobalFocusChangeListener(this::followSourceFocus);
-        binding.results.addOnScrollListener(new androidx.recyclerview.widget.RecyclerView.OnScrollListener() {
-            @Override public void onScrolled(androidx.recyclerview.widget.RecyclerView view, int dx, int dy) {
+        binding.results.addOnScrollListener(new RecyclerView.OnScrollListener() {
+            @Override public void onScrolled(RecyclerView view, int dx, int dy) {
                 if (dy > 0 && !restoringFocus) view.post(() -> { if (!restoringFocus) loadNextPage(false); });
             }
-            @Override public void onScrollStateChanged(androidx.recyclerview.widget.RecyclerView view, int state) {
-                if (state == androidx.recyclerview.widget.RecyclerView.SCROLL_STATE_IDLE && !restoringFocus)
+            @Override public void onScrollStateChanged(RecyclerView view, int state) {
+                if (state == RecyclerView.SCROLL_STATE_IDLE && !restoringFocus)
                     view.post(() -> { if (!restoringFocus) loadNextPage(false); });
             }
         });
         binding.results.setOnGenericMotionListener((view, event) -> {
-            if (event.getActionMasked() == android.view.MotionEvent.ACTION_SCROLL && event.getAxisValue(android.view.MotionEvent.AXIS_VSCROLL) < 0)
+            if (event.getActionMasked() == MotionEvent.ACTION_SCROLL && event.getAxisValue(MotionEvent.AXIS_VSCROLL) < 0)
                 view.post(() -> loadNextPage(false));
             return false;
         });
@@ -162,113 +183,93 @@ public class CollectActivity extends BaseActivity implements VodPresenter.OnClic
     }
 
     private void loadNextPage(boolean retry) {
-        loadNextPage(retry, false, false);
+        paging.next(retry, false, false);
     }
-    private void loadNextPage(boolean retry, boolean scanning) {
-        loadNextPage(retry, scanning, false);
-    }
-    private void loadNextPage(boolean retry, boolean scanning, boolean force) {
-        // A letters search with candidate titles has no single query to page.
-        if (!terms.isEmpty()) return;
-        if (selected.isEmpty() || loadingKey != null || exhausted.contains(selected) || (!retry && failedPages.contains(selected))) return;
-        if (scanning && emptyPageScans >= 3) return;
-        GridLayoutManager layout = (GridLayoutManager) binding.results.getLayoutManager();
-        if (!force && layout.findLastVisibleItemPosition() < cards.size() - 5) return;
-        String key = selected;
-        Site source = sources.get(key);
-        if (source == null) return;
-        int page = pages.getOrDefault(key, 1) + 1;
-        String retryKey = pageRetryKey(key, page);
-        String query = com.github.catvod.utils.Trans.t2s(keyword());
-        int token = ++pageEpoch;
-        loadingKey = key; failedPages.remove(key);
-        var task = com.fongmi.android.tv.api.SiteApi.searchTask(source, query, false, String.valueOf(page));
-        pageTask = task;
-        com.google.common.util.concurrent.FluentFuture<Result> future;
-        try {
-            com.fongmi.android.tv.utils.Task.purgeSearchTasks();
-            future = com.google.common.util.concurrent.FluentFuture.from(com.fongmi.android.tv.utils.Task.searchExecutor(task.isCrawler()).submit(task))
-                    .withTimeout(com.fongmi.android.tv.Constant.TIMEOUT_SEARCH, java.util.concurrent.TimeUnit.MILLISECONDS, com.fongmi.android.tv.utils.Task.scheduler());
-        } catch (java.util.concurrent.RejectedExecutionException rejected) {
-            task.close(); pageTask = null; loadingKey = null; failedPages.add(key);
-            schedulePageRetry(key, page, token);
-            return;
+
+    private final SearchPaging paging = new SearchPaging(new SearchPaging.Host() {
+        @Override public String selected() { return selected; }
+        @Override public boolean canPage() { return terms.isEmpty(); }
+        @Override public boolean nearEnd() {
+            GridLayoutManager layout = (GridLayoutManager) binding.results.getLayoutManager();
+            return layout.findLastVisibleItemPosition() >= cards.size() - 5;
         }
-        pageJob = future;
-        future.addCallback(com.fongmi.android.tv.utils.Task.callback(result -> {
-            task.close();
-            App.post(() -> {
-            if (token != pageEpoch || isDestroyed() || isFinishing()) return;
-            pageTask = null; pageJob = null; loadingKey = null;
+        @Override public Site source(String key) { return sources.get(key); }
+        @Override public String query() { return Trans.t2s(keyword()); }
+        @Override public boolean alive() { return !isDestroyed() && !isFinishing(); }
+        @Override public SearchPaging.Appended append(String key, List<Vod> page) {
             int before = identities.size();
-            int visibleBefore = selected.equals(key) ? cards.size() : -1;
-            append(result.getList(), true);
-            if (identities.size() == before) exhausted.add(key);
-            else pages.put(key, page);
-            pageRetryAttempts.remove(retryKey);
-            // A filtered-out page still advances the source cursor.  Scan a few
-            // pages when no matching card is visible, then let a source click continue.
-            if (selected.equals(key) && cards.size() == visibleBefore && identities.size() > before) {
-                emptyPageScans++;
-                updateEmpty();
-                binding.results.post(() -> loadNextPage(false, true));
-            } else if (selected.equals(key)) emptyPageScans = 0;
-        });
+            int shownBefore = cards.size();
+            CollectActivity.this.append(page, true);
+            return new SearchPaging.Appended(identities.size() > before, cards.size() != shownBefore);
+        }
+        @Override public void updateEmpty() { CollectActivity.this.updateEmpty(); }
+        @Override public void post(Runnable task) { App.post(task); }
+        @Override public void postDelayed(Runnable task, long delayMs) { binding.results.postDelayed(task, delayMs); }
+        @Override public void remove(Runnable task) { binding.results.removeCallbacks(task); }
+    }, CollectActivity::fetchPage);
+
+    /** One page of one source, on the search executor with the usual deadline. */
+    private static SearchPaging.Job fetchPage(Site source, String query, int page, Consumer<List<Vod>> done, Consumer<Throwable> failed) {
+        SiteApi.SearchTask task = SiteApi.searchTask(source, query, false, String.valueOf(page));
+        FluentFuture<Result> future;
+        try {
+            Task.purgeSearchTasks();
+            future = FluentFuture.from(Task.searchExecutor(task.isCrawler()).submit(task))
+                    .withTimeout(Constant.TIMEOUT_SEARCH, TimeUnit.MILLISECONDS, Task.scheduler());
+        } catch (RejectedExecutionException rejected) {
+            task.close();
+            throw rejected;
+        }
+        future.addCallback(Task.callback(result -> {
+            task.close();
+            done.accept(result.getList());
         }, error -> {
             task.close();
-            App.post(() -> {
-            if (token != pageEpoch || isDestroyed() || isFinishing()) return;
-            pageTask = null; pageJob = null; loadingKey = null; failedPages.add(key);
-            schedulePageRetry(key, page, token);
-        });
-        }), com.google.common.util.concurrent.MoreExecutors.directExecutor());
-    }
-    private final Set<String> failedPages = new HashSet<>();
-    private String pageRetryKey(String key, int page) { return key + "\u0000" + page; }
-    private void schedulePageRetry(String key, int page, int token) {
-        if (!selected.equals(key) || isDestroyed() || isFinishing()) return;
-        String retryKey = pageRetryKey(key, page);
-        int attempt = pageRetryAttempts.getOrDefault(retryKey, 0);
-        if (attempt >= MAX_PAGE_AUTO_RETRIES) { updateEmpty(); return; }
-        pageRetryAttempts.put(retryKey, attempt + 1);
-        Runnable retry = () -> {
-            pendingPageRetries.remove(retryKey);
-            if (token != pageEpoch || !selected.equals(key) || isDestroyed() || isFinishing()) return;
-            loadNextPage(true, false, true);
+            failed.accept(error);
+        }), MoreExecutors.directExecutor());
+        return () -> {
+            task.close();
+            future.cancel(true);
         };
-        Runnable old = pendingPageRetries.put(retryKey, retry);
-        if (old != null) binding.results.removeCallbacks(old);
-        binding.results.postDelayed(retry, PAGE_AUTO_RETRY_DELAY_MS * (attempt + 1L));
     }
+
     private void cancelPage() {
-        pageEpoch++;
-        if (pageTask != null) pageTask.close();
-        if (pageJob != null) pageJob.cancel(true);
-        pageTask = null; pageJob = null; loadingKey = null;
-        for (Runnable retry : pendingPageRetries.values()) binding.results.removeCallbacks(retry);
-        pendingPageRetries.clear();
-        com.fongmi.android.tv.utils.Task.purgeSearchTasks();
+        paging.cancel();
+        Task.purgeSearchTasks();
+    }
+
+    /**
+     * Opened in a process where nothing has loaded the configuration (Android brings this screen back on
+     * its own after the app was killed in the background), the search waited for a load that never came
+     * and stayed on 正在加载搜索源… (LDPlayer 2026-11-16). It starts the load itself, as details do.
+     */
+    private void awaitConfig() {
+        VodConfig.get().whenReady(45_000).whenComplete((ignored, error) -> App.post(() -> {
+            if (!isDestroyed() && !isFinishing()) searchSources.configReady();
+        }));
     }
 
     @Override protected void onNewIntent(Intent intent) { super.onNewIntent(intent); setIntent(intent); search(); }
     private void search() {
-        cancelPage(); failedPages.clear(); pageRetryAttempts.clear();
-        model.resetSearch(); items.clear(); identities.clear(); ranks.clear(); sources.clear(); listed.clear(); pages.clear(); exhausted.clear(); selected = ""; loadingKey = null;
-        emptyPageScans = 0; searchComplete = false;
+        paging.reset();
+        Task.purgeSearchTasks();
+        model.resetSearch(); items.clear(); identities.clear(); ranks.clear(); sources.clear(); listed.clear(); selected = "";
+        searchComplete = false;
         String title = Objects.toString(getIntent().getStringExtra(EXTRA_TARGET_TITLE), "");
         target = title.isEmpty() ? null : SearchResultRanker.target(title, expectedYear());
         queryRanker = SearchResultRanker.query(keyword());
-        letters = keyword().matches("[A-Za-z]{2,12}") && com.fongmi.android.tv.discovery.ShortDramaTitles.canMatchLetters() ? keyword() : null;
+        letters = keyword().matches("[A-Za-z]{2,12}") && ShortDramaTitles.canMatchLetters() ? keyword() : null;
         List<String> extra = getIntent().getStringArrayListExtra(EXTRA_TERMS);
         terms = letters == null || extra == null ? List.of() : extra.subList(0, Math.min(MAX_TERMS, extra.size()));
         termRankers = terms.stream().map(SearchResultRanker::query).toList();
-        if (getIntent().getBooleanExtra(EXTRA_RECORD, false)) com.fongmi.android.tv.setting.Setting.putKeyword(saveKeyword());
+        if (getIntent().getBooleanExtra(EXTRA_RECORD, false)) Setting.putKeyword(saveKeyword());
         searchSources.search(this::startSearch);
+        if (searchSources.isWaitingForConfig()) awaitConfig();
     }
     private void startSearch(List<Site> sites) {
         eligible = sites;
         // Letters may stand for a 短剧漫剧 title too (user 2026-11-01), so that source joins their search.
-        Site drama = letters == null ? null : com.fongmi.android.tv.discovery.AiDramaRunner.site(VodConfig.get());
+        Site drama = letters == null ? null : AiDramaRunner.site(VodConfig.get());
         if (drama != null && !sites.contains(drama)) { eligible = new ArrayList<>(sites); eligible.add(drama); }
         searchComplete = false;
         binding.progress.setText("搜索(0/" + eligible.size() + ")");
@@ -287,7 +288,7 @@ public class CollectActivity extends BaseActivity implements VodPresenter.OnClic
     }
     private String saveKeyword() {
         List<String> history;
-        try { history = App.gson().fromJson(com.fongmi.android.tv.setting.Setting.getKeyword(), com.google.gson.reflect.TypeToken.getParameterized(List.class, String.class).getType()); }
+        try { history = App.gson().fromJson(Setting.getKeyword(), TypeToken.getParameterized(List.class, String.class).getType()); }
         catch (Exception ignored) { history = null; }
         if (history == null) history = new ArrayList<>();
         history.remove(keyword()); history.add(0, keyword());
@@ -316,7 +317,7 @@ public class CollectActivity extends BaseActivity implements VodPresenter.OnClic
         }
         // The letters as text (an English title, a bilibili upload named xcjc), never a two-letter overlap.
         if (queryRanker.related(name)) return termRankers.size() * TERM_STEP + queryRanker.score(name);
-        if (com.fongmi.android.tv.discovery.ShortDramaTitles.contains(name, letters)) return termRankers.size() * TERM_STEP + 50_000;
+        if (ShortDramaTitles.contains(name, letters)) return termRankers.size() * TERM_STEP + 50_000;
         return NOT_RELATED;
     }
 
@@ -355,13 +356,23 @@ public class CollectActivity extends BaseActivity implements VodPresenter.OnClic
 
     private void scheduleDisplay() {
         if (displayQueued) return;
-        long wait = lastDisplay + DISPLAY_INTERVAL_MS - android.os.SystemClock.uptimeMillis();
+        if (binding.results.isHoldingDirection()) {
+            displayQueued = true;
+            return;
+        }
+        long wait = lastDisplay + DISPLAY_INTERVAL_MS - SystemClock.uptimeMillis();
         if (wait <= 0) {
             display(false);
             return;
         }
         displayQueued = true;
         binding.results.postDelayed(queuedDisplay, wait);
+    }
+
+    /** A queued batch waits while a key is held on the cards; the end of the hold delivers it. */
+    private void flushDisplay() {
+        if (!displayQueued || binding.results.isHoldingDirection()) return;
+        display(false);
     }
 
     private void pruneFilteredCards() {
@@ -379,22 +390,20 @@ public class CollectActivity extends BaseActivity implements VodPresenter.OnClic
         }
         updateSourceSelection();
     }
-    private void addSource(android.view.ViewGroup parent, String key, String label) {
-        android.widget.TextView button = new android.widget.TextView(this);
-        button.setText(label); button.setTag(key); button.setTextColor(ResUtil.getColor(com.fongmi.android.tv.R.color.tv_theme_text)); button.setTextSize(14);
-        button.setGravity(android.view.Gravity.CENTER_VERTICAL); button.setPadding(ResUtil.dp2px(10), 0, ResUtil.dp2px(10), 0);
-        button.setSingleLine(true); button.setEllipsize(android.text.TextUtils.TruncateAt.END);
+    private void addSource(ViewGroup parent, String key, String label) {
+        TextView button = new TextView(this);
+        button.setText(label); button.setTag(key); button.setTextColor(ResUtil.getColor(R.color.tv_theme_text)); button.setTextSize(14);
+        button.setGravity(Gravity.CENTER_VERTICAL); button.setPadding(ResUtil.dp2px(10), 0, ResUtil.dp2px(10), 0);
+        button.setSingleLine(true); button.setEllipsize(TextUtils.TruncateAt.END);
         button.setFocusable(true); button.setFocusableInTouchMode(false); button.setBackgroundResource(R.drawable.source_sidebar_selector);
-        var params = new android.widget.LinearLayout.LayoutParams(-1, ResUtil.dp2px(40)); params.bottomMargin = ResUtil.dp2px(4);
+        var params = new LinearLayout.LayoutParams(-1, ResUtil.dp2px(40)); params.bottomMargin = ResUtil.dp2px(4);
         parent.addView(button, params);
         button.setOnClickListener(v -> {
-            if (!selected.equals(key)) {
-                cancelPage();
-                // Returning to a source starts a new user-driven paging attempt.
-                failedPages.remove(key);
-                pageRetryAttempts.keySet().removeIf(value -> value.startsWith(key + "\u0000"));
-            }
-            selected = key; emptyPageScans = 0;
+            // Returning to a source starts a new user-driven paging attempt.
+            boolean changed = !selected.equals(key);
+            if (changed) Task.purgeSearchTasks();
+            paging.select(key, changed);
+            selected = key;
             updateSourceSelection(); display(true);
             binding.results.post(() -> loadNextPage(false));
         });
@@ -415,7 +424,7 @@ public class CollectActivity extends BaseActivity implements VodPresenter.OnClic
     }
 
     private void markSelected(View source) {
-        for (android.view.ViewGroup group : new android.view.ViewGroup[]{binding.allSource, binding.sources})
+        for (ViewGroup group : new ViewGroup[]{binding.allSource, binding.sources})
             for (int i = 0; i < group.getChildCount(); i++) group.getChildAt(i).setSelected(group.getChildAt(i) == source);
     }
 
@@ -448,14 +457,14 @@ public class CollectActivity extends BaseActivity implements VodPresenter.OnClic
 
     private void updateSourceSelection() {
         if (focusPending && isSource(getCurrentFocus())) { markSelected(getCurrentFocus()); return; }
-        for (android.view.ViewGroup group : new android.view.ViewGroup[]{binding.allSource, binding.sources})
+        for (ViewGroup group : new ViewGroup[]{binding.allSource, binding.sources})
             for (int i = 0; i < group.getChildCount(); i++) group.getChildAt(i).setSelected(selected.equals(group.getChildAt(i).getTag()));
     }
     private void display(boolean top) {
         // Any direct display also delivers a queued batch.
         if (displayQueued) binding.results.removeCallbacks(queuedDisplay);
         displayQueued = false;
-        lastDisplay = android.os.SystemClock.uptimeMillis();
+        lastDisplay = SystemClock.uptimeMillis();
         RecyclerView.ViewHolder focused = binding.results.findFocus() == null ? null
                 : binding.results.findContainingViewHolder(binding.results.findFocus());
         long focusedId = !top && focused != null ? focused.getItemId() : RecyclerView.NO_ID;
@@ -473,7 +482,7 @@ public class CollectActivity extends BaseActivity implements VodPresenter.OnClic
         }
         visible.addAll(penalized);
         binding.results.setContentDescription(keyword() + "，影片列表，共" + visible.size() + "项");
-        cards.setItems(visible, new androidx.leanback.widget.DiffCallback<Vod>() {
+        cards.setItems(visible, new DiffCallback<Vod>() {
             @Override public boolean areItemsTheSame(Vod oldItem, Vod newItem) {
                 return oldItem.getSiteKey().equals(newItem.getSiteKey()) && oldItem.getId().equals(newItem.getId());
             }
@@ -493,7 +502,7 @@ public class CollectActivity extends BaseActivity implements VodPresenter.OnClic
     private void restoreFocusedPosition(int position) {
         if (!restoringFocus) {
             restoringFocus = true;
-            binding.results.getViewTreeObserver().addOnPreDrawListener(new android.view.ViewTreeObserver.OnPreDrawListener() {
+            binding.results.getViewTreeObserver().addOnPreDrawListener(new ViewTreeObserver.OnPreDrawListener() {
                 @Override public boolean onPreDraw() {
                     binding.results.getViewTreeObserver().removeOnPreDrawListener(this);
                     restoringFocus = false;
@@ -507,10 +516,10 @@ public class CollectActivity extends BaseActivity implements VodPresenter.OnClic
     }
     private static String identity(Vod item) { return item.getSiteKey() + "\u0000" + item.getId(); }
     private void updateEmpty() {
-        binding.empty.setVisibility(cards.size() == 0 ? android.view.View.VISIBLE : android.view.View.GONE);
+        binding.empty.setVisibility(cards.size() == 0 ? View.VISIBLE : View.GONE);
         if (searchSources.isWaitingForConfig()) binding.empty.setText("正在加载搜索源…");
         else if (eligible != null && eligible.isEmpty()) binding.empty.setText("没有启用的搜索源，请先选择搜索源");
-        else if (target != null && !selected.isEmpty() && emptyPageScans >= 3 && !exhausted.contains(selected))
+        else if (target != null && !selected.isEmpty() && paging.emptyScans() >= 3 && !paging.isExhausted(selected))
             binding.empty.setText("此来源暂未找到匹配内容，可点击来源继续查找");
         else if (target != null && searchComplete) binding.empty.setText("未找到与所选影片匹配的内容，可切换来源继续查找");
         else if (searchComplete) binding.empty.setText("未找到结果，可返回修改关键词或搜索源");
@@ -540,16 +549,16 @@ public class CollectActivity extends BaseActivity implements VodPresenter.OnClic
      * Left from the results goes straight to the selected source. Moving focus there after it had
      * reached the nearest row first flashed that row (the same flash the home tabs had).
      */
-    @Override public boolean dispatchKeyEvent(android.view.KeyEvent event) {
-        if (event.getKeyCode() == android.view.KeyEvent.KEYCODE_DPAD_LEFT && event.getAction() == android.view.KeyEvent.ACTION_DOWN) {
+    @Override public boolean dispatchKeyEvent(KeyEvent event) {
+        if (event.getKeyCode() == KeyEvent.KEYCODE_DPAD_LEFT && event.getAction() == KeyEvent.ACTION_DOWN) {
             View focused = getCurrentFocus();
             if (focused != null && !isSource(focused)) {
-                View next = android.view.FocusFinder.getInstance().findNextFocus((android.view.ViewGroup) binding.getRoot(), focused, View.FOCUS_LEFT);
+                View next = FocusFinder.getInstance().findNextFocus((ViewGroup) binding.getRoot(), focused, View.FOCUS_LEFT);
                 View current = binding.allSource.findViewWithTag(selected);
                 if (current == null) current = binding.sources.findViewWithTag(selected);
                 if (isSource(next) && current != null && current != next) {
                     current.requestFocus();
-                    focused.playSoundEffect(android.view.SoundEffectConstants.NAVIGATION_LEFT);
+                    focused.playSoundEffect(SoundEffectConstants.NAVIGATION_LEFT);
                     return true;
                 }
             }

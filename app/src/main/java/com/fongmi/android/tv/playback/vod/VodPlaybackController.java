@@ -73,6 +73,9 @@ public class VodPlaybackController {
 
     public void reset() {
         preloader.clear();
+        cachedDetail = false;
+        deferredFailure = null;
+        deferredError = null;
         carry = null;
         origin = null;
         settling = null;
@@ -95,6 +98,10 @@ public class VodPlaybackController {
     }
 
     public void requestDetail() {
+        // Another title or source: whatever the last one was waiting for no longer applies.
+        cachedDetail = false;
+        deferredFailure = null;
+        deferredError = null;
         // After the wait: a result is checked against the revision of the configuration it was asked under.
         dataSource.awaitConfig(() -> {
             String key = host.getVodKey();
@@ -104,13 +111,56 @@ public class VodPlaybackController {
         });
     }
 
+    // The lines on screen came from the copy kept the last time the title was opened; the source's own
+    // answer has not come yet. A play address that fails meanwhile waits for it (deferredFailure) rather
+    // than counting against the line: the source may need its detail asked first.
+    private boolean cachedDetail;
+    private PlaybackResult<VodPlayRequest> deferredFailure;
+    private String deferredError;
+
     public void onDetailResult(VodDetailResult detail) {
         if (detail == null || !detail.matches(host.getVodKey(), host.getVodId())) return;
         if (state.getResourceRevision() != VodConfig.getDiscoveryRevision()) return;
         Result result = detail.result();
+        if (detail.cached()) {
+            cachedDetail = true;
+            deferredFailure = null;
+            detailLoaded(result.getVod());
+            return;
+        }
+        if (cachedDetail) {
+            freshAfterCached(result);
+            return;
+        }
         if (result.getList().isEmpty() || !ResourceHealth.hasPlayableEntry(result.getVod())) detailEmpty(result.hasMsg());
         else detailLoaded(result.getVod());
         host.showDetailMessage(result.getMsg());
+    }
+
+    private void freshAfterCached(Result result) {
+        cachedDetail = false;
+        PlaybackResult<VodPlayRequest> failed = deferredFailure;
+        String error = deferredError;
+        deferredFailure = null;
+        deferredError = null;
+        boolean usable = !result.getList().isEmpty() && ResourceHealth.hasPlayableEntry(result.getVod());
+        if (usable) {
+            Vod item = result.getVod();
+            History history = state.getHistory();
+            if (history != null) {
+                replaceVodId(history, item.getId());
+                updateHistory(history, item);
+            }
+            mergeFlags(item.getFlags());
+            host.renderVodUpdate(item);
+        }
+        DiagnosticLog.write(App.get(), "vod_detail_fresh", "usable=" + usable + " retry=" + (failed != null || error != null));
+        if (failed == null && error == null) return;
+        // The address from the kept copy failed: ask it again now that the source has answered its detail,
+        // or, when the source gave nothing usable, let that failure count as it would have.
+        if (usable) refresh();
+        else if (failed != null) onPlaybackResult(failed);
+        else playbackError(error);
     }
 
     public void updateVod(Vod item) {
@@ -153,6 +203,10 @@ public class VodPlaybackController {
         if (state.getResourceRevision() != VodConfig.getDiscoveryRevision()) return;
         ResourceHealth.Status health = ResourceHealth.playbackStatus(playback.result(), playback.error());
         if (health != ResourceHealth.Status.AVAILABLE) {
+            if (cachedDetail) {
+                deferredFailure = playback;
+                return;
+            }
             recordPlaybackHealth(playback.request(), health);
             preloader.clear();
             boolean login = loginNeeded(playback);
@@ -410,6 +464,10 @@ public class VodPlaybackController {
     }
 
     public void playbackError(String msg) {
+        if (cachedDetail) {
+            deferredError = msg;
+            return;
+        }
         VodPlayRequest playing = state.getPlayingRequest();
         if (retries.take(playing, clock.getAsLong())) {
             // Xiaomi TV 2026-11-14: at every episode change the plugin's first address answered 500 for

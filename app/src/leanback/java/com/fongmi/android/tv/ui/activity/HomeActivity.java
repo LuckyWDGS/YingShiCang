@@ -280,7 +280,8 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
     }
 
     private void initConfig() {
-        VodConfig.get().init().load(getCallback());
+        // Start from the saved copy when there is a recent one; the address is checked in the background.
+        VodConfig.get().init().preferSaved().load(getCallback());
         LiveConfig.get().init().load();
         WallConfig.get().init();
     }

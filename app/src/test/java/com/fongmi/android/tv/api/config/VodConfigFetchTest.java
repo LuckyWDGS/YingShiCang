@@ -55,6 +55,26 @@ public class VodConfigFetchTest {
             assertThrows(CancellationException.class,()->VodConfigFetch.load(URL,null,100,()->JSON));
         } finally { Thread.interrupted(); }
     }
+    @Test public void startsFromARecentSavedCopyOfTheSameAddressOnly() throws Exception {
+        assertNotNull(VodConfigFetch.saved(URL, cache(100), 200));
+        assertNull(VodConfigFetch.saved(URL + "-other", cache(100), 200));
+        assertNull(VodConfigFetch.saved(URL, cache(100), 100 + VodConfigFetch.CACHE_TTL_MS));
+        assertNull(VodConfigFetch.saved(URL, null, 200));
+        assertNull(VodConfigFetch.saved(URL, "", 200));
+    }
+    @Test public void backgroundCheckSortsTheAnswer() throws Exception {
+        var saved = VodConfigFetch.parse(JSON);
+        assertEquals(VodConfigFetch.Refresh.SAME, VodConfigFetch.refresh(saved, () -> JSON).kind());
+        var changed = VodConfigFetch.refresh(saved, () -> JSON.replace("源里的真实名称", "新的名称"));
+        assertEquals(VodConfigFetch.Refresh.CHANGED, changed.kind());
+        assertTrue(changed.fresh().toString().contains("新的名称"));
+        assertEquals(VodConfigFetch.Refresh.UNREACHABLE, VodConfigFetch.refresh(saved, offline()).kind());
+        assertEquals(VodConfigFetch.Refresh.UNREACHABLE, VodConfigFetch.refresh(saved, () -> "<html>unavailable</html>").kind());
+        assertEquals(VodConfigFetch.Refresh.UNREACHABLE, VodConfigFetch.refresh(saved, () -> { throw new IOException("Canceled"); }).kind());
+        for (String raw : new String[]{"{\"msg\":\"expired\"}", "{\"sites\":[]}"})
+            assertEquals(VodConfigFetch.Refresh.REFUSED, VodConfigFetch.refresh(saved, () -> raw).kind());
+        assertEquals(VodConfigFetch.Refresh.REFUSED, VodConfigFetch.refresh(saved, () -> { throw new IllegalArgumentException("配置请求失败 HTTP 404"); }).kind());
+    }
     @Test public void depotAndCommentedTvBoxJsonRemainSupported() throws Exception {
         assertNotNull(VodConfigFetch.parse("{\"urls\":[{\"url\":\"https://test/config\"}]}"));
         assertNotNull(VodConfigFetch.parse(JSON.replace("{\"sites", "{\n// TVBox\n\"sites")));
