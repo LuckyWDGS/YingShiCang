@@ -113,8 +113,7 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
     private com.fongmi.android.tv.ui.custom.HomeDiscovery discovery;
     private boolean mInitialFocus = true;
     private boolean mResumed;
-    private View mSettingButton;
-    private com.fongmi.android.tv.ui.custom.CornerBadge mUpdateBadge;
+    private View mSettingBadge;
     private final Runnable mUpdateObserver = this::updateSettingBadge;
     private String mHistoryReturnKey;
     private int mHistoryFocusGeneration;
@@ -374,7 +373,7 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
                     : item.getResId() == R.string.home_live ? R.drawable.ic_home_tv_outline : item.getDrawable());
             button.getRoot().setSelected(discovery != null && discovery.isHistory() && item.getResId() == R.string.home_recent);
             button.getRoot().setOnClickListener(view -> onItemClick(item));
-            if (item.getResId() == R.string.home_setting) mSettingButton = button.getRoot();
+            if (item.getResId() == R.string.home_setting) mSettingBadge = button.badge;
             mBinding.actions.addView(button.getRoot());
             if (Integer.valueOf(item.getResId()).equals(focusTag)) button.getRoot().requestFocus();
         }
@@ -384,17 +383,16 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
     }
 
     /**
-     * A red bubble with an up arrow on 设置's top-right corner while a newer release waits; the update window
-     * opens from 设置 › 版本更新 (user 2026-11-20). A bare dot did not say what it meant and an arrow reads better
-     * than text (user 2026-11-21). The shortcut header draws it: the bubble sticks out of the button into the
-     * row's top margin, which only the header covers.
+     * A round download icon after 设置's label while a newer release waits; the update window opens from
+     * 设置 › 版本更新 (user 2026-11-20). A bare dot did not say what it meant; the user then chose this icon over
+     * a 新版本 badge and an arrow bubble on the corner (user 2026-11-21).
      */
     private void updateSettingBadge() {
-        if (mSettingButton == null) return;
-        if (mUpdateBadge == null) mUpdateBadge = new com.fongmi.android.tv.ui.custom.CornerBadge(getResources());
+        if (mSettingBadge == null) return;
         String version = UpdateNotice.available();
-        mUpdateBadge.attach(version.isEmpty() ? null : mSettingButton, mBinding.shortcutHeader);
-        mSettingButton.setContentDescription(version.isEmpty() ? null : getString(R.string.home_setting) + "，有新版本 " + version);
+        mSettingBadge.setVisibility(version.isEmpty() ? View.GONE : View.VISIBLE);
+        ((View) mSettingBadge.getParent()).setContentDescription(version.isEmpty() ? null
+                : getString(R.string.home_setting) + "，有新版本 " + version);
     }
 
     /** The shortcut row is its own horizontal loop; never let FocusFinder jump to the tabs. */
