@@ -4065,10 +4065,10 @@ index 0000000..aebe4bc
 +}
 diff --git a/libraries/datasource/src/main/java/androidx/media3/datasource/SmbDataSource.java b/libraries/datasource/src/main/java/androidx/media3/datasource/SmbDataSource.java
 new file mode 100644
-index 0000000..1669fa0
+index 0000000..28eef09
 --- /dev/null
 +++ b/libraries/datasource/src/main/java/androidx/media3/datasource/SmbDataSource.java
-@@ -0,0 +1,249 @@
+@@ -0,0 +1,209 @@
 +package androidx.media3.datasource;
 +
 +import static java.lang.Math.min;
@@ -4091,8 +4091,6 @@ index 0000000..1669fa0
 +import java.util.function.Supplier;
 +
 +public class SmbDataSource extends BaseDataSource {
-+
-+  private static final int MAX_READ_RECONNECTS = 1;
 +
 +  private final Supplier<SMBClient> clientFactory;
 +
@@ -4169,11 +4167,28 @@ index 0000000..1669fa0
 +    if (!sameFile || smbFile == null) {
 +      closeSmb();
 +      try {
-+        connectSmb(uri, host, port, shareName, filePath, userInfo);
++        smbClient = clientFactory.get();
++        connection = smbClient.connect(host, port);
++        session = connection.authenticate(getAuthentication(uri));
++        diskShare = (DiskShare) session.connectShare(shareName);
++        smbFile =
++            diskShare.openFile(
++                filePath,
++                EnumSet.of(AccessMask.GENERIC_READ),
++                null,
++                EnumSet.of(SMB2ShareAccess.FILE_SHARE_READ),
++                SMB2CreateDisposition.FILE_OPEN,
++                null);
++        fileLength = smbFile.getFileInformation().getStandardInformation().getEndOfFile();
 +      } catch (IOException | RuntimeException e) {
 +        closeSmb();
 +        throw new DataSourceException(e, PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED);
 +      }
++      cachedHost = host;
++      cachedPort = port;
++      cachedShare = shareName;
++      cachedFilePath = filePath;
++      cachedUserInfo = userInfo;
 +    }
 +    readPosition = dataSpec.position;
 +    if (dataSpec.length != C.LENGTH_UNSET) {
@@ -4202,21 +4217,8 @@ index 0000000..1669fa0
 +      throw new DataSourceException(PlaybackException.ERROR_CODE_IO_UNSPECIFIED);
 +    }
 +    int bytesToRead = (int) min(bytesRemaining, length);
-+    int bytesRead = C.RESULT_END_OF_INPUT;
-+    IOException lastError = null;
-+    for (int attempt = 0; attempt <= MAX_READ_RECONNECTS; attempt++) {
-+      try {
-+        bytesRead = smbFile.read(buffer, readPosition, offset, bytesToRead);
-+        if (bytesRead > 0 || attempt == MAX_READ_RECONNECTS) break;
-+      } catch (IOException | RuntimeException e) {
-+        lastError = e instanceof IOException ? (IOException) e : new IOException(e);
-+        if (attempt == MAX_READ_RECONNECTS) break;
-+      }
-+      if (!reconnect()) break;
-+    }
-+    if (lastError != null && bytesRead <= 0) {
-+      throw new DataSourceException(lastError, PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED);
-+    }
++    int bytesRead;
++    bytesRead = smbFile.read(buffer, readPosition, offset, bytesToRead);
 +    if (bytesRead <= 0) {
 +      return C.RESULT_END_OF_INPUT;
 +    }
@@ -4247,48 +4249,6 @@ index 0000000..1669fa0
 +
 +  public void release() {
 +    closeSmb();
-+  }
-+
-+  private void connectSmb(Uri sourceUri, String host, int port, String shareName, String filePath,
-+      @Nullable String userInfo) throws IOException {
-+    smbClient = clientFactory.get();
-+    connection = smbClient.connect(host, port);
-+    session = connection.authenticate(getAuthentication(sourceUri));
-+    diskShare = (DiskShare) session.connectShare(shareName);
-+    smbFile =
-+        diskShare.openFile(
-+            filePath,
-+            EnumSet.of(AccessMask.GENERIC_READ),
-+            null,
-+            EnumSet.of(SMB2ShareAccess.FILE_SHARE_READ),
-+            SMB2CreateDisposition.FILE_OPEN,
-+            null);
-+    fileLength = smbFile.getFileInformation().getStandardInformation().getEndOfFile();
-+    cachedHost = host;
-+    cachedPort = port;
-+    cachedShare = shareName;
-+    cachedFilePath = filePath;
-+    cachedUserInfo = userInfo;
-+  }
-+
-+  private boolean reconnect() {
-+    if (uri == null || cachedHost == null || cachedShare == null || cachedFilePath == null) {
-+      return false;
-+    }
-+    String host = cachedHost;
-+    int port = cachedPort;
-+    String shareName = cachedShare;
-+    String filePath = cachedFilePath;
-+    String userInfo = cachedUserInfo;
-+    Uri sourceUri = uri;
-+    closeSmb();
-+    try {
-+      connectSmb(sourceUri, host, port, shareName, filePath, userInfo);
-+      return true;
-+    } catch (IOException | RuntimeException ignored) {
-+      closeSmb();
-+      return false;
-+    }
 +  }
 +
 +  private void closeSmb() {
@@ -4351,17 +4311,16 @@ index 61a4aa3..2b31e21 100644
            totalBytesRead += bytesRead;
 diff --git a/libraries/datasource/src/test/java/androidx/media3/datasource/SmbDataSourceTest.java b/libraries/datasource/src/test/java/androidx/media3/datasource/SmbDataSourceTest.java
 new file mode 100644
-index 0000000..9c14b89
+index 0000000..f086b4a
 --- /dev/null
 +++ b/libraries/datasource/src/test/java/androidx/media3/datasource/SmbDataSourceTest.java
-@@ -0,0 +1,124 @@
+@@ -0,0 +1,112 @@
 +package androidx.media3.datasource;
 +
 +import static com.google.common.truth.Truth.assertThat;
 +import static org.junit.Assert.assertThrows;
 +import static org.mockito.ArgumentMatchers.any;
 +import static org.mockito.ArgumentMatchers.anyInt;
-+import static org.mockito.ArgumentMatchers.anyLong;
 +import static org.mockito.ArgumentMatchers.anyString;
 +import static org.mockito.Mockito.*;
 +
@@ -4434,17 +4393,6 @@ index 0000000..9c14b89
 +    Fixture f = new Fixture();
 +    assertThat(f.source.open(f.spec(16))).isEqualTo(0);
 +    assertThat(f.source.read(new byte[4], 0, 4)).isEqualTo(C.RESULT_END_OF_INPUT);
-+    f.source.close();
-+  }
-+
-+  @Test public void transientReadFailureReconnectsOnce() throws Exception {
-+    Fixture f = new Fixture();
-+    when(f.file.read(any(), anyLong(), anyInt(), anyInt()))
-+        .thenThrow(new IOException("transport reset"))
-+        .thenReturn(4);
-+    f.source.open(f.spec(0));
-+    assertThat(f.source.read(new byte[4], 0, 4)).isEqualTo(4);
-+    verify(f.connection, times(2)).authenticate(any());
 +    f.source.close();
 +  }
 +
@@ -69502,10 +69450,10 @@ index 0000000..49f3ab0
 +}
 diff --git a/libraries/ui_danmaku/src/main/java/androidx/media3/ui/danmaku/DanmakuSegmentLoader.java b/libraries/ui_danmaku/src/main/java/androidx/media3/ui/danmaku/DanmakuSegmentLoader.java
 new file mode 100644
-index 0000000..278f65d
+index 0000000..7e3f4f3
 --- /dev/null
 +++ b/libraries/ui_danmaku/src/main/java/androidx/media3/ui/danmaku/DanmakuSegmentLoader.java
-@@ -0,0 +1,236 @@
+@@ -0,0 +1,235 @@
 +/*
 + * Copyright (C) 2026 The Android Open Source Project
 + *
@@ -69596,7 +69544,6 @@ index 0000000..278f65d
 +  }
 +
 +  void cancel() {
-+    Handler handler = backgroundHandler;
 +    @Nullable Fetcher.Session session = state.clear();
 +    generation = -1;
 +    backgroundHandler = null;
