@@ -70,7 +70,24 @@ jobs:
       - name: Run checks
         env:
           PYTHON_BUILD: ${{ steps.python.outputs.python-path }}
-        run: python scripts/check.py
+        run: |
+          set -o pipefail
+          python scripts/check.py 2>&1 | tee "$RUNNER_TEMP/check.log"
+
+      # Job logs need repository access to read; an annotation is public with the check run, so the reason a
+      # check failed can be read without signing in (one annotation: GitHub keeps at most 10 errors per step).
+      - name: Summarise failure
+        if: failure()
+        run: |
+          log="$RUNNER_TEMP/check.log"
+          [ -f "$log" ] || exit 0
+          {
+            grep -A15 -E '^\* What went wrong' "$log" | head -60
+            grep -E '> Task .* FAILED|tests completed, .* failed|^[A-Za-z0-9_.]+Test > .* FAILED|^(FAIL|ERROR): |^FAILED \(|error: ' "$log" | head -40
+          } > "$RUNNER_TEMP/summary.txt" || true
+          [ -s "$RUNNER_TEMP/summary.txt" ] || tail -40 "$log" > "$RUNNER_TEMP/summary.txt"
+          message=$(sed -e 's/%/%25/g' -e 's/\r/%0D/g' "$RUNNER_TEMP/summary.txt" | awk '{printf "%s%%0A", $0}')
+          echo "::error title=check failed::${message}"
 
       - name: Upload test reports
         if: failure()
