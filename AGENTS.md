@@ -15,8 +15,8 @@
 - Current version is 3.6.1 / versionCode 114 (tag v3.6.1). Only TV (leanback) packages are published; phone builds stay local. Build and publishing steps: `docs/build.md`.
 - Release notes keep `<!-- ysc-min-version: 2.1.0 -->` plus a `<!-- ysc-important: … -->` reason line, unchanged, by default: devices below 2.1.0 are forced to update. The app reads only the latest release body, so dropping the marker stops forcing. Never add, raise or drop it unless the user says that release is important; ask first.
 - A published version name is never reused (UpdateNotice.isNewer compares names); fixes go out as a new version.
-- Formal builds need the untracked `local.properties` entries (signing, update mirror URL/pin, log upload URL). Never commit them. Keep each release's `mapping.txt` locally under `Release/<version>/mapping` for retracing.
-- After publishing, the update mirror VPS syncs on its own timer (manual SSH sync has been failing). Do not touch the VPS's other services.
+- Formal builds need the untracked `local.properties` entries (signing, log upload URL). Never commit them. Keep each release's `mapping.txt` locally under `Release/<version>/mapping` for retracing.
+- Updates come from GitHub Releases only (user 2026-11-20): the update mirror and custom manifest URLs were removed from the app, so releases from 3.6.2 on no longer read the mirror. Do not touch the VPS's services.
 - Releases are summarised for users in README "最近更新" and in the GitHub release body (### groups of • bullets).
 
 ## Rules in force
@@ -36,6 +36,10 @@ Each rule is a user decision or a fixed regression; `docs/开发记录.md` has t
 - 追剧提醒 (default on): 45s after Home shows, up to 10 favorites/recent series, one detail at a time, every 6h (3 days for single episodes); a count only goes up; the first look reports nothing; opening the title clears the mark. Leaving Home stops the round. FollowCheckScope blocks a plugin's synchronous finish of Home from that background call only.
 - The TV never asks for the notification permission (user 2026-11-16: on Android 13+ the prompt came on every cold start, Back is not a refusal, and Home's start-up waited behind it). The phone build still asks. DeviceReport carries notifications=on|off.
 - SourceWarmup: 10s after Home shows, one plugin at a time (home site, favorites, recent history; searchable plugins only with ≥ 3 GB RAM), stops when Home is left, once per configuration revision.
+
+### Updates
+
+- No update window at launch (user 2026-11-20): Home checks GitHub once in the background and only records a newer version; Home's 设置 shortcut shows a red dot, Settings opens on 关于与更新 with 版本更新 focused (dot on that tab too), and picking 版本更新 checks again and opens the update window with the version and release notes. Only a release whose `ysc-min-version` is above this build still opens the window at launch.
 
 ### Configuration
 
@@ -61,7 +65,7 @@ Each rule is a user decision or a fixed regression; `docs/开发记录.md` has t
 - Next/previous skip neighbours of the same name; the last episode asks 下一集 once per request.
 - Exo: hardware decoders preferred when they support the profile even above their declared level; subtitles selected by default; the first supported audio track by default; AiDj next-episode preload on unless the user turned it off; media reads time out at 15s (30s for loopback plugin proxies).
 - TV player controls: hidden controls open on 下集 with Up/Down; OK pauses and opens on the time bar; Left/Right seek 10s (30s after 2s held), presses within 400ms add up; 片头/片尾 set in the first/second half per source and line, the label shows the result; the strip never scrolls; 更多 holds low-frequency and plugin actions; paused controls hide after 5 minutes; Back from full screen focuses the episode playing.
-- Touch on the full-screen video: no swipe volume; horizontal swipe seeks; holding the right third plays at 5x, the left third rewinds in real time, both showing the time.
+- Touch on the full-screen video: no swipe volume; horizontal swipe seeks; holding the right third plays at 2x (user 2026-11-20; was 5x), the left third rewinds in real time, both showing the time.
 - Danmaku on TV: a plain toggle that searches the playing episode when nothing is loaded; at least 12s across and 1.3x size, top quarter only; failed loads retried twice; a load is dropped after 60s.
 
 ### Plugins and sources
@@ -86,6 +90,7 @@ Each rule is a user decision or a fixed regression; `docs/开发记录.md` has t
 ## Validation and device safety
 
 - Run checks appropriate to the change; avoid repeating completed builds/QA. `python scripts/check.py --offline` runs the TV JVM tests, the mobile compile and both service test roots.
+- `.github/workflows/check.yml` runs the same `scripts/check.py` on GitHub for pushes to main and every pull request (no secrets, no APK, no native libraries, no device). Keep it green; a CI pass is not device evidence.
 - Device operations belong to the root agent and must use `scripts/adb_target.py` or `scripts/emulator.py`. The verified LDPlayer is `127.0.0.2:5555` (E:/leidian/LDPlayer14, libhoudini.so); `127.0.0.1:5555` is a separate AVD and is not LDPlayer evidence. Do not operate physical devices.
 - Around any device test: back up the installed package and every file of the app's data (including exoplayer_internal.db and companions), then reinstall the original package, restore the data and verify each file's SHA, the inventory, runtime permissions, app-ops, external folders, ADB mappings and screen size; remove probes and temporary files and return Home. Never open authoritative SQLite snapshots directly; copy the database with its WAL/SHM first.
 - Say plainly what was verified where (LDPlayer, JVM, a user's log) and what was not; an emulator result is not proof for a physical TV.

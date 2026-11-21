@@ -4,14 +4,17 @@ import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.BuildConfig;
 import com.github.catvod.utils.Prefers;
 
+import java.util.Set;
+import java.util.concurrent.CopyOnWriteArraySet;
+
 /**
- * The newest published version the last update check saw. Settings shows it as a red dot until the
- * app is updated, and the launch check announces each new version only once.
+ * The newest published version the last update check saw. Home's 设置 shortcut and Settings' 版本更新 row
+ * show it as a hint until the app is updated; the launch check never opens the update window by itself
+ * (user 2026-11-20), the user opens it from 版本更新.
  */
 public final class UpdateNotice {
     private static final String AVAILABLE = "ysc_update_available";
-    private static final String PROMPTED = "ysc_update_prompted";
-    private static volatile Runnable observer;
+    private static final Set<Runnable> OBSERVERS = new CopyOnWriteArraySet<>();
 
     private UpdateNotice() {}
 
@@ -31,27 +34,17 @@ public final class UpdateNotice {
         changed();
     }
 
-    /**
-     * Whether the launch check offers this version; mandatory releases bypass this. Only a version the
-     * user turned down without downloading stays quiet: a download that failed or was left when the app
-     * closed is offered again (user 2026-11-01).
-     */
-    public static boolean shouldPrompt(String version) {
-        return !version.equals(Prefers.getString(PROMPTED));
-    }
-
-    public static void declined(String version) {
-        Prefers.put(PROMPTED, version);
-    }
-
-    /** Runs on the main thread whenever the available version changes; null stops observing. */
+    /** Runs on the main thread whenever the available version changes, until {@link #unobserve}. */
     public static void observe(Runnable runnable) {
-        observer = runnable;
+        if (runnable != null) OBSERVERS.add(runnable);
+    }
+
+    public static void unobserve(Runnable runnable) {
+        if (runnable != null) OBSERVERS.remove(runnable);
     }
 
     private static void changed() {
-        Runnable current = observer;
-        if (current != null) App.post(current);
+        for (Runnable observer : OBSERVERS) App.post(observer);
     }
 
     /** Numeric x.y.z comparison; anything malformed is never treated as newer. */

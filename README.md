@@ -67,7 +67,7 @@
 - 最低 Android 7.0（API 24）。不确定选哪个时先装 `arm64-v8a`，提示无法安装再换 `armeabi-v7a`。
 - Release 提供电视版安装包，手机、平板也可以直接安装使用；手机版界面（`mobile`）目前需要从源码构建。
 - 新版本可直接覆盖安装，站源、历史、收藏和网盘登录状态都会保留。
-- 应用启动时从本仓库的最新 Release 检查更新，下载后校验版本、大小、SHA-256 和签名，再交给系统安装。
+- 只从本仓库的 GitHub 最新 Release 检查更新：有新版本时主页「设置」按钮出现红点，在 设置 › 关于与更新 › 版本更新 打开更新窗口查看更新内容；下载后校验版本、大小、SHA-256 和签名，再交给系统安装。
 
 ## 主要功能
 
@@ -126,7 +126,7 @@
 | `app` | 应用本体；`leanback` 为电视版，`mobile` 为手机版，`main` 为共用代码 |
 | `catvod` / `quickjs` / `chaquo` | Java、JavaScript、Python 站源插件的运行环境 |
 | `scripts` | 依赖准备、统一检查、模拟器验证、发版清单生成 |
-| `service` | 日志接收服务和更新镜像（服务器端，可选） |
+| `service` | 日志接收服务；更新镜像（已停用，App 只走 GitHub） |
 | `docs` | 构建、发版与部署文档 |
 
 需要 JDK 21、Python 3.10 和 Android SDK（compileSdk 37）。首次构建前先准备 Media3 源码：
@@ -143,7 +143,7 @@ python scripts/check.py              # JVM 测试、手机版编译和服务端�
 
 - [构建说明](docs/build.md)：环境、测试、签名、发版与应用内更新
 - [日志上传：阿里云 Function Compute + OSS 部署](docs/日志上传-阿里云OSS部署.md)
-- [更新镜像部署](service/update_mirror/README.md)
+- [更新镜像部署](service/update_mirror/README.md)（已停用）
 - [原生播放器重编](scripts/native/README.md)
 
 各版本的改动说明写在对应 [Release](https://github.com/LuckyWDGS/YingShiCang/releases) 的正文中。

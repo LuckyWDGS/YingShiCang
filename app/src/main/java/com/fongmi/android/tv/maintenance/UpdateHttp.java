@@ -5,9 +5,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.TrustManager;
-import javax.net.ssl.X509TrustManager;
 import okhttp3.Call;
 import okhttp3.HttpUrl;
 import okhttp3.OkHttpClient;
@@ -15,7 +12,10 @@ import okhttp3.Protocol;
 import okhttp3.Request;
 import okhttp3.Response;
 
-/** Update-only transport. Source plugins and log uploads retain their own clients. */
+/**
+ * Update-only transport, limited to GitHub's own release hosts (user 2026-11-20: updates come from GitHub only;
+ * the publisher's mirror and custom manifests were dropped). Source plugins and log uploads keep their own clients.
+ */
 public final class UpdateHttp {
     private static final int MAX_REDIRECTS = 5;
     private static final String USER_AGENT = "YingShiCang-Updater/1";
@@ -29,12 +29,6 @@ public final class UpdateHttp {
         private static final OkHttpClient DOWNLOAD = client(600, 60);
     }
 
-    /** Pinned to the publisher's mirror key; short metadata deadlines so a dead mirror falls back to GitHub quickly. */
-    private static final class MirrorClients {
-        private static final OkHttpClient METADATA = mirror(30, 15);
-        private static final OkHttpClient DOWNLOAD = mirror(1800, 60);
-    }
-
     private UpdateHttp() {}
 
     private static OkHttpClient client(int callSeconds, int readSeconds) {
@@ -43,26 +37,9 @@ public final class UpdateHttp {
                 .followRedirects(false).followSslRedirects(false).retryOnConnectionFailure(false).build();
     }
 
-    private static OkHttpClient mirror(int callSeconds, int readSeconds) {
-        try {
-            X509TrustManager trust = UpdateMirror.trustManager();
-            SSLContext context = SSLContext.getInstance("TLS");
-            context.init(null, new TrustManager[]{trust}, null);
-            return client(callSeconds, readSeconds).newBuilder().connectTimeout(10, TimeUnit.SECONDS)
-                    .sslSocketFactory(context.getSocketFactory(), trust).dns(UpdateMirror.dns()).build();
-        } catch (Exception error) {
-            throw new IllegalStateException(error);
-        }
-    }
-
     /** The caller owns the final response. Every redirect response is closed here. */
-    public static Response execute(String url, boolean github, Consumer<Call> onCall) throws IOException {
-        return execute(url, github, onCall, false);
-    }
-
-    public static Response execute(String url, boolean github, Consumer<Call> onCall, boolean http1) throws IOException {
-        if (github && UpdateMirror.owns(url)) return mirror(MirrorClients.METADATA, url, onCall);
-        return fetch(http1 ? Clients.METADATA_HTTP1 : Clients.METADATA, url, github, onCall);
+    public static Response execute(String url, Consumer<Call> onCall, boolean http1) throws IOException {
+        return fetch(http1 ? Clients.METADATA_HTTP1 : Clients.METADATA, url, onCall);
     }
 
     /** Dropped connections, resets and timeouts; the plain IOExceptions raised here for HTTP/API answers are final. */
@@ -71,25 +48,12 @@ public final class UpdateHttp {
     }
 
     /** APK downloads have a longer deadline without changing metadata or log-upload deadlines. */
-    public static Response download(String url, boolean github, Consumer<Call> onCall) throws IOException {
-        if (github && UpdateMirror.owns(url)) return mirror(MirrorClients.DOWNLOAD, url, onCall);
-        return fetch(Clients.DOWNLOAD, url, github, onCall);
+    public static Response download(String url, Consumer<Call> onCall) throws IOException {
+        return fetch(Clients.DOWNLOAD, url, onCall);
     }
 
-    /** The mirror serves plain files and never redirects; anything but 2xx makes the caller fall back to GitHub. */
-    private static Response mirror(OkHttpClient client, String url, Consumer<Call> onCall) throws IOException {
-        Call call = client.newCall(new Request.Builder().url(url).header("User-Agent", USER_AGENT).build());
-        if (onCall != null) onCall.accept(call);
-        Response response = call.execute();
-        if (response.isSuccessful()) return response;
-        int code = response.code();
-        response.close();
-        throw new IOException("更新镜像暂不可用（HTTP " + code + "）");
-    }
-
-    private static Response fetch(OkHttpClient client, String url, boolean github,
-                                  Consumer<Call> onCall) throws IOException {
-        HttpUrl current = validate(url, github);
+    private static Response fetch(OkHttpClient client, String url, Consumer<Call> onCall) throws IOException {
+        HttpUrl current = validate(url);
         for (int redirects = 0; ; redirects++) {
             Request.Builder request = new Request.Builder().url(current).header("User-Agent", USER_AGENT);
             if (current.host().equals("api.github.com")) request.header("Accept", "application/vnd.github+json");
@@ -106,28 +70,28 @@ public final class UpdateHttp {
             }
             try {
                 if (redirects >= MAX_REDIRECTS) throw new IOException("更新服务跳转次数过多");
-                current = redirect(current, response.header("Location"), github);
+                current = redirect(current, response.header("Location"));
             } finally {
                 response.close();
             }
         }
     }
 
-    static HttpUrl validate(String url, boolean github) throws IOException {
+    static HttpUrl validate(String url) throws IOException {
         HttpUrl parsed = url == null ? null : HttpUrl.parse(url);
         if (parsed == null || !parsed.username().isEmpty() || !parsed.password().isEmpty())
             throw new IOException("更新服务地址无效");
         if (!parsed.isHttps()) throw new IOException("更新服务必须使用 HTTPS");
-        if (github && (parsed.port() != 443 || !GITHUB_HOSTS.contains(parsed.host())))
+        if (parsed.port() != 443 || !GITHUB_HOSTS.contains(parsed.host()))
             throw new IOException("更新地址不属于 GitHub 官方发布服务");
         return parsed;
     }
 
-    static HttpUrl redirect(HttpUrl current, String location, boolean github) throws IOException {
+    static HttpUrl redirect(HttpUrl current, String location) throws IOException {
         if (location == null || location.trim().isEmpty()) throw new IOException("更新服务返回了无效跳转地址");
         HttpUrl next = current.resolve(location);
         if (next == null) throw new IOException("更新服务返回了无效跳转地址");
-        return validate(next.toString(), github);
+        return validate(next.toString());
     }
 
     static boolean isRedirect(int code) {

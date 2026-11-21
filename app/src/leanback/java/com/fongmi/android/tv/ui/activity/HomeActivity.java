@@ -25,6 +25,7 @@ import androidx.viewbinding.ViewBinding;
 import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.Updater;
+import com.fongmi.android.tv.maintenance.UpdateNotice;
 import com.fongmi.android.tv.api.config.LiveConfig;
 import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.api.config.WallConfig;
@@ -112,6 +113,8 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
     private com.fongmi.android.tv.ui.custom.HomeDiscovery discovery;
     private boolean mInitialFocus = true;
     private boolean mResumed;
+    private View mSettingBadge;
+    private final Runnable mUpdateObserver = this::updateSettingBadge;
     private String mHistoryReturnKey;
     private int mHistoryFocusGeneration;
     private ViewTreeObserver.OnPreDrawListener mHistoryFocusRestore;
@@ -153,6 +156,7 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         // until refused twice (Back is not a refusal), held Home's start-up behind it, and the TV needs no
         // notification to work (the cast service runs without one; update progress is in its dialog).
         DLNARendererService.start(this);
+        // Only records a newer GitHub release for the hint on 设置; no update window at launch (user 2026-11-20).
         Updater.create().start(this);
         setRecyclerView();
         setViewModel();
@@ -369,11 +373,22 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
                     : item.getResId() == R.string.home_live ? R.drawable.ic_home_tv_outline : item.getDrawable());
             button.getRoot().setSelected(discovery != null && discovery.isHistory() && item.getResId() == R.string.home_recent);
             button.getRoot().setOnClickListener(view -> onItemClick(item));
+            if (item.getResId() == R.string.home_setting) mSettingBadge = button.badge;
             mBinding.actions.addView(button.getRoot());
             if (Integer.valueOf(item.getResId()).equals(focusTag)) button.getRoot().requestFocus();
         }
         wireShortcutFocus();
+        updateSettingBadge();
         if (discovery != null) discovery.shortcutsChanged();
+    }
+
+    /** A red dot on 设置 while a newer release waits; the update window opens from 设置 › 版本更新 (user 2026-11-20). */
+    private void updateSettingBadge() {
+        if (mSettingBadge == null) return;
+        String version = UpdateNotice.available();
+        mSettingBadge.setVisibility(version.isEmpty() ? View.GONE : View.VISIBLE);
+        ((View) mSettingBadge.getParent()).setContentDescription(version.isEmpty() ? null
+                : getString(R.string.home_setting) + "，有新版本 " + version);
     }
 
     /** The shortcut row is its own horizontal loop; never let FocusFinder jump to the tabs. */
@@ -702,11 +717,14 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         com.fongmi.android.tv.resource.SourceWarmup.resume();
         DLNARendererService.start(this);
         FollowChecker.resume(Notify::show);
+        UpdateNotice.observe(mUpdateObserver);
+        updateSettingBadge();
     }
 
     @Override
     protected void onPause() {
         mResumed = false;
+        UpdateNotice.unobserve(mUpdateObserver);
         com.fongmi.android.tv.resource.SourceWarmup.pause();
         cancelHistoryFocus(false);
         super.onPause();

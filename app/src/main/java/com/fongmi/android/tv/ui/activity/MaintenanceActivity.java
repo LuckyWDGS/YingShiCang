@@ -18,7 +18,7 @@ import java.util.concurrent.Future;
 public class MaintenanceActivity extends AppCompatActivity {
     private LinearLayout content;
     private TextView result, usage, uploadStatus;
-    private EditText updateUrl, mediaUrl;
+    private EditText mediaUrl;
     private Future<?> task;
     private MediaProbe probe;
     private LogUploader uploader;
@@ -59,9 +59,7 @@ public class MaintenanceActivity extends AppCompatActivity {
         button("测试输入的媒体地址", v -> startProbe(false));
         label("快速测试最多约 9MB / 30 秒。仅显示短时媒体吞吐，不代表解码成功或长期稳定；请退出播放器后测试。",14);
         label("应用更新", 22);
-        label("默认检查 GitHub Releases 最新正式版，自动选择适合设备的安装包。",14);
-        updateUrl = input("可选：自定义 HTTPS 更新清单（留空使用 GitHub）", ServiceSettings.customManifestUrl());
-        button("保存更新地址", v -> saveUpdateUrl());
+        label("只从 GitHub Releases 检查最新正式版，自动选择适合设备的安装包。",14);
         button("检查更新", v -> Updater.create().force().start(this));
         button("取消当前测速／上传", v -> { cancel(); show("操作已取消；未确认的日志保留"); });
         result = label("就绪",16);
@@ -92,14 +90,6 @@ public class MaintenanceActivity extends AppCompatActivity {
         if (!isFinishing() && !isDestroyed()) uploadStatus.setText(message);
     }
     private void refreshUsage() { usage.setText(String.format(Locale.ROOT,"日志占用 %.3f MB / 10 MB · 满后自动淘汰最旧记录",DiagnosticLog.size(this)/1_000_000.0)); }
-    private void saveUpdateUrl() {
-        String value = updateUrl.getText().toString().trim();
-        try {
-            if (!value.isEmpty()) MaintenanceHttp.validate(value);
-            ServiceSettings.manifestUrl(value);
-            show(value.isEmpty() ? "已恢复 GitHub Releases 更新" : "已保存服务地址");
-        } catch (Exception error) { show(error.getMessage()); }
-    }
     private void cancel() {
         operation++;
         if (probe != null) probe.cancel();
