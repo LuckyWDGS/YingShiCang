@@ -4,9 +4,11 @@
 # (scripts/native/README.md), so APK packaging and playback are not covered.
 name: check
 
+# Pushes to main, and pull requests (which cover their branches: running on every branch push too ran each
+# PR commit twice).
 on:
   push:
-    branches: ['**']
+    branches: [main]
     paths-ignore: ['**/*.md', 'docs/**']
   pull_request:
     paths-ignore: ['**/*.md', 'docs/**']
@@ -24,10 +26,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'

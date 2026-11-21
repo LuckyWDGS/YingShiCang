@@ -90,7 +90,7 @@ Each rule is a user decision or a fixed regression; `docs/开发记录.md` has t
 ## Validation and device safety
 
 - Run checks appropriate to the change; avoid repeating completed builds/QA. `python scripts/check.py --offline` runs the TV JVM tests, the mobile compile and both service test roots.
-- `.github/workflows/check.yml` runs the same `scripts/check.py` on GitHub for every push and pull request (no secrets, no APK, no native libraries, no device). Keep it green; a CI pass is not device evidence.
+- `.github/workflows/check.yml` runs the same `scripts/check.py` on GitHub for pushes to main and every pull request (no secrets, no APK, no native libraries, no device). Keep it green; a CI pass is not device evidence.
 - Device operations belong to the root agent and must use `scripts/adb_target.py` or `scripts/emulator.py`. The verified LDPlayer is `127.0.0.2:5555` (E:/leidian/LDPlayer14, libhoudini.so); `127.0.0.1:5555` is a separate AVD and is not LDPlayer evidence. Do not operate physical devices.
 - Around any device test: back up the installed package and every file of the app's data (including exoplayer_internal.db and companions), then reinstall the original package, restore the data and verify each file's SHA, the inventory, runtime permissions, app-ops, external folders, ADB mappings and screen size; remove probes and temporary files and return Home. Never open authoritative SQLite snapshots directly; copy the database with its WAL/SHM first.
 - Say plainly what was verified where (LDPlayer, JVM, a user's log) and what was not; an emulator result is not proof for a physical TV.
