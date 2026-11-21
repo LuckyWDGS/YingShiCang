@@ -384,13 +384,14 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
     }
 
     /**
-     * A red 新版本 badge on 设置's top-right corner while a newer release waits; the update window opens from
-     * 设置 › 版本更新 (user 2026-11-20). A bare dot did not say what it meant (user 2026-11-21). The shortcut
-     * header draws it: the badge sticks out of the button into the row's top margin, which only the header covers.
+     * A red bubble with an up arrow on 设置's top-right corner while a newer release waits; the update window
+     * opens from 设置 › 版本更新 (user 2026-11-20). A bare dot did not say what it meant and an arrow reads better
+     * than text (user 2026-11-21). The shortcut header draws it: the bubble sticks out of the button into the
+     * row's top margin, which only the header covers.
      */
     private void updateSettingBadge() {
         if (mSettingButton == null) return;
-        if (mUpdateBadge == null) mUpdateBadge = new com.fongmi.android.tv.ui.custom.CornerBadge(getResources(), "新版本");
+        if (mUpdateBadge == null) mUpdateBadge = new com.fongmi.android.tv.ui.custom.CornerBadge(getResources());
         String version = UpdateNotice.available();
         mUpdateBadge.attach(version.isEmpty() ? null : mSettingButton, mBinding.shortcutHeader);
         mSettingButton.setContentDescription(version.isEmpty() ? null : getString(R.string.home_setting) + "，有新版本 " + version);
