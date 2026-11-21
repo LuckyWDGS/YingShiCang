@@ -41,31 +41,31 @@ python scripts/ui.py
 Debug 仅用于测试。Release 从 `YSC_KEYSTORE/YSC_KEY_ALIAS/YSC_STORE_PASSWORD/YSC_KEY_PASSWORD` 环境变量或 `ysc.*` 本地配置读取签名；配置缺失时不能将未签名包当正式版本发布。
 
 ```powershell
-.\gradlew.bat :app:assembleLeanbackRelease "-PappVersionCode=114" "-PappVersionName=3.6.1"
+.\gradlew.bat :app:assembleLeanbackRelease "-PappVersionCode=115" "-PappVersionName=3.6.2"
 ```
 
 应用只从 [GitHub 最新正式 Release](https://github.com/LuckyWDGS/YingShiCang/releases/latest) 检查更新（2026-11-20 起），使用 Release 正文作为更新说明；检查、取清单和下载安装包都只连 GitHub 官方主机，版本、清单和安装包按 GitHub 声明的大小和 SHA-256 校验。更新镜像和自定义更新清单已从 App 移除，`local.properties` 里的 `ysc.updateMirror*` 不再被构建读取；`service/update_mirror` 只留作记录，新版本不再访问它。
 
-启动时只在后台检查一次：有新版本时主页「设置」快捷按钮出现红点，设置页直接停在「关于与更新」并聚焦「版本更新」，用户点它才弹出更新窗口（版本号、更新内容、下载安装）。只有 Release 声明的 `ysc-min-version` 高于本机版本时，启动才直接弹出更新窗口。
+启动时只在后台检查一次：有新版本时主页「设置」快捷按钮的文字后面出现下载图标，设置页直接停在「关于与更新」并聚焦「版本更新」，用户点它才弹出更新窗口（版本号、更新内容、下载安装）。只有 Release 声明的 `ysc-min-version` 高于本机版本时，启动才直接弹出更新窗口。
 
-以上命令对应当前本地源码 3.6.1 / code114；以后每次发版继续递增 `versionCode` 和 `versionName`，沿用相同正式签名。Gradle 构建不会生成 GitHub 聚合清单；将已签名的两个 TV APK 放进新的发布目录，再运行生成器：
+以上命令对应当前本地源码 3.6.2 / code115；以后每次发版继续递增 `versionCode` 和 `versionName`，沿用相同正式签名。Gradle 构建不会生成 GitHub 聚合清单；将已签名的两个 TV APK 放进新的发布目录，再运行生成器：
 
 ```powershell
-New-Item -ItemType Directory -Path Release/3.6.1
-Copy-Item -LiteralPath app/build/outputs/apk/leanback/release/leanback-arm64_v8a.apk -Destination Release/3.6.1/YingShiCang-3.6.1-tv-arm64-v8a.apk
-Copy-Item -LiteralPath app/build/outputs/apk/leanback/release/leanback-armeabi_v7a.apk -Destination Release/3.6.1/YingShiCang-3.6.1-tv-armeabi-v7a.apk
-python scripts/github_release_manifest.py --arm64 Release/3.6.1/YingShiCang-3.6.1-tv-arm64-v8a.apk --armv7 Release/3.6.1/YingShiCang-3.6.1-tv-armeabi-v7a.apk --output Release/3.6.1/release-manifest.json
+New-Item -ItemType Directory -Path Release/3.6.2
+Copy-Item -LiteralPath app/build/outputs/apk/leanback/release/leanback-arm64_v8a.apk -Destination Release/3.6.2/YingShiCang-3.6.2-tv-arm64-v8a.apk
+Copy-Item -LiteralPath app/build/outputs/apk/leanback/release/leanback-armeabi_v7a.apk -Destination Release/3.6.2/YingShiCang-3.6.2-tv-armeabi-v7a.apk
+python scripts/github_release_manifest.py --arm64 Release/3.6.2/YingShiCang-3.6.2-tv-arm64-v8a.apk --armv7 Release/3.6.2/YingShiCang-3.6.2-tv-armeabi-v7a.apk --output Release/3.6.2/release-manifest.json
 ```
 
 生成器需要 Python 3.10+、Java 和 Android SDK build-tools。默认从 `ANDROID_HOME` / `ANDROID_SDK_ROOT` 选择最新稳定 build-tools，从 `JAVA_HOME` / `PATH` 找 Java；可用 `--sdk` 或 `--aapt`、`--apksigner-jar`、`--java` 显式指定工具。它实际检查包名、两个 TV 架构、正式签名及非 debug、相同版本与最低系统要求，读取真实大小和 SHA-256，只生成本地清单。默认拒绝覆盖已有清单；仅重新生成尚未发布的本地清单时使用 `--overwrite`。APK 在生成清单后不得修改或改名。
 
 GitHub 发版流程：
 
-1. 新建草稿 Release，标签使用与 APK `versionName` 对应的 `v版本号`，例如 `v3.6.1`，不要添加 alpha 等后缀。Release 正文填写本版更新内容，App 直接使用正文显示更新说明。
+1. 新建草稿 Release，标签使用与 APK `versionName` 对应的 `v版本号`，例如 `v3.6.2`，不要添加 alpha 等后缀。Release 正文填写本版更新内容，App 直接使用正文显示更新说明。
 2. 上传上述两个 APK 和 **release-manifest.json**。不能只上传 APK，也不能上传旧单包格式的清单。清单读取附件的实际文件名，不要求固定 APK 名称。
 3. 等全部附件上传完成后，发布为正式版本，并标记 **Latest**。不要勾选预发布。已发布附件保持不变；修复安装包时递增版本重新发版。
 
-**普通版本与重要版本**：普通版本只有在下载开始前主动选择「暂不更新」，才会抑制该版本后续启动提示。下载失败、中断或安装未完成，下次启动仍会提示；设置里的「版本更新」红点会保留，可随时手动检查。需要强制更新时，在 Release 正文任意位置加入 GitHub 不显示的隐藏标记：
+**普通版本与重要版本**：从 3.6.2 起，普通版本启动时不弹窗，只在主页「设置」按钮显示下载图标，设置里的「版本更新」也显示新版本，用户随时手动更新；3.6.1 及以前的版本仍按旧规则在启动时提示一次（选择「暂不更新」后该版本不再提示）。需要强制更新时，在 Release 正文任意位置加入 GitHub 不显示的隐藏标记：
 
 ```markdown
 <!-- ysc-min-version: 1.3.0 -->
@@ -76,17 +76,11 @@ GitHub 发版流程：
 
 所有附件名（包括额外说明文件）只能使用 ASCII 字母、数字、点、下划线、连字符，首字符必须是字母或数字，总长不超过200，且不能含 `..`。附件必须非空、上传完成，单文件不超过300MB；例如可用 `INSTALL.txt`，不要使用中文附件名。
 
-提交代码或 `git push` 本身不会发布 APK。仓库没有自动发布流程；需要按上述流程在 [GitHub Releases](https://github.com/LuckyWDGS/YingShiCang/releases) 发布，也可以用 GitHub CLI：`gh release create v3.6.1 --verify-tag --title "影视仓 3.6.1" --notes-file Release/3.6.1/RELEASE_NOTES.md --latest` 后面加两个 APK 和 `release-manifest.json`。此聚合生成器面向 TV `leanback`，不能用作手机版更新清单。
+提交代码或 `git push` 本身不会发布 APK。仓库没有自动发布流程；需要按上述流程在 [GitHub Releases](https://github.com/LuckyWDGS/YingShiCang/releases) 发布，也可以用 GitHub CLI：`gh release create v3.6.2 --verify-tag --title "影视仓 3.6.2" --notes-file Release/3.6.2/RELEASE_NOTES.md --latest` 后面加两个 APK 和 `release-manifest.json`。此聚合生成器面向 TV `leanback`，不能用作手机版更新清单。
 
 应用内更新从 1.0.7 起提供（更早的版本需手动安装一次新版）。设备按支持的 ABI 顺序选择附件；发现更高 `versionCode` 才提示更新。用户确认后显示下载进度，核验 APK 的版本、包名、大小、SHA-256、系统要求及当前签名，再由 Android 系统确认安装。Android 8 及以上首次更新可能需要允许此应用安装未知来源，返回应用后继续。
 
-显式自定义服务的单包版本清单生成器（不用于 GitHub 的多包清单）：
-
-```powershell
-python scripts/publish_manifest.py path/to/signed.apk --aapt path/to/aapt.exe --url https://your-download-host/releases/tv.apk --flavor leanback --output release.json
-```
-
-先上传 APK，再发布清单；App 更新时还会匹配 APK 的版本、大小、SHA-256 和当前签名。仅改清单不能让另一个签名的应用覆盖安装。
+`scripts/publish_manifest.py`（自定义服务的单包版本清单）只对 3.6.1 及以前填了自定义更新地址的设备有用；3.6.2 起 App 不再支持自定义更新地址，只读 GitHub Releases。
 
 ## 本地日志／升级闭环测试
 
@@ -94,4 +88,4 @@ python scripts/publish_manifest.py path/to/signed.apk --aapt path/to/aapt.exe --
 python service/receiver.py --storage .codex/session/server-data --artifacts .codex/session/releases
 ```
 
-模拟器调试包的日志接口可配置 `http://10.0.2.2:8765/logs`；正式日志接口要求 HTTPS。应用更新在所有构建中都要求受信任的 HTTPS，自定义更新测试需要先为接收器配置可由设备信任的 HTTPS 入口，再填写实际清单地址，不能直接使用上面的 HTTP 端口。该接收器是本地验收服务：云端部署需要 HTTPS 入口、短期上传凭据或服务端配对、限流、访问控制与运维配置，不能把本地无认证模式直接暴露到公网。正式日志接收服务见[阿里云部署说明](日志上传-阿里云OSS部署.md)。
+模拟器调试包的日志接口可配置 `http://10.0.2.2:8765/logs`；正式日志接口要求 HTTPS。应用更新在所有构建中只连 GitHub 官方主机，不能用本地接收器测试；要测更新流程，用低于最新正式版的版本号打调试包（例如 `-PappVersionName=3.6.0 -PappVersionCode=113`），它会把 GitHub 上的最新版当作新版本。该接收器是本地验收服务：云端部署需要 HTTPS 入口、短期上传凭据或服务端配对、限流、访问控制与运维配置，不能把本地无认证模式直接暴露到公网。正式日志接收服务见[阿里云部署说明](日志上传-阿里云OSS部署.md)。
