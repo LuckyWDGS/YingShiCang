@@ -58,6 +58,8 @@ public class SettingActivity extends BaseActivity implements ConfigListener, Sit
     private int section;
     private View[] sectionNav, sectionGroups;
     private View[][] sectionRows;
+    private final Runnable updateObserver = this::setUpdateText;
+    private static final int SECTION_ABOUT = 4;
 
     private static final int[] SECTION_TITLES = {R.string.setting_home_sources, R.string.setting_home_playback,
             R.string.setting_home_appearance, R.string.setting_home_storage, R.string.setting_home_about};
@@ -140,7 +142,9 @@ public class SettingActivity extends BaseActivity implements ConfigListener, Sit
                 item.setNextFocusDownId(sectionRows[i][Math.min(sectionRows[i].length - 1, row + 1)].getId());
             }
         }
-        showSection(saved == null ? 0 : Math.max(0, Math.min(sectionNav.length - 1, saved.getInt("settings_section"))));
+        // With a newer release waiting (the dot on Home's 设置), open on 关于与更新 with 版本更新 focused (user 2026-11-20).
+        int first = UpdateNotice.available().isEmpty() ? 0 : SECTION_ABOUT;
+        showSection(saved == null ? first : Math.max(0, Math.min(sectionNav.length - 1, saved.getInt("settings_section"))));
         sectionRows[section][0].requestFocus();
     }
 
@@ -189,12 +193,16 @@ public class SettingActivity extends BaseActivity implements ConfigListener, Sit
         String version = UpdateNotice.available();
         mBinding.updateDot.setVisibility(version.isEmpty() ? View.GONE : View.VISIBLE);
         mBinding.versionText.setText(version.isEmpty() ? BuildConfig.VERSION_NAME : "新版本 " + version);
+        android.graphics.drawable.Drawable dot = version.isEmpty() ? null
+                : androidx.core.content.ContextCompat.getDrawable(this, R.drawable.shape_update_dot);
+        if (dot != null) dot.setBounds(0, 0, ResUtil.dp2px(7), ResUtil.dp2px(7));
+        mBinding.navAbout.setCompoundDrawablesRelative(null, null, dot, null);
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        UpdateNotice.observe(this::setUpdateText);
+        UpdateNotice.observe(updateObserver);
         setUpdateText();
         setDriveText();
         setOtherText();
@@ -206,7 +214,7 @@ public class SettingActivity extends BaseActivity implements ConfigListener, Sit
 
     @Override
     protected void onPause() {
-        UpdateNotice.observe(null);
+        UpdateNotice.unobserve(updateObserver);
         super.onPause();
     }
 

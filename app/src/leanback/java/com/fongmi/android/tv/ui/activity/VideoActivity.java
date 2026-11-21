@@ -1885,9 +1885,9 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
         if (mRewindResume && controller() != null) controller().play();
     }
 
-    // A finger held on the right third plays at 5x (user 2026-11-03); the bubble shows the time playing
-    // rather than 倍速 (user 2026-11-02). The remote's long-press Up keeps its speed and hint.
-    private static final float HOLD_FORWARD_SPEED = 5f;
+    // A finger held on the right third plays at 2x (user 2026-11-20; it was 5x from 2026-11-03); the bubble
+    // shows the time playing rather than 倍速 (user 2026-11-02). The remote's long-press Up keeps its speed and hint.
+    private static final float HOLD_FORWARD_SPEED = 2f;
     private static final long FORWARD_TICK_MS = 200;
     private final Runnable forwardTick = this::forwardTick;
     private boolean mForwarding;

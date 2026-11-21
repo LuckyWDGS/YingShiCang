@@ -19,6 +19,8 @@ python -m unittest discover -s service -v
 python -m unittest discover -s service/aliyun_fc -v
 ```
 
+**GitHub 自动检查（CI）**：[.github/workflows/check.yml](../.github/workflows/check.yml) 在每次推送和拉取请求时，于 GitHub 的 Ubuntu 机器上装 JDK 21、Python 3.10、Android platform 37 和 build-tools 36.0.0，用 `prepare_media.py` 准备 Media3 源码（放在检出目录之外，并缓存），然后运行 `python scripts/check.py`。只改 `.md` 或 `docs/` 时不运行；也可在 GitHub 的 Actions 页手动运行。它不用任何密钥，不签名、不打包 APK、不编译 MPV/FFmpeg 原生库，也不碰设备，所以播放和界面仍要在雷电上实测。失败时测试报告作为 `test-reports` 附件保留 7 天。
+
 输出在 `app/build/outputs/apk/{leanback,mobile}/debug/`。两个 UI 构建目前使用相同包名，不应同机同时安装；切换测试安装覆盖前保存所需测试数据。
 
 模拟器原生 x86_64 回归：
@@ -42,9 +44,9 @@ Debug 仅用于测试。Release 从 `YSC_KEYSTORE/YSC_KEY_ALIAS/YSC_STORE_PASSWO
 .\gradlew.bat :app:assembleLeanbackRelease "-PappVersionCode=114" "-PappVersionName=3.6.1"
 ```
 
-应用默认从 [GitHub 最新正式 Release](https://github.com/LuckyWDGS/YingShiCang/releases/latest) 检查更新，使用 Release 正文作为更新说明。设置里的自定义更新地址留空即可；已有自定义地址仍沿用单包清单协议。
+应用只从 [GitHub 最新正式 Release](https://github.com/LuckyWDGS/YingShiCang/releases/latest) 检查更新（2026-11-20 起），使用 Release 正文作为更新说明；检查、取清单和下载安装包都只连 GitHub 官方主机，版本、清单和安装包按 GitHub 声明的大小和 SHA-256 校验。更新镜像和自定义更新清单已从 App 移除，`local.properties` 里的 `ysc.updateMirror*` 不再被构建读取；`service/update_mirror` 只留作记录，新版本不再访问它。
 
-**更新镜像**：在未跟踪的 `local.properties` 写入 `ysc.updateMirrorUrl` 和 `ysc.updateMirrorPin`（URL 用自定义主机名时再加 `ysc.updateMirrorAddress`）后，构建出的 App 检查更新、取清单和下载安装包都先走自己的服务器，失败再回到 GitHub；版本、清单和安装包仍按 GitHub 声明的 SHA-256 校验。服务器部署见 [service/update_mirror/README.md](../service/update_mirror/README.md)。正式发版构建必须带上这些配置；GitHub 发布完成后执行 `ssh <服务器> systemctl start ysc-update-sync.service` 立即同步。
+启动时只在后台检查一次：有新版本时主页「设置」快捷按钮出现红点，设置页直接停在「关于与更新」并聚焦「版本更新」，用户点它才弹出更新窗口（版本号、更新内容、下载安装）。只有 Release 声明的 `ysc-min-version` 高于本机版本时，启动才直接弹出更新窗口。
 
 以上命令对应当前本地源码 3.6.1 / code114；以后每次发版继续递增 `versionCode` 和 `versionName`，沿用相同正式签名。Gradle 构建不会生成 GitHub 聚合清单；将已签名的两个 TV APK 放进新的发布目录，再运行生成器：
 

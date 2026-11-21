@@ -1,0 +1,82 @@
+# Runs the same checks as `python scripts/check.py` on every push and pull request:
+# TV (leanback) JVM unit tests, the mobile Java compile, and both Python service test roots.
+# Needs no secrets: no signing, no release, no device. Native MPV/FFmpeg libraries are not built here
+# (scripts/native/README.md), so APK packaging and playback are not covered.
+name: check
+
+on:
+  push:
+    branches: ['**']
+    paths-ignore: ['**/*.md', 'docs/**']
+  pull_request:
+    paths-ignore: ['**/*.md', 'docs/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # Chaquopy builds the plugin runtime for Python 3.10 (chaquo/build.gradle) and needs a matching build Python.
+      - name: Python 3.10
+        id: python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Android SDK packages
+        run: |
+          sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$sdkmanager" --licenses > /dev/null
+          # compileSdk 37 and build-tools 36.0.0 (docs/build.md); the Android Gradle Plugin fetches anything else it misses.
+          "$sdkmanager" --install "platforms;android-37.0" "build-tools;36.0.0" > /dev/null \
+            || echo "::warning::sdkmanager could not install the pinned packages; leaving it to the Android Gradle Plugin"
+
+      # Media3 1.11.1 source with the FongMi patch, hash-locked by scripts/media3/sources.lock.json. Prepared
+      # outside the checkout: prepare_media.py runs `git apply` in it, which inside this repository would treat
+      # it as a subdirectory and skip the patch's paths.
+      - name: Restore prepared Media3 source
+        uses: actions/cache@v4
+        with:
+          path: ~/ysc-media3/media
+          key: media3-${{ hashFiles('scripts/media3/sources.lock.json', 'scripts/media3/*.patch') }}
+
+      - name: Prepare Media3 source
+        run: |
+          python scripts/prepare_media.py --destination "$HOME/ysc-media3/media"
+          rm -f "$HOME/ysc-media3/androidx-media-1.11.1.zip"
+          echo "MEDIA3_DIR=$HOME/ysc-media3/media" >> "$GITHUB_ENV"
+
+      - name: Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Run checks
+        env:
+          PYTHON_BUILD: ${{ steps.python.outputs.python-path }}
+        run: python scripts/check.py
+
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: |
+            app/build/reports/tests/
+            app/build/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
