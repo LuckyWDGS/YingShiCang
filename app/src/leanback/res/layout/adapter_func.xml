@@ -24,13 +24,4 @@
         android:textSize="16sp"
         tools:text="點播" />
 
-    <!-- Home's 设置 shortcut only: a newer release is waiting in 设置 › 关于 › 版本更新. -->
-    <View
-        android:id="@+id/badge"
-        android:layout_width="7dp"
-        android:layout_height="7dp"
-        android:layout_marginStart="6dp"
-        android:background="@drawable/shape_update_dot"
-        android:visibility="gone" />
-
 </androidx.appcompat.widget.LinearLayoutCompat>

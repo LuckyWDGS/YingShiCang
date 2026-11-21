@@ -113,7 +113,8 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
     private com.fongmi.android.tv.ui.custom.HomeDiscovery discovery;
     private boolean mInitialFocus = true;
     private boolean mResumed;
-    private View mSettingBadge;
+    private View mSettingButton;
+    private com.fongmi.android.tv.ui.custom.CornerBadge mUpdateBadge;
     private final Runnable mUpdateObserver = this::updateSettingBadge;
     private String mHistoryReturnKey;
     private int mHistoryFocusGeneration;
@@ -373,7 +374,7 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
                     : item.getResId() == R.string.home_live ? R.drawable.ic_home_tv_outline : item.getDrawable());
             button.getRoot().setSelected(discovery != null && discovery.isHistory() && item.getResId() == R.string.home_recent);
             button.getRoot().setOnClickListener(view -> onItemClick(item));
-            if (item.getResId() == R.string.home_setting) mSettingBadge = button.badge;
+            if (item.getResId() == R.string.home_setting) mSettingButton = button.getRoot();
             mBinding.actions.addView(button.getRoot());
             if (Integer.valueOf(item.getResId()).equals(focusTag)) button.getRoot().requestFocus();
         }
@@ -382,13 +383,17 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         if (discovery != null) discovery.shortcutsChanged();
     }
 
-    /** A red dot on 设置 while a newer release waits; the update window opens from 设置 › 版本更新 (user 2026-11-20). */
+    /**
+     * A red 新版本 badge on 设置's top-right corner while a newer release waits; the update window opens from
+     * 设置 › 版本更新 (user 2026-11-20). A bare dot did not say what it meant (user 2026-11-21). The shortcut
+     * header draws it: the badge sticks out of the button into the row's top margin, which only the header covers.
+     */
     private void updateSettingBadge() {
-        if (mSettingBadge == null) return;
+        if (mSettingButton == null) return;
+        if (mUpdateBadge == null) mUpdateBadge = new com.fongmi.android.tv.ui.custom.CornerBadge(getResources(), "新版本");
         String version = UpdateNotice.available();
-        mSettingBadge.setVisibility(version.isEmpty() ? View.GONE : View.VISIBLE);
-        ((View) mSettingBadge.getParent()).setContentDescription(version.isEmpty() ? null
-                : getString(R.string.home_setting) + "，有新版本 " + version);
+        mUpdateBadge.attach(version.isEmpty() ? null : mSettingButton, mBinding.shortcutHeader);
+        mSettingButton.setContentDescription(version.isEmpty() ? null : getString(R.string.home_setting) + "，有新版本 " + version);
     }
 
     /** The shortcut row is its own horizontal loop; never let FocusFinder jump to the tabs. */

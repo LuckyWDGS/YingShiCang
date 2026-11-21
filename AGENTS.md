@@ -39,7 +39,7 @@ Each rule is a user decision or a fixed regression; `docs/开发记录.md` has t
 
 ### Updates
 
-- No update window at launch (user 2026-11-20): Home checks GitHub once in the background and only records a newer version; Home's 设置 shortcut shows a red dot, Settings opens on 关于与更新 with 版本更新 focused (dot on that tab too), and picking 版本更新 checks again and opens the update window with the version and release notes. Only a release whose `ysc-min-version` is above this build still opens the window at launch.
+- No update window at launch (user 2026-11-20): Home checks GitHub once in the background and only records a newer version; Home's 设置 shortcut carries a red 新版本 corner badge (user 2026-11-21: a bare dot did not say what it meant; drawn by the shortcut header's overlay, not added to the row), Settings opens on 关于与更新 with 版本更新 focused (dot on that tab too), and picking 版本更新 checks again and opens the update window with the version and release notes. Only a release whose `ysc-min-version` is above this build still opens the window at launch.
 
 ### Configuration
 
