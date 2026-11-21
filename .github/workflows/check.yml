@@ -26,10 +26,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: JDK 21
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '21'
@@ -37,7 +37,7 @@ jobs:
       # Chaquopy builds the plugin runtime for Python 3.10 (chaquo/build.gradle) and needs a matching build Python.
       - name: Python 3.10
         id: python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.10'
 
@@ -53,7 +53,7 @@ jobs:
       # outside the checkout: prepare_media.py runs `git apply` in it, which inside this repository would treat
       # it as a subdirectory and skip the patch's paths.
       - name: Restore prepared Media3 source
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/ysc-media3/media
           key: media3-${{ hashFiles('scripts/media3/sources.lock.json', 'scripts/media3/*.patch') }}
@@ -76,7 +76,7 @@ jobs:
             'manifest.kind=ci-stub' 'android.ndk.version=30.0.16248370' > "$props"
 
       - name: Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       - name: Run checks
         env:
@@ -102,7 +102,7 @@ jobs:
 
       - name: Upload test reports
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-reports
           path: |
