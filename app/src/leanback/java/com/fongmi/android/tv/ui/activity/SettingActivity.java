@@ -144,8 +144,16 @@ public class SettingActivity extends BaseActivity implements ConfigListener, Sit
         }
         // With a newer release waiting (the dot on Home's 设置), open on 关于与更新 with 版本更新 focused (user 2026-11-20).
         int first = UpdateNotice.available().isEmpty() ? 0 : SECTION_ABOUT;
-        showSection(saved == null ? first : Math.max(0, Math.min(sectionNav.length - 1, saved.getInt("settings_section"))));
-        sectionRows[section][0].requestFocus();
+        int initial = saved == null ? first : Math.max(0, Math.min(sectionNav.length - 1, saved.getInt("settings_section")));
+        showSection(initial);
+        sectionRows[initial][0].requestFocus();
+        // Focus requested here does not hold with the remote: on the first layout Android focuses the first
+        // focusable (内容来源), whose listener shows section 0. Apply the section again once laid out
+        // (LDPlayer 2026-11-21: opened from Home with the D-pad, Settings showed 内容来源 instead of 版本更新).
+        mBinding.getRoot().post(() -> {
+            showSection(initial);
+            sectionRows[initial][0].requestFocus();
+        });
     }
 
     private void showSection(int index) {
