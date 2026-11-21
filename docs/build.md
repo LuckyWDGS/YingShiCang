@@ -19,7 +19,7 @@ python -m unittest discover -s service -v
 python -m unittest discover -s service/aliyun_fc -v
 ```
 
-**GitHub 自动检查（CI）**：[.github/workflows/check.yml](../.github/workflows/check.yml) 在推送到 `main` 和每个拉取请求（PR）时，于 GitHub 的 Ubuntu 机器上装 JDK 21、Python 3.10、Android platform 37 和 build-tools 36.0.0，用 `prepare_media.py` 准备 Media3 源码（放在检出目录之外，并缓存），然后运行 `python scripts/check.py`。只改 `.md` 或 `docs/` 时不运行；也可在 GitHub 的 Actions 页手动运行。它不用任何密钥，不签名、不打包 APK、不编译 MPV/FFmpeg 原生库，也不碰设备，所以播放和界面仍要在雷电上实测。失败时测试报告作为 `test-reports` 附件保留 7 天。
+**GitHub 自动检查（CI）**：[.github/workflows/check.yml](../.github/workflows/check.yml) 在推送到 `main` 和每个拉取请求（PR）时，于 GitHub 的 Ubuntu 机器上装 JDK 21、Python 3.10、Android platform 37 和 build-tools 36.0.0，用 `prepare_media.py` 准备 Media3 源码（放在检出目录之外，并缓存）。只经过 `prepare_media.py`、没导入原生库的 Media3 目录缺少 `decoder_ffmpeg` 的 `native-dependencies.properties`，Gradle 无法完成配置；CI 会写一个只含 `android.ndk.version` 的占位文件代替，然后运行 `python scripts/check.py`。失败时，Gradle 的「What went wrong」和失败的测试会写进检查注释，不登录也能看到。只改 `.md` 或 `docs/` 时不运行；也可在 GitHub 的 Actions 页手动运行。它不用任何密钥，不签名、不打包 APK、不编译 MPV/FFmpeg 原生库，也不碰设备，所以播放和界面仍要在雷电上实测。失败时测试报告作为 `test-reports` 附件保留 7 天。
 
 输出在 `app/build/outputs/apk/{leanback,mobile}/debug/`。两个 UI 构建目前使用相同包名，不应同机同时安装；切换测试安装覆盖前保存所需测试数据。
 

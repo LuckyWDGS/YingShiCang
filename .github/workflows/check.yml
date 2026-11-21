@@ -64,6 +64,17 @@ jobs:
           rm -f "$HOME/ysc-media3/androidx-media-1.11.1.zip"
           echo "MEDIA3_DIR=$HOME/ysc-media3/media" >> "$GITHUB_ENV"
 
+      # decoder_ffmpeg/build.gradle.kts reads android.ndk.version from this file, which only the native import
+      # (scripts/sync_media3_native.py) writes. CI builds no native code (no FFmpeg headers, no .so files), so a
+      # stub with that one key, the version the import writes, lets Gradle configure.
+      - name: Stub native manifest
+        run: |
+          props="$MEDIA3_DIR/libraries/decoder_ffmpeg/src/main/resources/META-INF/androidx.media3.decoder.ffmpeg/native-dependencies.properties"
+          [ -f "$props" ] && exit 0
+          mkdir -p "$(dirname "$props")"
+          printf '%s\n' '# CI stub: no native libraries (see .github/workflows/check.yml).' \
+            'manifest.kind=ci-stub' 'android.ndk.version=30.0.16248370' > "$props"
+
       - name: Gradle
         uses: gradle/actions/setup-gradle@v4
 
