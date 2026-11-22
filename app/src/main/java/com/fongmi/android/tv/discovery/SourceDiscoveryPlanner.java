@@ -81,7 +81,11 @@ public final class SourceDiscoveryPlanner {
             Facet sort = facet(category, "sort");
             if (sort != null) {
                 Choice choice = match(sort, "sort", state.value("sort"), adult);
-                if (choice != null) for (Map<String, String> extend : parameters) extend.put(sort.key(), choice.value());
+                if (choice != null) {
+                    for (Map<String, String> extend : parameters) extend.put(sort.key(), choice.value());
+                    // The source orders these pages itself; SourceDiscoveryOrder keeps that order.
+                    mapped.add("sort");
+                }
             }
             for (Map<String, String> extend : parameters) {
                 boolean scoped = adultSite || adultCategory || selectedAdult(category, extend);

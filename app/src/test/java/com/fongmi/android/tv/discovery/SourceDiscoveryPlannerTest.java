@@ -30,9 +30,20 @@ public class SourceDiscoveryPlannerTest {
         Query query = plan(state, List.of(film, category("drama", "国产剧")), false).get(0);
         assertEquals("film::opaque", query.categoryId());
         assertEquals(Map.of("flavor", "v-44", "loc", "a-cn", "released", "y-5", "other", "opaque-default", "sequence", "s-score"), query.extend());
-        assertEquals(Set.of("genre", "region", "year"), query.mappedConstraints());
+        // "sort": the source orders these pages itself, so SourceDiscoveryOrder keeps its order.
+        assertEquals(Set.of("genre", "region", "year", "sort"), query.mappedConstraints());
         assertTrue(accepts(state, query, "", "", "", ""));
         assertFalse(accepts(state, query, "国产剧", "", "", ""));
+    }
+
+    @Test public void sortIsMappedOnlyWhenTheSourceDeclaresTheChosenOrder() {
+        Category withHeat = category("a", "电影", facet("by", "排序", "hot", choice("近期热度", "hot"), choice("评分", "score")));
+        Category withoutSort = category("b", "电影", facet("loc", "地区", "all", choice("全部", "all")));
+        DiscoveryCatalog.State heat = new DiscoveryCatalog.State(4); // 近期热度 (U) is the default
+        assertTrue(plan(heat, List.of(withHeat), false).get(0).mappedConstraints().contains("sort"));
+        assertFalse(plan(heat, List.of(withoutSort), false).get(0).mappedConstraints().contains("sort"));
+        Category onlyScore = category("c", "电影", facet("by", "排序", "score", choice("评分", "score")));
+        assertFalse(plan(state(4, "sort", "R"), List.of(onlyScore), false).get(0).mappedConstraints().contains("sort"));
     }
 
     @Test public void normalModeNeverUsesAdultCategorySiteOrAdultInitialFacet() {

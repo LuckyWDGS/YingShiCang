@@ -108,6 +108,16 @@ public final class SourceDiscoveryRunner {
     private final DiscoveryCatalog.State state;
     private final List<SourceSlot> sources = new ArrayList<>();
     private final Map<String, Vod> visible = new LinkedHashMap<>();
+    private static final SourceDiscoveryOrder.Fields<Vod> FIELDS = new SourceDiscoveryOrder.Fields<>() {
+        @Override public String title(Vod item) { return item.getName(); }
+        @Override public String year(Vod item) { return item.getYear(); }
+        @Override public String score(Vod item) { return item.getScore(); }
+    };
+    private final SourceDiscoveryOrder.Groups<Vod> shown = new SourceDiscoveryOrder.Groups<>(FIELDS);
+    // Until the user is in the cards, each publish lays the whole list out again in its final order;
+    // after that cards are only appended, so nothing moves above the focused card.
+    private volatile boolean settled;
+    private int publishedAccepted = -1;
     private final MetadataCache cache;
     private final OkHttpClient client;
     private final AtomicLong epoch = new AtomicLong();
@@ -355,18 +365,24 @@ public final class SourceDiscoveryRunner {
         boolean failed = sources.stream().anyMatch(slot -> slot.failed);
         int unsupported = (int) sources.stream().filter(slot -> slot.initialized && slot.pages.isEmpty()).count();
         int accepted = sources.stream().mapToInt(slot -> slot.items.size()).sum();
-        if (!finished && published != null && accepted == published.items().size()
+        if (!finished && published != null && accepted == publishedAccepted
                 && more == published.more() && failed == published.failed() && unsupported == published.unsupported()) return;
         List<List<Vod>> lists = sources.stream().map(slot -> new ArrayList<>(slot.items.values())).map(list -> (List<Vod>) list).toList();
-        List<Vod> merged = new ArrayList<>();
-        int count = lists.stream().mapToInt(List::size).max().orElse(0);
-        for (int i = 0; i < count; i++) for (List<Vod> list : lists) if (i < list.size()) merged.add(list.get(i));
-        if (state.value("sort").equals("S")) merged.sort(Comparator.comparingDouble((Vod item) -> number(item.getScore())).reversed());
-        else if (state.value("sort").equals("R")) merged.sort(Comparator.comparingDouble((Vod item) -> number(item.getYear())).reversed());
-        // Append newly arrived pages; never insert cards above the user's focused/visible page.
-        for (Vod item : merged) visible.putIfAbsent(item.getSiteKey() + "\0" + item.getId(), item);
+        boolean[] byYear = new boolean[sources.size()];
+        for (int i = 0; i < byYear.length; i++)
+            byYear[i] = sources.get(i).pages.stream().noneMatch(page -> page.query.mappedConstraints().contains("sort"));
+        List<Vod> ordered = SourceDiscoveryOrder.order(lists, byYear, state.value("sort"), FIELDS);
+        if (!settled) {
+            visible.clear(); shown.clear();
+            for (Vod item : ordered) if (shown.admit(item)) visible.put(item.getSiteKey() + "\0" + item.getId(), item);
+        } else {
+            // Append newly arrived cards; never insert above the user's focused/visible page.
+            for (Vod item : ordered)
+                if (!visible.containsKey(item.getSiteKey() + "\0" + item.getId()) && shown.admit(item))
+                    visible.put(item.getSiteKey() + "\0" + item.getId(), item);
+        }
         Batch batch = new Batch(List.copyOf(visible.values()), more, failed, unsupported, finished);
-        published = batch;
+        published = batch; publishedAccepted = accepted;
         App.post(() -> { if (valid(token) && current()) callback.accept(batch); });
         if (finished) {
             long delay = sources.stream().filter(slot -> slot.resting).mapToLong(slot -> bench.remaining(slot.benchId))
@@ -379,6 +395,11 @@ public final class SourceDiscoveryRunner {
     private static double number(String text) {
         try { return Double.parseDouble(text); } catch (RuntimeException ignored) { return 0; }
     }
+    /** The user is in the cards (focus moved into them or a further page was asked for): only append from now on. */
+    public void settle() {
+        settled = true;
+    }
+
     public void cancel() {
         closed = true; epoch.incrementAndGet();
         if (round != null) round.cancel(true);

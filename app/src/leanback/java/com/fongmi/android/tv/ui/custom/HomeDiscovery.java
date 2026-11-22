@@ -137,6 +137,8 @@ public final class HomeDiscovery {
         binding.categories.getViewTreeObserver().addOnGlobalFocusChangeListener((oldFocus, newFocus) -> {
             binding.categories.removeCallbacks(focusSelect);
             binding.categories.removeCallbacks(optionSelect);
+            // 电影筛选 / 电视筛选 reorder their cards as sources answer only until the user moves into them.
+            if (sourceRunner != null && isSourceFilter() && inCards(newFocus)) sourceRunner.settle();
             if (newFocus == null || oldFocus == null || newFocus.isInTouchMode() || parkingFocus) return;
             if (!tabs.contains(newFocus)) { followOptionFocus(oldFocus, newFocus); return; }
             if (tabs.indexOf(newFocus) != active) binding.categories.postDelayed(focusSelect, FOCUS_SELECT_MS);
@@ -301,6 +303,12 @@ public final class HomeDiscovery {
     public boolean isHome() { return active == 0; }
     public boolean isAiDrama() { return active == AI_DRAMA; }
     private boolean isSourceFilter() { return active == 4 || active == 5; }
+
+    private boolean inCards(View view) {
+        for (View current = view; current != null; current = current.getParent() instanceof View parent ? parent : null)
+            if (current == binding.recycler) return true;
+        return false;
+    }
     public boolean isCurrentSource(Vod item) {
         return active == AI_DRAMA ? aiDramaRunner != null && aiDramaRunner.owns(item)
                 : isSourceFilter() && sourceRunner != null && sourceRunner.owns(item);
@@ -864,6 +872,9 @@ public final class HomeDiscovery {
             sourceRunner = new SourceDiscoveryRunner(state(), client, sourceCache);
         }
         if (sourceRunner == null || !sourceRunner.current()) { configChanged(); return; }
+        // A further page is asked for from inside the cards: the list on screen must not reorder.
+        // Retries of failed sources are not: they often run before the user has looked at the cards.
+        if (!reset && !retry) sourceRunner.settle();
         int token = generation;
         busy = true; failed = false; pendingRefresh = false;
         // Load silently; reserve the status row for actionable failures.
@@ -996,6 +1007,8 @@ public final class HomeDiscovery {
     }
 
     public void loadNearEnd() {
+        // Called when the cards scroll down: the user is looking at them (touch scrolling moves no focus).
+        if (isSourceFilter() && sourceRunner != null && !items.isEmpty()) sourceRunner.settle();
         if (!activeScreen || busy || scanBudget.paused() || (failed && !isSourceFilter()) || pendingRefresh || !more || isHistory() || items.isEmpty()
                 || binding.filterPanel.getVisibility() == View.VISIBLE) return;
         var layout = (androidx.recyclerview.widget.GridLayoutManager) binding.recycler.getLayoutManager();
