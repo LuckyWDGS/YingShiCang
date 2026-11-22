@@ -1,0 +1,85 @@
+diff --git a/src/cache.c b/src/cache.c
+index 7f530c4..52be554 100644
+--- a/src/cache.c
++++ b/src/cache.c
+@@ -484,15 +484,13 @@ void pl_cache_set_file(void *priv, pl_cache_obj obj)
+     // Check if file exists
+     FILE *fp = fopen(path, "rb");
+     if (fp) {
+-        pl_free(path);
+         fclose(fp);
+-        return; // Ignore already existing files; will be validated on next use
++        goto done; // Ignore already existing files; will be validated on next use
+     }
+ 
+     fp = fopen(path, "wb");
+-    pl_free(path);
+     if (!fp)
+-        return;
++        goto done;
+ 
+     // Generate a single entry cache file
+     const struct cache_header header = {
+@@ -512,13 +510,15 @@ void pl_cache_set_file(void *priv, pl_cache_obj obj)
+     {
+         fclose(fp);
+         remove(path);
+-        return;
++        goto done;
+     }
+ 
+     size_t written = fwrite(obj.data, 1, obj.size, fp);
+     fclose(fp);
+     if (written != obj.size)
+         remove(path);
++done:
++    pl_free(path);
+ }
+ 
+ pl_cache_obj pl_cache_get_file(void *priv, uint64_t key)
+diff --git a/src/gpu.c b/src/gpu.c
+index b2a24e1..e5a320e 100644
+--- a/src/gpu.c
++++ b/src/gpu.c
+@@ -430,10 +430,10 @@ void pl_tex_blit(pl_gpu gpu, const struct pl_tex_blit_params *params)
+     return;
+ 
+ error:
+-    if (src->params.debug_tag || dst->params.debug_tag) {
++    if ((src && src->params.debug_tag) || (dst && dst->params.debug_tag)) {
+         PL_ERR(gpu, "  for textures: src %s, dst %s",
+-               PL_DEF(src->params.debug_tag, "(unknown)"),
+-               PL_DEF(dst->params.debug_tag, "(unknown)"));
++               PL_DEF(src ? src->params.debug_tag : NULL, "(unknown)"),
++               PL_DEF(dst ? dst->params.debug_tag : NULL, "(unknown)"));
+     }
+ }
+ 
+diff --git a/src/utils/frame_queue.c b/src/utils/frame_queue.c
+index 7e82c16..9cdd961 100644
+--- a/src/utils/frame_queue.c
++++ b/src/utils/frame_queue.c
+@@ -122,6 +122,9 @@ pl_queue pl_queue_create(pl_gpu gpu)
+     int ret = pl_cond_init(&p->wakeup);
+     if (ret) {
+         PL_ERR(p, "Failed to init conditional variable: %d", ret);
++        pl_mutex_destroy(&p->lock_weak);
++        pl_mutex_destroy(&p->lock_strong);
++        pl_free(p);
+         return NULL;
+     }
+     return p;
+diff --git a/src/vulkan/command.c b/src/vulkan/command.c
+index 44e983d..1c8ea55 100644
+--- a/src/vulkan/command.c
++++ b/src/vulkan/command.c
+@@ -70,7 +70,8 @@ static void vk_cmd_destroy(struct vk_cmd *cmd)
+         return;
+ 
+     struct vk_ctx *vk = cmd->pool->vk;
+-    vk_cmd_poll(cmd, UINT64_MAX);
++    if (cmd->sync.sem || cmd->fence)
++        vk_cmd_poll(cmd, UINT64_MAX);
+     vk_cmd_reset(cmd);
+     vk->DestroyFence(vk->dev, cmd->fence, PL_VK_ALLOC);
+     vk->FreeCommandBuffers(vk->dev, cmd->pool->pool, 1, &cmd->buf);

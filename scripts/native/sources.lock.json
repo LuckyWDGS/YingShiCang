@@ -17,11 +17,12 @@
     },
     "ffmpeg": {
       "repository": "https://github.com/FongMi/FFmpeg.git",
-      "commit": "90b278f6b813f9b8157f7a82a6918b3ec781ed2e"
+      "commit": "bdf17191d55d78984ea742fe858fbf9b9aaa5775"
     },
     "libplacebo": {
       "repository": "https://github.com/FongMi/libplacebo.git",
-      "commit": "558b03542315d532ded3ba5f9183d84d712eeedd"
+      "commit": "558b03542315d532ded3ba5f9183d84d712eeedd",
+      "patchSha256": "2e87235ba2d7de100b64ef756712918497ac96e6ef6d47901e8d294e3b701480"
     },
     "uavs3d": {
       "repository": "https://github.com/uavs3/uavs3d.git",
@@ -30,11 +31,11 @@
     },
     "dav1d": {
       "repository": "https://github.com/videolan/dav1d",
-      "commit": "d7a83f6e0f9360188a38ceae0883f3d132d87b47"
+      "commit": "2a0775ca5ea055450bdfbfe81758a3c9e001f58a"
     },
     "libass": {
       "repository": "https://github.com/libass/libass",
-      "commit": "f61db567e6593df3470e91594bcd4ad2d0473aff"
+      "commit": "841c52561c39df6767e3948efa8e5307efb11f1f"
     },
     "freetype2": {
       "repository": "https://gitlab.freedesktop.org/freetype/freetype.git",

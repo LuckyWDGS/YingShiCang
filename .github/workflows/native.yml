@@ -1,0 +1,103 @@
+# Builds the MPV/FFmpeg native libraries (both ARM ABIs) from the hash-locked recipe in scripts/native/ and
+# imports them into a freshly prepared Media3 source with scripts/sync_media3_native.py, which checks ELF ABI,
+# SONAME, dependencies, MPV JNI exports and 16 KiB alignment. The artifact holds the Media3 files the import
+# writes, to be copied over the local Media3 checkout (docs/build.md). Runs only when the native recipe changes,
+# or by hand; nothing is published and no device is involved, so this proves the build, not playback.
+name: native
+
+on:
+  pull_request:
+    paths: ['scripts/native/**', 'scripts/sync_media3_native.py', '.github/workflows/native.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 340
+    steps:
+      - uses: actions/checkout@v7
+
+      # Boost, FFmpeg and two ABIs of build trees need more room than the runner leaves free; the native build
+      # downloads its own Android SDK and NDK, so the preinstalled ones can go too.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/lib/android
+          df -h "$RUNNER_TEMP"
+
+      - name: JDK 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf pkgconf libtool ninja-build cmake gperf nasm patch unzip wget
+          python -m pip install meson
+
+      - name: Prepare locked sources
+        run: python scripts/native/prepare.py --destination "$RUNNER_TEMP/producer"
+
+      # IN_CI=1 only skips the scripts' own package installation (done above); the locked sources are already
+      # in place, so nothing is cloned again.
+      - name: Download SDK and remaining dependencies
+        working-directory: ${{ runner.temp }}/producer/buildscripts
+        env:
+          IN_CI: '1'
+        run: |
+          ./include/download-sdk.sh
+          ./include/download-deps.sh
+
+      - name: Build armeabi-v7a
+        working-directory: ${{ runner.temp }}/producer/buildscripts
+        run: ./buildall.sh --arch armv7l mpv
+
+      - name: Build arm64-v8a
+        working-directory: ${{ runner.temp }}/producer/buildscripts
+        run: |
+          export ARCDAV3A_SHARED_DEPS="$PWD/deps/ffmpeg/_build_arcdav3a_armv7l/_deps"
+          ./buildall.sh --arch arm64 mpv
+
+      - name: Package native libraries
+        working-directory: ${{ runner.temp }}/producer/buildscripts
+        env:
+          MPV_ANDROID_NATIVE_ONLY: '1'
+        run: ./buildall.sh -n
+
+      - name: Prepare Media3 source
+        run: python scripts/prepare_media.py --destination "$RUNNER_TEMP/media"
+
+      - name: Import into Media3
+        run: |
+          python scripts/sync_media3_native.py --producer "$RUNNER_TEMP/producer" --media "$RUNNER_TEMP/media" \
+            --readelf "$(ls -d "$RUNNER_TEMP"/producer/buildscripts/sdk/android-ndk-*/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf)" \
+            --backup "$RUNNER_TEMP/backup" > "$RUNNER_TEMP/native-build.json"
+          out="$RUNNER_TEMP/out"
+          for path in decoder_ffmpeg/src/main/jniLibs decoder_ffmpeg/src/main/ffmpeg/include \
+                      decoder_ffmpeg/src/main/renderer-sdk decoder_ffmpeg/src/main/resources mpvplayer/src/main/jniLibs; do
+            mkdir -p "$out/libraries/$(dirname "$path")"
+            cp -a "$RUNNER_TEMP/media/libraries/$path" "$out/libraries/$path"
+          done
+          cp "$RUNNER_TEMP/native-build.json" "$out/"
+          grep -E '\.commit=|\.dirty=' "$out/libraries/decoder_ffmpeg/src/main/resources/META-INF/androidx.media3.decoder.ffmpeg/native-dependencies.properties" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: media3-native
+          path: ${{ runner.temp }}/out/
+          if-no-files-found: error
+          retention-days: 30
