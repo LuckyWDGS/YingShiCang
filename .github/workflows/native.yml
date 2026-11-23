@@ -1,13 +1,12 @@
 # Builds the MPV/FFmpeg native libraries (both ARM ABIs) from the hash-locked recipe in scripts/native/ and
 # imports them into a freshly prepared Media3 source with scripts/sync_media3_native.py, which checks ELF ABI,
 # SONAME, dependencies, MPV JNI exports and 16 KiB alignment. The artifact holds the Media3 files the import
-# writes, to be copied over the local Media3 checkout (docs/build.md). Runs only when the native recipe changes,
-# or by hand; nothing is published and no device is involved, so this proves the build, not playback.
+# writes, to be copied over the local Media3 checkout (docs/build.md). Run by hand from the Actions page (the
+# local WSL build in scripts/native/README.md is the usual path; a run takes one to two hours). Nothing is
+# published and no device is involved, so this proves the build, not playback.
 name: native
 
 on:
-  pull_request:
-    paths: ['scripts/native/**', 'scripts/sync_media3_native.py', '.github/workflows/native.yml']
   workflow_dispatch:
 
 permissions:

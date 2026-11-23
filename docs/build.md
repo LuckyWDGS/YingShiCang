@@ -4,7 +4,7 @@
 
 - JDK 21、Python 3.10、Android SDK（platform android-37.0、build-tools 36.0.0）、网络可访问 Gradle／Maven／Chaquopy。
 - 设置 `JAVA_HOME`、`ANDROID_HOME`、`PYTHON_BUILD`，或复制 `local.properties.example` 为未跟踪的 `local.properties` 填本机路径。
-- 运行 `python scripts/prepare_media.py` 准备经过 SHA-256 校验的官方 Media3 1.11.1 源码及本项目 FongMi 合并补丁；不会覆盖已有目录。原生库另按 [native 构建说明](../scripts/native/README.md) 编译双 ARM ABI，并用 `scripts/sync_media3_native.py` 校验和导入。`MEDIA3_DIR` 或未跟踪的 `local.properties` 中 `media3.dir` 指向准备好的目录。
+- 运行 `python scripts/prepare_media.py` 准备经过 SHA-256 校验的官方 Media3 1.11.1 源码及本项目 FongMi 合并补丁；不会覆盖已有目录。原生库另按 [native 构建说明](../scripts/native/README.md) 编译双 ARM ABI，并用 `scripts/sync_media3_native.py` 校验和导入。本机用 WSL（Ubuntu 24.04）编译，源码目录放在 WSL 自己的文件系统里；也可在 GitHub 的 Actions 页手动运行 [.github/workflows/native.yml](../.github/workflows/native.yml)，产物 `media3-native` 覆盖到本地 Media3 目录前先备份同名目录。`MEDIA3_DIR` 或未跟踪的 `local.properties` 中 `media3.dir` 指向准备好的目录。
 - 当前 MPV/FFmpeg 使用 NDK 30.0.16248370；其他原生模块还可能需要 NDK 28.2.13676358 和 CMake。不要把旧版分拆 FFmpeg 库与新版 `libffmpeg.so` 混装。
 
 ```powershell

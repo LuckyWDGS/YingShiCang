@@ -39,3 +39,13 @@ renderer and MPV share this library. Do not mix it with the former split librari
 Successful compilation establishes build compatibility. Device decoder-path,
 seek, repeated open/close, long-playback, HDR and audio tests are separate gates.
 Do not use an ARM translation emulator as proof of physical ARM TV stability.
+
+## Building on GitHub
+
+`.github/workflows/native.yml` runs the same steps on Ubuntu when started by hand from the Actions
+page (one to two hours): it prepares the locked sources, builds both ABIs,
+prepares Media3 and imports the result with `sync_media3_native.py`. The `media3-native` artifact
+(kept 30 days) holds the files the import writes under `libraries/` plus `native-build.json`.
+To use it, back up the same folders of the local Media3 checkout (`decoder_ffmpeg/src/main/jniLibs`,
+`ffmpeg/include`, `renderer-sdk`, `resources`, `mpvplayer/src/main/jniLibs`), then copy the
+artifact's `libraries/` over it. A green run proves the build only; device gates above still apply.
