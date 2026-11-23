@@ -5,6 +5,7 @@
 .gradle/
 **/build/
 local.properties
+log-reader.properties
 *.jks
 *.keystore
 .env
