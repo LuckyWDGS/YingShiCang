@@ -2,7 +2,9 @@
 
 Read-only: uses the ysc-log-reader RAM user whose key is in OSS_ACCESS_KEY_ID /
 OSS_ACCESS_KEY_SECRET (process environment first, then the Windows user environment,
-so a fresh `setx` works without restarting). Credentials are only handed to the SDK.
+so a fresh `setx` works without restarting), or else in log-reader.properties (Git-ignored;
+log-reader.example.properties is the template) in this checkout or the main one.
+Credentials are only handed to the SDK.
 Downloads go to .codex/session/logs/, which Git ignores.
 
   python scripts/fetch_logs.py latest [-n 5] [--download]
@@ -37,6 +39,36 @@ def shown(path):
         return path
 
 
+CONFIG = "log-reader.properties"
+
+
+def config_files():
+    """log-reader.properties in this checkout, then in the main checkout (worktrees share one file)."""
+    files = [ROOT / CONFIG]
+    try:
+        common = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "--path-format=absolute", "--git-common-dir"],
+                                capture_output=True, text=True, check=True).stdout.strip()
+        files.append(pathlib.Path(common).parent / CONFIG)
+    except (OSError, subprocess.CalledProcessError):
+        pass
+    return list(dict.fromkeys(files))
+
+
+def read_config():
+    """key=value lines; # comments and blank lines are skipped, empty values count as missing."""
+    for path in config_files():
+        if path.is_file():
+            values = {}
+            for line in path.read_text(encoding="utf-8-sig").splitlines():
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    key, value = line.split("=", 1)
+                    if value.strip():
+                        values[key.strip()] = value.strip()
+            return path, values
+    return None, {}
+
+
 def credential(name):
     value = os.environ.get(name)
     if value or os.name != "nt":
@@ -54,10 +86,16 @@ def open_bucket():
         import oss2
     except ImportError:
         sys.exit("缺少阿里云 OSS SDK：python -m pip install oss2")
+    path, config = read_config()
     key_id, secret = credential("OSS_ACCESS_KEY_ID"), credential("OSS_ACCESS_KEY_SECRET")
     if not key_id or not secret:
-        sys.exit("缺少只读凭证：请设置用户环境变量 OSS_ACCESS_KEY_ID 和 OSS_ACCESS_KEY_SECRET（见 docs/日志上传-阿里云OSS部署.md）")
-    return oss2, oss2.Bucket(oss2.Auth(key_id, secret), ENDPOINT, BUCKET)
+        key_id, secret = config.get("oss.accessKeyId"), config.get("oss.accessKeySecret")
+    if not key_id or not secret:
+        where = f"（已找到 {shown(path)}，但两个 key 还是空的）" if path else f"（主目录还没有 {CONFIG}，可复制 log-reader.example.properties）"
+        sys.exit(f"缺少只读凭证：在 {CONFIG} 填入 oss.accessKeyId 和 oss.accessKeySecret{where}，"
+                 "或设置用户环境变量 OSS_ACCESS_KEY_ID / OSS_ACCESS_KEY_SECRET（见 docs/日志上传-阿里云OSS部署.md）")
+    endpoint, bucket = config.get("oss.endpoint", ENDPOINT), config.get("oss.bucket", BUCKET)
+    return oss2, oss2.Bucket(oss2.Auth(key_id, secret), endpoint, bucket)
 
 
 def uploads(oss2, bucket, prefix="logs/"):

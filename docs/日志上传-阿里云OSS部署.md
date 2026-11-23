@@ -97,10 +97,10 @@ OSS 控制台 → `ying-shi-cang` → 文件列表 → `logs/` → 设备 ID →
    }
    ```
 2. 用户 `ysc-log-reader`：只开「使用永久 AccessKey 访问」，授权上面的策略。
-3. 在开发电脑上设置用户环境变量（值不要带尖括号或空格，也不要发到聊天或提交到仓库）：`setx OSS_ACCESS_KEY_ID "..."`、`setx OSS_ACCESS_KEY_SECRET "..."`。
+3. 把这个用户的 AccessKey 填进主目录的 `log-reader.properties`（`oss.accessKeyId`、`oss.accessKeySecret`；文件不进 Git，模板是 `log-reader.example.properties`，访问地址和存储桶已填好；工作目录里运行时也读主目录这一份）。也可以改用用户环境变量：`setx OSS_ACCESS_KEY_ID "..."`、`setx OSS_ACCESS_KEY_SECRET "..."`，设置了环境变量时以它为准。值不要带引号或空格，也不要发到聊天或提交到仓库。
 4. 安装官方 SDK：`python -m pip install oss2`。
 
-用法（脚本先读进程环境变量，读不到再读 Windows 用户环境变量，因此 setx 后无需重启）：
+用法（脚本先读进程环境变量，再读 Windows 用户环境变量（setx 后无需重启），都没有时读 `log-reader.properties`）：
 
 ```bash
 python scripts/fetch_logs.py latest -n 10            # 所有设备最新的上传

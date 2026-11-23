@@ -88,7 +88,7 @@ Each rule is a user decision or a fixed regression; `docs/开发记录.md` has t
 ### Diagnostics and logs
 
 - Diagnostic events never carry URLs, titles, IDs or credentials (api labels, families and counts only). Crashes upload automatically once (up to 3 attempts); every other upload is manual. CrashTrail records the screen and running plugin calls for the next launch.
-- Read user logs with `python scripts/fetch_logs.py latest|device <id>|report <uuid> [--download]` (read-only key from the user environment; never print or commit it). Device M8RJ-DHH4 is the LDPlayer QA emulator, not a user. The TCL TV (5GJM-WDAX) is retired: its findings are not followed.
+- Read user logs with `python scripts/fetch_logs.py latest|device <id>|report <uuid> [--download]` (read-only key from the user environment or the Git-ignored log-reader.properties in the main checkout, template log-reader.example.properties; never print or commit it). Device M8RJ-DHH4 is the LDPlayer QA emulator, not a user. The TCL TV (5GJM-WDAX) is retired: its findings are not followed.
 
 ## Validation and device safety
 
