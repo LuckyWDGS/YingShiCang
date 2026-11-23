@@ -477,6 +477,58 @@ public class ViewModelSearchRunnerTest {
         } finally { runner.stop(); workers.shutdownNow(); timer.shutdownNow(); }
     }
 
+    @Test public void aPausedSearchStartsNoFurtherSourceUntilResumed() throws Exception {
+        var workers = MoreExecutors.listeningDecorator(Executors.newFixedThreadPool(2));
+        var timer = Executors.newSingleThreadScheduledExecutor();
+        var runner = new ViewModelSearchRunner(workers, timer, 5000, 1);
+        var started = new java.util.concurrent.CopyOnWriteArrayList<Site>();
+        var firstRunning = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        var done = new CountDownLatch(1);
+        Site first = new Site(), second = new Site(), third = new Site();
+        try {
+            runner.start(java.util.List.of(first, second, third), site -> () -> {
+                started.add(site);
+                if (site == first) { firstRunning.countDown(); release.await(); }
+                return result("hit");
+            }, result -> {}, status -> { if (status.startsWith("搜索完成 3/3")) done.countDown(); });
+            assertTrue(firstRunning.await(1, TimeUnit.SECONDS));
+            assertEquals("two sources wait while the screen is hidden", 2, runner.pause());
+            assertEquals(1, runner.running());
+            // The source already running finishes; the next one is not started.
+            release.countDown();
+            Thread.sleep(300);
+            assertEquals(java.util.List.of(first), started);
+            assertFalse(runner.finished());
+            // Pausing again while paused changes nothing; resuming starts the two left.
+            assertEquals(2, runner.pause());
+            assertEquals(2, runner.resume());
+            assertTrue(done.await(2, TimeUnit.SECONDS));
+            assertEquals(3, started.size());
+            assertEquals("not paused any more", -1, runner.resume());
+            assertEquals("nothing left to wait", -1, runner.pause());
+            assertEquals(-1, runner.resume());
+        } finally { release.countDown(); runner.stop(); workers.shutdownNow(); timer.shutdownNow(); }
+    }
+
+    @Test public void aSearchStartedWhilePausedWaitsForTheScreen() throws Exception {
+        var workers = MoreExecutors.listeningDecorator(Executors.newSingleThreadExecutor());
+        var timer = Executors.newSingleThreadScheduledExecutor();
+        var runner = new ViewModelSearchRunner(workers, timer, 5000, 2);
+        var asked = new AtomicInteger();
+        var done = new CountDownLatch(1);
+        try {
+            runner.pause();
+            runner.start(java.util.List.of(new Site(), new Site()), site -> () -> { asked.incrementAndGet(); return null; },
+                    result -> {}, status -> { if (status.startsWith("搜索完成 2/2")) done.countDown(); });
+            Thread.sleep(200);
+            assertEquals(0, asked.get());
+            assertEquals(2, runner.resume());
+            assertTrue(done.await(2, TimeUnit.SECONDS));
+            assertEquals(2, asked.get());
+        } finally { runner.stop(); workers.shutdownNow(); timer.shutdownNow(); }
+    }
+
     private static com.fongmi.android.tv.bean.Result result(String id) {
         var vod = new com.fongmi.android.tv.bean.Vod() {
             @Override public String getId() { return id; }

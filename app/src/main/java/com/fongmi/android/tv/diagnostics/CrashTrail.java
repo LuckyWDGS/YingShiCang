@@ -25,7 +25,7 @@ public final class CrashTrail {
     static final int SIZE = 1024;
     private static final int MAX_CALLS = 8;
     private static final Pattern NAME = Pattern.compile("[^A-Za-z0-9_.$-]");
-    private static final Pattern ENCODED = Pattern.compile("at=\\d+ screen=\\S* calls=\\d+( \\S+)?");
+    private static final Pattern ENCODED = Pattern.compile("at=\\d+ screen=\\S* calls=\\d+( mem=\\S+)?( \\S+)?");
 
     private static final State STATE = new State();
     private static MappedByteBuffer map;
@@ -63,6 +63,12 @@ public final class CrashTrail {
 
     public static void screen(String name) {
         if (STATE.screen(name)) store();
+    }
+
+    /** The system asked the app to free memory (onTrimMemory level, or "low"), with what was still free. */
+    static void memory(String level, long availMb) {
+        STATE.memory(level, availMb, System.currentTimeMillis());
+        store();
     }
 
     /** What the previous process was doing, as ages at the time it died; empty if nothing was left. */
@@ -104,9 +110,31 @@ public final class CrashTrail {
         if (exitTime < 0) exitTime = at;
         StringBuilder text = new StringBuilder("idle=").append(Math.max(0, exitTime - at)).append("ms ")
                 .append(parts[1]).append(' ').append(parts[2]);
-        if (parts.length < 4) return text.toString();
+        String memory = "", list = "";
+        for (int i = 3; i < parts.length; i++) {
+            if (parts[i].startsWith("mem=")) memory = describeMemory(parts[i].substring(4), exitTime);
+            else list = parts[i];
+        }
+        if (!list.isEmpty()) text.append(' ').append(describeCalls(list, exitTime));
+        return text.append(memory).toString();
+    }
+
+    /** "none", or the last trim level with its age and the memory still free then. */
+    private static String describeMemory(String value, long exitTime) {
+        if (value.equals("none")) return " trim=none";
+        int slash = value.indexOf('/'), split = value.lastIndexOf('@');
+        if (slash <= 0 || split <= slash) return "";
+        try {
+            long age = Math.max(0, exitTime - Long.parseLong(value.substring(split + 1)));
+            return " trim=" + value.substring(0, slash) + ":" + age + "ms avail=" + value.substring(slash + 1, split) + "MB";
+        } catch (NumberFormatException e) {
+            return "";
+        }
+    }
+
+    private static String describeCalls(String list, long exitTime) {
         List<String> calls = new ArrayList<>();
-        for (String call : parts[3].split(",")) {
+        for (String call : list.split(",")) {
             int split = call.lastIndexOf('@');
             if (split <= 0) continue;
             try {
@@ -115,13 +143,14 @@ public final class CrashTrail {
             } catch (NumberFormatException ignored) {
             }
         }
-        return text.append(' ').append(String.join(",", calls)).toString();
+        return String.join(",", calls);
     }
 
     /** The trail itself, apart from where it is kept. */
     static final class State {
         private final Map<Long, String> calls = new LinkedHashMap<>();
         private String screen = "";
+        private String memory = "none";
         private long next;
 
         synchronized long begin(String what, long now) {
@@ -141,9 +170,14 @@ public final class CrashTrail {
             return true;
         }
 
+        synchronized void memory(String level, long availMb, long now) {
+            memory = name(level) + "/" + availMb + "@" + now;
+        }
+
         /** The newest calls are listed; the count says how many ran in all. */
         synchronized String encode(long now) {
-            StringBuilder text = new StringBuilder("at=").append(now).append(" screen=").append(screen).append(" calls=").append(calls.size());
+            StringBuilder text = new StringBuilder("at=").append(now).append(" screen=").append(screen).append(" calls=").append(calls.size())
+                    .append(" mem=").append(memory);
             if (calls.isEmpty()) return text.toString();
             List<String> newest = new ArrayList<>(calls.values());
             if (newest.size() > MAX_CALLS) newest = newest.subList(newest.size() - MAX_CALLS, newest.size());
