@@ -367,6 +367,7 @@
     <string name="error_play_url">Unable to load url</string>
     <string name="error_play_flag">No flag data</string>
     <string name="error_play_timeout">Timed out</string>
+    <string name="player_gpu_next_fallback">gpu-next could not show the picture; switched to the standard renderer</string>
     <string name="play_retry">Playback interrupted, retrying this line</string>
     <string name="error_play_network">Network connection failed</string>
     <string name="error_play_http">Server returned an error (HTTP %1$d)</string>

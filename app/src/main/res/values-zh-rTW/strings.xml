@@ -370,6 +370,7 @@
     <string name="error_play_url">播放網址載入失敗</string>
     <string name="error_play_flag">暫無線路資料</string>
     <string name="error_play_timeout">連線逾時</string>
+    <string name="player_gpu_next_fallback">gpu-next 渲染失敗，已改用一般渲染</string>
     <string name="play_retry">播放中斷，正在重試目前線路</string>
     <string name="error_play_network">網路連線失敗</string>
     <string name="error_play_http">伺服器回傳錯誤（HTTP %1$d）</string>

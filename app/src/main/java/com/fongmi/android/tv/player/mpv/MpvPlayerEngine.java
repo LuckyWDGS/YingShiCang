@@ -7,26 +7,53 @@ import androidx.media3.common.Player;
 import androidx.media3.common.Tracks;
 import androidx.media3.mpvplayer.MpvPlayer;
 
+import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.bean.Sub;
 import com.fongmi.android.tv.player.effect.PlayerEffect;
 import com.fongmi.android.tv.player.engine.PlayerEngine;
 import com.fongmi.android.tv.player.media.MediaItemFactory;
 import com.fongmi.android.tv.player.media.PlaySpec;
 
-public class MpvPlayerEngine implements PlayerEngine, Player.Listener {
+import is.xyz.mpv.MPVLib;
+
+public class MpvPlayerEngine implements PlayerEngine, Player.Listener, MPVLib.LogObserver {
 
     private final MpvErrorMessageProvider provider;
     private final MpvPlayerEffect effect;
     private final MpvPlayer player;
     private final MpvHlsRecovery hlsRecovery = new MpvHlsRecovery();
+    private final GpuNextFailureDetector renderFailures = new GpuNextFailureDetector();
+    private final boolean gpuNext;
+    private volatile Runnable renderFailureHandler;
     private PlaySpec spec;
 
-    public MpvPlayerEngine(int decode, Player.Listener listener) {
-        this.player = MpvUtil.buildPlayer(decode, listener);
+    public MpvPlayerEngine(int decode, Player.Listener listener, boolean gpuNext) {
+        this.gpuNext = gpuNext;
+        this.player = MpvUtil.buildPlayer(decode, listener, gpuNext);
         this.provider = new MpvErrorMessageProvider();
         this.effect = new MpvPlayerEffect(player);
         this.player.setAudioOutputListener(effect::applyAudioEffect);
         this.player.addListener(this);
+        // MPV's log is global; only an engine drawing with gpu-next listens for its frame failures.
+        if (gpuNext) MPVLib.addLogObserver(this);
+    }
+
+    @Override
+    public boolean usesGpuNext() {
+        return gpuNext;
+    }
+
+    @Override
+    public void setRenderFailureHandler(Runnable handler) {
+        this.renderFailureHandler = handler;
+    }
+
+    /** MPV's log thread. */
+    @Override
+    public void logMessage(String prefix, int level, String text) {
+        if (!renderFailures.onLog(prefix, level, text, System.currentTimeMillis())) return;
+        Runnable handler = renderFailureHandler;
+        if (handler != null) App.post(handler);
     }
 
     public static boolean isAvailable() {
@@ -55,6 +82,8 @@ public class MpvPlayerEngine implements PlayerEngine, Player.Listener {
 
     @Override
     public void release() {
+        if (gpuNext) MPVLib.removeLogObserver(this);
+        renderFailureHandler = null;
         player.removeListener(this);
         player.setAudioOutputListener(null);
         player.release();
@@ -87,6 +116,7 @@ public class MpvPlayerEngine implements PlayerEngine, Player.Listener {
     public void start(PlaySpec spec, long startPositionMs) {
         this.spec = spec;
         hlsRecovery.reset();
+        renderFailures.reset();
         startInternal(startPositionMs);
     }
 

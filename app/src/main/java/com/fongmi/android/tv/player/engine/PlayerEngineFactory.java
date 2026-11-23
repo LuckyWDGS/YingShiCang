@@ -24,8 +24,13 @@ public final class PlayerEngineFactory {
     public static PlayerEngine create(int decode, PlayerEngine.Type type, Player.Listener listener) {
         return switch (type) {
             case EXO -> new ExoPlayerEngine(decode, listener);
-            case MPV -> new MpvPlayerEngine(decode, listener);
+            case MPV -> new MpvPlayerEngine(decode, listener, PlayerSetting.isMpvGpuNext());
         };
+    }
+
+    /** MPV without gpu-next, for the rest of a session whose gpu-next output failed. */
+    public static PlayerEngine createMpvWithoutGpuNext(int decode, Player.Listener listener) {
+        return new MpvPlayerEngine(decode, listener, false);
     }
 
     public static boolean matches(PlayerEngine engine, PlaySpec spec) {

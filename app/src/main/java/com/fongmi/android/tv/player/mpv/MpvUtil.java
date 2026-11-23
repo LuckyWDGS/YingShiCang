@@ -40,8 +40,8 @@ public final class MpvUtil {
         return App.get().getPackageManager().hasSystemFeature(PackageManager.FEATURE_VULKAN_HARDWARE_VERSION, VULKAN_1_2);
     }
 
-    public static MpvPlayer buildPlayer(int decode, Player.Listener listener) {
-        MpvPlayer player = new MpvPlayer.Builder(App.get()).setDecode(decode).setConfig(buildConfig()).build();
+    public static MpvPlayer buildPlayer(int decode, Player.Listener listener, boolean gpuNext) {
+        MpvPlayer player = new MpvPlayer.Builder(App.get()).setDecode(decode).setConfig(buildConfig(gpuNext)).build();
         setPreferredTextLanguages(player);
         player.addListener(listener);
         return player;
@@ -51,18 +51,18 @@ public final class MpvUtil {
         player.setSubtitleOptions(buildSubtitleOptions());
     }
 
-    private static MpvPlayerConfig buildConfig() {
+    private static MpvPlayerConfig buildConfig(boolean gpuNext) {
         File configDir = Path.mpv();
         File cacheDir = Path.mpvCache();
-        MpvPlayerConfig.Builder builder = new MpvPlayerConfig.Builder().addConfigDirectory(configDir).addAndroidFontConfig(configDir, cacheDir).addAndroidDefaults(buildAndroidOptions(cacheDir)).addTlsCaFileFromAsset(App.get(), ASSET_CA_FILE, Path.files(ASSET_CA_FILE)).addAndroidSubtitleOptions(App.get(), buildSubtitleOptions());
+        MpvPlayerConfig.Builder builder = new MpvPlayerConfig.Builder().addConfigDirectory(configDir).addAndroidFontConfig(configDir, cacheDir).addAndroidDefaults(buildAndroidOptions(cacheDir, gpuNext)).addTlsCaFileFromAsset(App.get(), ASSET_CA_FILE, Path.files(ASSET_CA_FILE)).addAndroidSubtitleOptions(App.get(), buildSubtitleOptions());
         addPreloadOptions(builder);
         return builder.build();
     }
 
-    private static MpvAndroidOptions buildAndroidOptions(File shaderCacheDirectory) {
+    private static MpvAndroidOptions buildAndroidOptions(File shaderCacheDirectory, boolean gpuNext) {
         MpvAndroidOptions.Builder builder = new MpvAndroidOptions.Builder().setShaderCacheDirectory(shaderCacheDirectory).setAudioPassthroughEnabled(DecodeSetting.isAudioPassThrough()).setDolbyVisionOutputPolicy(DecodeSetting.getDolbyVisionOutputPolicy());
         builder.setVulkanEnabled(isVulkanSupported() && PlayerSetting.isMpvVulkan());
-        builder.setGpuNextEnabled(PlayerSetting.isMpvGpuNext());
+        builder.setGpuNextEnabled(gpuNext);
         return builder.build();
     }
 

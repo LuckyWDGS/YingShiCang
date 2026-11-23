@@ -32,6 +32,18 @@ public interface PlayerEngine {
         return false;
     }
 
+    /**
+     * Called on the main thread when the video output keeps failing to show frames while the sound goes on.
+     * Only MPV with gpu-next reports it (GpuNextFailureDetector); PlayerManager then restarts without gpu-next.
+     */
+    default void setRenderFailureHandler(Runnable handler) {
+    }
+
+    /** Whether this engine renders with MPV's gpu-next output. */
+    default boolean usesGpuNext() {
+        return false;
+    }
+
     default PlayerEffect getEffect() {
         return PlayerEffect.NONE;
     }

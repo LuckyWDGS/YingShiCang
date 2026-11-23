@@ -97,6 +97,7 @@ public class PlayerManager implements ParseCallback {
         this.danmakuConfig = DanmakuSetting.getConfig();
         this.danmakuEnabled = DanmakuSetting.isShow();
         this.player = engine.getPlayer();
+        engine.setRenderFailureHandler(this::fallbackFromGpuNext);
     }
 
     public void release() {
@@ -119,6 +120,7 @@ public class PlayerManager implements ParseCallback {
 
     private void setPlayer(Player player) {
         this.player = player;
+        if (engine != null) engine.setRenderFailureHandler(this::fallbackFromGpuNext);
         callback.onPlayerRebuild(player);
     }
 
@@ -635,6 +637,47 @@ public class PlayerManager implements ParseCallback {
         this.spec = spec;
         fallbackSelection.onPlaybackStarted(spec);
         setMediaItem(timeout, startPositionMs);
+    }
+
+    /**
+     * MPV's gpu-next output keeps failing while the sound plays on (black picture). Continue the same play address
+     * at the same position on MPV without gpu-next, for the rest of this player session; the setting is not
+     * changed, so the next session tries gpu-next again (user 2026-11-23).
+     */
+    private void fallbackFromGpuNext() {
+        if (spec == null || engine == null || !engine.usesGpuNext() || !currentMediaMatchesSpec()) return;
+        PlayerEngine oldEngine = engine;
+        Player playerBeforeSwap = player;
+        PlaybackSnapshot snapshot = PlaybackSnapshot.capture(playerBeforeSwap);
+        PlayerEngine replacement;
+        try {
+            replacement = PlayerEngineFactory.createMpvWithoutGpuNext(decode, listener);
+        } catch (Throwable ignored) {
+            DiagnosticLog.write(App.get(), "playback_engine_fallback", "from=gpu-next to=gpu reason=render_failed result=create_failed");
+            return;
+        }
+        playerBeforeSwap.removeListener(listener);
+        pendingPreload = null;
+        trackSelection.reset();
+        engine = replacement;
+        setPlayer(replacement.getPlayer());
+        try {
+            replacement.start(spec, snapshot.positionMs());
+            snapshot.restore(player);
+            oldEngine.release();
+            notifyDanmakuSourceChanged();
+            App.removeCallbacks(runnable);
+            App.post(runnable, playbackTimeoutMs);
+            callback.onPrepare();
+            Notify.show(R.string.player_gpu_next_fallback);
+            DiagnosticLog.write(App.get(), "playback_engine_fallback", "from=gpu-next to=gpu reason=render_failed result=switched");
+        } catch (Throwable ignored) {
+            replacement.release();
+            engine = oldEngine;
+            playerBeforeSwap.addListener(listener);
+            setPlayer(playerBeforeSwap);
+            DiagnosticLog.write(App.get(), "playback_engine_fallback", "from=gpu-next to=gpu reason=render_failed result=start_failed");
+        }
     }
 
     private boolean trySoftwareHevcFallback() {
