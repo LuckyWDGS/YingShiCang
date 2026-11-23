@@ -14,6 +14,7 @@ import androidx.core.os.HandlerCompat;
 
 import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.diagnostics.DiagnosticLog;
+import com.fongmi.android.tv.diagnostics.MemorySignal;
 import com.fongmi.android.tv.diagnostics.PluginCrashGuard;
 import com.fongmi.android.tv.maintenance.CacheJanitor;
 import com.fongmi.android.tv.maintenance.CrashLogUpload;
@@ -92,6 +93,18 @@ public class App extends Application implements Application.ActivityLifecycleCal
         CacheJanitor.schedule(this);
         Notify.createChannel();
         registerActivityLifecycleCallbacks(this);
+    }
+
+    @Override
+    public void onTrimMemory(int level) {
+        super.onTrimMemory(level);
+        MemorySignal.trim(this, level);
+    }
+
+    @Override
+    public void onLowMemory() {
+        super.onLowMemory();
+        MemorySignal.low(this);
     }
 
     @Override

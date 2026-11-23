@@ -21,8 +21,9 @@ public class Task {
 
     private static final ListeningExecutorService executor = MoreExecutors.listeningDecorator(pool(5, "task"));
     private static final ListeningExecutorService largeExecutor = MoreExecutors.listeningDecorator(pool(20, "task-large"));
-    public static final int SEARCH_PARALLELISM = 16;
-    public static final int SEARCH_CRAWLER_PARALLELISM = 16;
+    // 16 + 16, or 4 + 4 on devices of 2 GB and below (SearchCapacity).
+    public static final int SEARCH_PARALLELISM = SearchCapacity.lanes();
+    public static final int SEARCH_CRAWLER_PARALLELISM = SEARCH_PARALLELISM;
     private static final ThreadPoolExecutor searchWorkers = pool(SEARCH_PARALLELISM, new ArrayBlockingQueue<>(32), "search");
     private static final ThreadPoolExecutor crawlerSearchWorkers = pool(SEARCH_CRAWLER_PARALLELISM, new ArrayBlockingQueue<>(32), "search-crawler");
     private static final ListeningExecutorService searchExecutor = MoreExecutors.listeningDecorator(searchWorkers);

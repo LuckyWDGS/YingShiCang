@@ -39,6 +39,11 @@ final class ViewModelSearchRunner {
     private boolean answered;
     private int activeHttp, activeCrawlers;
     private boolean dispatching;
+    // While the results screen is behind a detail or the player, no further source is started (sources
+    // already running finish); a 2 GB TV lost its process searching hundreds of plugins under playback.
+    private boolean paused;
+    private BiFunction<Site, Integer, Callable<Result>> factory;
+    private Consumer<Result> results;
     ViewModelSearchRunner() {
         this(Task.searchExecutor(), Task.searchExecutor(true), Task.scheduler(), Constant.TIMEOUT_SEARCH,
                 Task.SEARCH_PARALLELISM, Task.SEARCH_CRAWLER_PARALLELISM, SourceBench.search());
@@ -93,6 +98,7 @@ final class ViewModelSearchRunner {
     /** Every source once per query, query by query; a source runs one query at a time. */
     synchronized void start(List<Site> sites, int queries, BiFunction<Site, Integer, Callable<Result>> factory, Consumer<Result> results, Consumer<String> progress) {
         stop(); int current = epoch.get();
+        this.factory = factory; this.results = results;
         pending = new ArrayDeque<>();
         revision = VodConfig.getDiscoveryRevision();
         sourceIds.clear();
@@ -109,6 +115,26 @@ final class ViewModelSearchRunner {
     synchronized boolean finished() {
         return completed == total;
     }
+    /** Starts no further source until {@link #resume}; returns how many were still waiting, or -1 if none. */
+    synchronized int pause() {
+        paused = true;
+        return pending == null || pending.isEmpty() ? -1 : pending.size();
+    }
+
+    /** Starts the sources still waiting; returns how many, or -1 if it was not paused or none wait. */
+    synchronized int resume() {
+        if (!paused) return -1;
+        paused = false;
+        if (pending == null || pending.isEmpty() || factory == null) return -1;
+        int waiting = pending.size();
+        dispatch(epoch.get(), factory, results);
+        return waiting;
+    }
+
+    synchronized int running() {
+        return jobs.size();
+    }
+
     synchronized void stop() {
         epoch.incrementAndGet(); jobs.forEach(Job::cancel); jobs.clear();
         retries.forEach(retry -> retry.cancel(false)); retries.clear();
@@ -117,7 +143,7 @@ final class ViewModelSearchRunner {
         Task.purgeSearchTasks();
     }
     private synchronized void dispatch(int current, BiFunction<Site,Integer,Callable<Result>> factory,Consumer<Result> results) {
-        if(epoch.get()!=current || dispatching)return;
+        if(epoch.get()!=current || dispatching || paused)return;
         dispatching = true;
         try {
             Attempt attempt;

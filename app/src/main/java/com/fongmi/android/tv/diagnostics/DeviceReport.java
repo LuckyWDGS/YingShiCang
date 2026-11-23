@@ -115,7 +115,8 @@ public final class DeviceReport {
         if (manager == null) return "unknown";
         ActivityManager.MemoryInfo info = new ActivityManager.MemoryInfo();
         manager.getMemoryInfo(info);
-        return (info.totalMem / 1_048_576) + "MB lowRam=" + manager.isLowRamDevice() + " heap=" + manager.getLargeMemoryClass() + "MB";
+        return (info.totalMem / 1_048_576) + "MB lowRam=" + manager.isLowRamDevice() + " heap=" + manager.getLargeMemoryClass() + "MB"
+                + " search=" + com.fongmi.android.tv.utils.Task.SEARCH_PARALLELISM;
     }
 
     private static Map<String, List<String>> decoders() {

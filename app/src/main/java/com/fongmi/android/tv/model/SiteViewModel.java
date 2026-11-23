@@ -171,6 +171,18 @@ public class SiteViewModel extends ViewModel {
         searches.stop();
     }
 
+    /** The results screen went behind another one: start no further source. "pending=N running=M", or "" if none waits. */
+    public String pauseSearch() {
+        int waiting = searches.pause();
+        return waiting < 0 ? "" : "pending=" + waiting + " running=" + searches.running();
+    }
+
+    /** Back on the results screen: start the sources still waiting. "pending=N", or "" if none. */
+    public String resumeSearch() {
+        int waiting = searches.resume();
+        return waiting < 0 ? "" : "pending=" + waiting;
+    }
+
     /** Reset the aggregate result page without sending nulls to playback's quick-search observers. */
     public void resetSearch() {
         stopSearch();

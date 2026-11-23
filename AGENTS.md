@@ -55,6 +55,7 @@ Each rule is a user decision or a fixed regression; `docs/开发记录.md` has t
 - Letters (2-12) stay the keyword: up to 7 candidate titles are searched with them; only titles related to a candidate, containing the letters or spelling them are shown.
 - Results (CollectActivity): five columns; order is relevance alone, stable for ties; 全部来源 pinned above the source list; only sources with cards are listed; source focus shows that source after 250ms; Left from the results goes straight to the selected source. Further pages of one source run through SearchPaging (two automatic retries, three-page scan past filtered pages). Batches are merged at most every 150ms and wait while a key is held on the cards.
 - Search plugins are started when the search page opens; SourceBench rests a source failing three rounds in a row for 30 minutes (never all sources); a source failing twice in one search sits out its remaining queries.
+- Search width (user 2026-11-23, from a 2 GB Xiaomi TV that lost its process 29 times in a week while searching ~700 plugin sources under playback): 16 + 16 sources at once, 4 + 4 on devices of 2 GB and below (SearchCapacity; DeviceReport memory says search=N). While the results screen is behind a detail or the player no further source starts (running ones finish); it resumes on return (search_paused / search_resumed).
 - Card-origin searches carry title and year, reject other installments and wrong years, and keep raw identities for paging and focus.
 
 ### Detail and playback
@@ -87,7 +88,7 @@ Each rule is a user decision or a fixed regression; `docs/开发记录.md` has t
 
 ### Diagnostics and logs
 
-- Diagnostic events never carry URLs, titles, IDs or credentials (api labels, families and counts only). Crashes upload automatically once (up to 3 attempts); every other upload is manual. CrashTrail records the screen and running plugin calls for the next launch.
+- Diagnostic events never carry URLs, titles, IDs or credentials (api labels, families and counts only). Crashes upload automatically once (up to 3 attempts); every other upload is manual. CrashTrail records the screen, running plugin calls and the last onTrimMemory level (trim=L:age avail=MB, or trim=none) for the next launch; below Android 11 each trim is also logged as memory_trim (same level at most every 30s).
 - Read user logs with `python scripts/fetch_logs.py latest|device <id>|report <uuid> [--download]` (read-only key from the user environment or the Git-ignored log-reader.properties in the main checkout, template log-reader.example.properties; never print or commit it). Device M8RJ-DHH4 is the LDPlayer QA emulator, not a user. The TCL TV (5GJM-WDAX) is retired: its findings are not followed.
 
 ## Validation and device safety

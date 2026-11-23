@@ -174,6 +174,22 @@ public class CollectActivity extends BaseActivity implements VodPresenter.OnClic
         });
     }
 
+    /**
+     * A detail or the player on top: sources not yet asked wait until the results show again. A 2 GB TV
+     * kept the search going under playback and lost its process again and again (MiTV-ASTP0, 2026-11-23).
+     */
+    @Override protected void onStop() {
+        String paused = model.pauseSearch();
+        if (!paused.isEmpty()) com.fongmi.android.tv.diagnostics.DiagnosticLog.write(this, "search_paused", paused);
+        super.onStop();
+    }
+
+    @Override protected void onStart() {
+        super.onStart();
+        String resumed = model.resumeSearch();
+        if (!resumed.isEmpty()) com.fongmi.android.tv.diagnostics.DiagnosticLog.write(this, "search_resumed", resumed);
+    }
+
     @Override protected void onResume() {
         super.onResume();
         // A detail screen can confirm a card is invalid and finish itself. Recheck
