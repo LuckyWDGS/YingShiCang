@@ -29,6 +29,14 @@ import java.util.stream.IntStream;
 
 public final class MediaItemFactory {
 
+    /**
+     * How long a play address that turns out to be a picture stays on screen, for both Exo and MPV
+     * (image-display-duration). Drive plugins play their login QR code this way; the former 15 s ended it before
+     * it could be scanned. One minute (user 2026-11-23) leaves time to scan and keeps a static picture from sitting
+     * on a TV panel; afterwards the item ends as before.
+     */
+    static final long IMAGE_DURATION_MS = 60 * 1000L;
+
     public static MediaMetadata buildMetadata(String title, String artist, String artUri, String displayName) {
         title = TextUtils.isEmpty(title) ? "" : title;
         artist = TextUtils.isEmpty(artist) ? "" : artist;
@@ -70,7 +78,7 @@ public final class MediaItemFactory {
                 .setMediaMetadata(spec.getMetadata())
                 .setAdblock(Setting.isAdblock())
                 .setMimeType(spec.getFormat())
-                .setImageDurationMs(15000)
+                .setImageDurationMs(IMAGE_DURATION_MS)
                 .setMediaId(spec.getKey());
     }
 
