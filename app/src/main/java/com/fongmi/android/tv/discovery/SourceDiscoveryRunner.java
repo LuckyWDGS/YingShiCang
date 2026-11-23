@@ -78,17 +78,30 @@ public final class SourceDiscoveryRunner {
         boolean available() { return !resting && (!initialized || next() != null); }
         boolean more() { return !failed && available(); }
     }
+    /**
+     * How long a source may wait for a worker before it counts as timed out. The workers are shared: after a
+     * switch from 电影筛选 to 电视筛选 the cancelled round's plugin calls cannot be interrupted and hold the crawler
+     * lane for up to their 20s budget (2026-11-23, LDPlayer: 38 sources rejected and 12 timed out while queued,
+     * none run, so 电视筛选 stayed empty for 30s). Waiting is not the source's fault, so its own budget starts
+     * when it runs.
+     */
+    static final long QUEUE_WAIT_MS = 25000;
+    private static final long POLL_MS = 500;
     private static final class Work {
         final SourceSlot slot;
         final PageSlot page;
         final List<Call> calls = new CopyOnWriteArrayList<>();
-        final long deadline;
+        final long budgetNanos;
+        volatile long deadline;
         volatile boolean cancelled;
         Future<Outcome> future;
         Work(SourceSlot slot) {
             this.slot = slot; page = slot.next();
-            deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(Math.min(20000, Math.max(5000, slot.site.getTimeout())));
+            budgetNanos = TimeUnit.MILLISECONDS.toNanos(Math.min(20000, Math.max(5000, slot.site.getTimeout())));
+            deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(QUEUE_WAIT_MS);
         }
+        /** The source's own budget starts when a worker picks it up. */
+        void start() { deadline = System.nanoTime() + budgetNanos; }
         void track(Call call) {
             // Extension, metadata and page requests share the source's original budget.
             call.timeout().deadlineNanoTime(deadline);
@@ -201,30 +214,40 @@ public final class SourceDiscoveryRunner {
         for (SourceSlot slot : sources) if (slot.available() && (retry ? slot.failed && (manual || slot.retryBudget.available()) : !slot.failed)) pending.add(slot);
         List<Work> active = new ArrayList<>();
         BlockingQueue<Work> completed = new LinkedBlockingQueue<>();
+        Map<SourceSlot, Long> waitingSince = new HashMap<>();
         try {
             while (valid(token) && (!pending.isEmpty() || !active.isEmpty())) {
+                boolean full = false;
                 int crawlers = (int) active.stream().filter(work -> work.slot.site.getType() == 3).count();
                 int networks = active.size() - crawlers;
                 for (Iterator<SourceSlot> iterator = pending.iterator(); iterator.hasNext();) {
                     SourceSlot slot = iterator.next();
                     boolean plugin = slot.site.getType() == 3;
                     if ((plugin ? crawlers : networks) >= WORKERS.limit(plugin)) continue;
-                    iterator.remove();
+                    // A full shared queue (another round's calls still running) keeps the source waiting, not failed.
+                    long now = System.nanoTime();
+                    long since = waitingSince.getOrDefault(slot, now);
                     Work work = new Work(slot);
-                    if (retry) slot.retryBudget.start(manual);
-                    work.slot.failed = false;
                     try {
                         work.future = WORKERS.submit(plugin, () -> execute(work, token), result -> completed.offer(work));
-                        active.add(work); running.add(work);
-                        if (plugin) crawlers++; else networks++;
                     } catch (RejectedExecutionException unavailable) {
+                        if (now - since < TimeUnit.MILLISECONDS.toNanos(QUEUE_WAIT_MS)) { waitingSince.put(slot, since); full = true; continue; }
+                        iterator.remove(); waitingSince.remove(slot);
                         work.slot.failed = true;
                         if (stats != null) stats.error(SourceDiscoveryRoundStats.ErrorType.RejectedExecutionException);
+                        continue;
                     }
+                    iterator.remove(); waitingSince.remove(slot);
+                    if (retry) slot.retryBudget.start(manual);
+                    work.slot.failed = false;
+                    active.add(work); running.add(work);
+                    if (plugin) crawlers++; else networks++;
                 }
-                if (!active.isEmpty()) {
-                    long deadline = active.stream().mapToLong(work -> work.deadline).min().orElse(System.nanoTime());
-                    completed.poll(Math.max(0, deadline - System.nanoTime()), TimeUnit.NANOSECONDS);
+                if (!active.isEmpty() || full) {
+                    // A queued work's deadline shortens when it starts; look again at least every POLL_MS.
+                    long deadline = active.stream().mapToLong(work -> work.deadline).min().orElse(Long.MAX_VALUE);
+                    long wait = Math.min(TimeUnit.MILLISECONDS.toNanos(POLL_MS), Math.max(0, deadline - System.nanoTime()));
+                    completed.poll(wait, TimeUnit.NANOSECONDS);
                     completed.clear();
                 }
                 boolean changed = false;
@@ -269,6 +292,7 @@ public final class SourceDiscoveryRunner {
     private Outcome execute(Work work, long token) {
         List<SourceDiscoveryPlanner.Query> queries = null;
         int categoryCount = 0, adultCategoryCount = 0;
+        work.start();
         try {
             if (!valid(work, token)) throw new CancellationException();
             if (!work.slot.initialized) {
