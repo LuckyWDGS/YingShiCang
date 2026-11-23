@@ -12,7 +12,7 @@
 
 ## Releases
 
-- Current version is 3.6.2 / versionCode 115 (tag v3.6.2). Only TV (leanback) packages are published; phone builds stay local. Build and publishing steps: `docs/build.md`.
+- Current version is 3.6.3 / versionCode 116 (tag v3.6.3). Only TV (leanback) packages are published; phone builds stay local. Build and publishing steps: `docs/build.md`.
 - Release notes keep `<!-- ysc-min-version: 2.1.0 -->` plus a `<!-- ysc-important: … -->` reason line, unchanged, by default: devices below 2.1.0 are forced to update. The app reads only the latest release body, so dropping the marker stops forcing. Never add, raise or drop it unless the user says that release is important; ask first.
 - A published version name is never reused (UpdateNotice.isNewer compares names); fixes go out as a new version.
 - Formal builds need the untracked `local.properties` entries (signing, log upload URL). Never commit them. Keep each release's `mapping.txt` locally under `Release/<version>/mapping` for retracing.
