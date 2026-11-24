@@ -101,7 +101,7 @@ public final class HomeDiscovery {
         // labels with the filter indicator. The row's 24dp gutter plus 6dp padding lines the
         // labels up with the 32dp card gutter.
         tabs.add(binding.home);
-        binding.home.setOnClickListener(v -> select(0));
+        binding.home.setOnClickListener(v -> selectHome());
         for (int i = 1; i < names.length; i++) {
             int index = i;
             TextView view = button(names[i]);
@@ -397,6 +397,18 @@ public final class HomeDiscovery {
         params.setMarginEnd(ResUtil.dp2px(6));
         view.setLayoutParams(params);
         return view;
+    }
+
+    /**
+     * OK on 主页 while it is open reloaded the whole page each time, 55 times in 30s on a TV whose user
+     * kept the key down (2026-11-23). It now only goes back to the top; a page that is empty or failed
+     * still loads again.
+     */
+    private void selectHome() {
+        if (active != 0) { select(0); return; }
+        if (busy) return;
+        if (items.isEmpty() || failed) select(0);
+        else binding.recycler.scrollToPosition(0);
     }
 
     private void select(int index) {
