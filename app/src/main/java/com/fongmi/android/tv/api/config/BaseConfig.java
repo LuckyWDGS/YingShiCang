@@ -162,6 +162,11 @@ abstract class BaseConfig {
             e.printStackTrace();
             if (Thread.currentThread().isInterrupted() || "Canceled".equals(e.getMessage())) return;
             if (taskId.get() != id) return;
+            if (e instanceof com.fongmi.android.tv.diagnostics.StartupGuard.Paused) {
+                DiagnosticLog.write(App.get(), "config_load", "type=" + logType() + " ms=" + (SystemClock.elapsedRealtime() - started) + " outcome=paused_after_crashes");
+                App.post(() -> callback.error(App.get().getString(R.string.config_paused_after_crashes)));
+                return;
+            }
             // A new install has no address yet (HONOR and Lenovo first launches logged NullPointerException).
             DiagnosticLog.write(App.get(), "config_load", "type=" + logType() + " ms=" + (SystemClock.elapsedRealtime() - started) + " outcome=" + (TextUtils.isEmpty(config.getUrl()) ? "unconfigured" : e.getClass().getSimpleName()));
             if (TextUtils.isEmpty(config.getUrl())) App.post(() -> callback.error(""));

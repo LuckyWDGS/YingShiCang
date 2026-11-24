@@ -224,7 +224,7 @@ public final class AiDramaRunner {
     public synchronized void load(boolean retry, Consumer<Batch> callback) {
         if (closed || busy) return;
         failure = "";
-        if (site == null) { failure = "no_site"; failed = true; publish(null, true, callback); return; }
+        if (site == null) { failure = NO_SITE; failed = true; publish(null, true, callback); return; }
         if (!current()) { failure = "config_changed"; failed = true; publish(null, true, callback); return; }
         boolean metadataOnly = retry && metadataFailed && !failed && !pages.items().isEmpty();
         if (!pages.more() && !metadataOnly) { publish(null, true, callback); return; }
@@ -308,6 +308,8 @@ public final class AiDramaRunner {
     }
 
     // The last failed round's cause (exception classes and fixed keywords only), for diagnostics.
+    /** {@link #failure()} when the configuration has no 短剧漫剧 source at all. */
+    public static final String NO_SITE = "no_site";
     private volatile String failure = "";
 
     public String failure() {

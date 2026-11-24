@@ -367,6 +367,11 @@
     <string name="error_play_url">Unable to load url</string>
     <string name="error_play_flag">No flag data</string>
     <string name="error_play_timeout">Timed out</string>
+    <string name="config_paused_title">Configuration not loaded</string>
+    <string name="config_paused_after_crashes">The app ended unexpectedly right after its last two launches, so the current configuration was not loaded. Its plugin may not work on this device. Load it again, or pick another one under Configuration.</string>
+    <string name="config_paused_reload">Load again</string>
+    <string name="config_paused_change">Change configuration</string>
+    <string name="config_paused_later">Not now</string>
     <string name="player_gpu_next_fallback">gpu-next could not show the picture; switched to the standard renderer</string>
     <string name="play_retry">Playback interrupted, retrying this line</string>
     <string name="error_play_network">Network connection failed</string>

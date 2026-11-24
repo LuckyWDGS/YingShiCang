@@ -39,6 +39,7 @@ import com.fongmi.android.tv.bean.Vod;
 import com.fongmi.android.tv.databinding.ActivityHomeBinding;
 import com.fongmi.android.tv.db.BackupManager;
 import com.fongmi.android.tv.diagnostics.DiagnosticLog;
+import com.fongmi.android.tv.diagnostics.StartupGuard;
 import com.fongmi.android.tv.event.CastEvent;
 import com.fongmi.android.tv.event.ConfigEvent;
 import com.fongmi.android.tv.event.RefreshEvent;
@@ -306,11 +307,30 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
 
             @Override
             public void error(String msg) {
-                Notify.show(msg);
+                if (StartupGuard.paused() && !TextUtils.isEmpty(getConfig().getUrl())) showPaused();
+                else Notify.show(msg);
                 showContent();
             }
         };
     }
+
+    /** Two launches in a row ended while this configuration loaded: it loads again only when asked. */
+    private void showPaused() {
+        if (isFinishing() || isDestroyed() || pausedDialog != null && pausedDialog.isShowing()) return;
+        pausedDialog = new androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle(R.string.config_paused_title)
+                .setMessage(R.string.config_paused_after_crashes)
+                .setNeutralButton(R.string.config_paused_change, (dialog, which) -> com.fongmi.android.tv.ui.dialog.SourceConfigDialog.showOn(this))
+                .setNegativeButton(R.string.config_paused_later, null)
+                .setPositiveButton(R.string.config_paused_reload, (dialog, which) -> VodConfig.get().init().load(getCallback()))
+                .show();
+        // A remote needs a focused button to start from, also after a touch (LDPlayer started on the leftmost one).
+        android.widget.Button reload = pausedDialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE);
+        reload.setFocusableInTouchMode(true);
+        reload.requestFocus();
+    }
+
+    private androidx.appcompat.app.AlertDialog pausedDialog;
 
     private void showContent() {
         mBinding.progressLayout.showContent();

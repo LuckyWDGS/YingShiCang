@@ -70,6 +70,8 @@ public class JarLoader {
     private final ConcurrentHashMap<String, File> files = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, String> hashes = new ConcurrentHashMap<>();
     private final Set<String> proven = ConcurrentHashMap.newKeySet();
+    // Sources (package + key + api + ext) whose own class was not in the package, in this process.
+    private final Set<String> missingHere = ConcurrentHashMap.newKeySet();
     private final ConcurrentHashMap<String, Set<String>> unproven = new ConcurrentHashMap<>();
     private volatile String recent;
 
@@ -142,6 +144,7 @@ public class JarLoader {
         methods.clear();
         spiders.clear();
         deterministicFailures.clear();
+        missingHere.clear();
         locks.clear();
         files.clear();
         hashes.clear();
@@ -168,6 +171,8 @@ public class JarLoader {
         files.put(key, file);
         hashes.remove(key);
         loaders.put(key, loader);
+        // Hashed here, off the main thread, so a search can leave out this package's known-missing classes.
+        if (!missing().isEmpty()) artifact(key);
     }
 
     private void invokeInit(DexClassLoader loader) {
@@ -178,11 +183,16 @@ public class JarLoader {
         } catch (ClassNotFoundException | NoSuchMethodException optional) {
             return;
         }
+        // In the crash trail: a packed plugin's own native start-up killed the process here with nothing
+        // on record (calls=0, two Android 15 phones).
+        long trail = com.fongmi.android.tv.diagnostics.CrashTrail.begin("jar.init");
         try {
             method.invoke(null, App.get());
         } catch (Throwable e) {
             preserveCancellation(e);
             throw new IllegalStateException("源插件入口初始化失败", e);
+        } finally {
+            com.fongmi.android.tv.diagnostics.CrashTrail.end(trail);
         }
     }
 
@@ -256,6 +266,19 @@ public class JarLoader {
         return spiders.get(jaKey + key + Crypto.md5(api + "\0" + ext));
     }
 
+    /**
+     * The source class is known not to be in its package: found missing in this process, or remembered
+     * from an earlier launch with this same package (only once the package's hash is at hand; nothing
+     * is read here). A search leaves such a source out instead of failing it again.
+     */
+    public boolean knownMissing(String key, String api, String ext, String jar) {
+        String jaKey = Crypto.md5(jar);
+        if (missingHere.contains(jaKey + key + Crypto.md5(api + "\0" + ext))) return true;
+        String artifact = hashes.get(jaKey);
+        MissingClasses kept = missing();
+        return artifact != null && !artifact.isEmpty() && kept.tracks(api) && kept.known(api, artifact, System.currentTimeMillis());
+    }
+
     public Spider getSpider(String key, String api, String ext, String jar) {
         checkCancellation();
         String jaKey = Crypto.md5(jar);
@@ -296,9 +319,10 @@ public class JarLoader {
                 if (e instanceof KnownAbsent) {
                     // Said in the log the first time this package was tried; not again at every launch.
                     deterministicFailures.putIfAbsent(spKey, MISSING_MESSAGE);
+                    missingHere.add(spKey);
                     throw new IllegalStateException(MISSING_MESSAGE);
                 }
-                if (e instanceof AbsentSpider) absent(jaKey, api);
+                if (e instanceof AbsentSpider) { absent(jaKey, api); missingHere.add(spKey); }
                 if (spider != null) releaseFailed(spider);
                 String detail = String.valueOf(e);
                 Throwable cause = e;

@@ -7,12 +7,14 @@ import java.util.Map;
 /**
  * Source classes a plugin package turned out not to hold, kept across launches for that exact package
  * (Xiaomi TV: the configuration names csp_XPathGuard, the package has no such class, and every launch
- * tried it again). A new package, or a month, asks again.
+ * tried it again). A new package, or a month, asks again. An aggregate configuration can name hundreds
+ * of them (Xiaomi TV 2026-11-23: 410 of about 1200 sources; with room for 16 they were tried and logged
+ * again at every launch).
  */
 final class MissingClasses {
 
     static final long KEEP_MS = 30L * 24 * 60 * 60 * 1000;
-    private static final int MAX = 16;
+    static final int MAX = 1024;
 
     private record Entry(String artifact, long time) {
     }
@@ -34,6 +36,10 @@ final class MissingClasses {
     /** Whether anything is kept for this class; the package is hashed only then. */
     synchronized boolean tracks(String api) {
         return entries.containsKey(api);
+    }
+
+    synchronized boolean isEmpty() {
+        return entries.isEmpty();
     }
 
     synchronized boolean known(String api, String artifact, long now) {

@@ -5,6 +5,7 @@ import android.text.TextUtils;
 
 import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.diagnostics.DiagnosticLog;
+import com.fongmi.android.tv.diagnostics.StartupGuard;
 import com.fongmi.android.tv.utils.Task;
 import com.fongmi.android.tv.api.Decoder;
 import com.fongmi.android.tv.api.loader.BaseLoader;
@@ -178,6 +179,23 @@ public class VodConfig extends BaseConfig {
 
     @Override
     protected void load(Config config) throws Throwable {
+        // Loads the app starts by itself stop after two launches in a row that did not survive one.
+        boolean automatic = preferSaved;
+        if (automatic && StartupGuard.paused()) {
+            preferSaved = false;
+            throw new StartupGuard.Paused();
+        }
+        if (!TextUtils.isEmpty(config.getUrl())) StartupGuard.loading(automatic);
+        try {
+            loadGuarded(config);
+            StartupGuard.loaded();
+        } catch (Throwable e) {
+            StartupGuard.failed();
+            throw e;
+        }
+    }
+
+    private void loadGuarded(Config config) throws Throwable {
         String url = UrlUtil.convert(config.getUrl());
         boolean trySaved = preferSaved;
         preferSaved = false;

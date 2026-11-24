@@ -370,6 +370,11 @@
     <string name="error_play_url">播放網址載入失敗</string>
     <string name="error_play_flag">暫無線路資料</string>
     <string name="error_play_timeout">連線逾時</string>
+    <string name="config_paused_title">已暫停載入配置</string>
+    <string name="config_paused_after_crashes">應用程式最近兩次啟動後都很快異常結束，所以這次沒有自動載入目前的配置。可能是該配置的外掛與這台裝置不相容。可以重新載入試試，或到「配置」裡更換。</string>
+    <string name="config_paused_reload">重新載入</string>
+    <string name="config_paused_change">更換配置</string>
+    <string name="config_paused_later">暫不載入</string>
     <string name="player_gpu_next_fallback">gpu-next 渲染失敗，已改用一般渲染</string>
     <string name="play_retry">播放中斷，正在重試目前線路</string>
     <string name="error_play_network">網路連線失敗</string>
