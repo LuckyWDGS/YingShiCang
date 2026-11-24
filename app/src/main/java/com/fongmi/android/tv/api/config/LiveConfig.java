@@ -191,7 +191,8 @@ public class LiveConfig extends BaseConfig {
 
     private void initLive(Config config, JsonObject object, boolean loadPlugin) {
         String spider = Json.safeString(object, "spider");
-        if (loadPlugin) BaseLoader.get().parseJar(spider, false);
+        // Not while the start-up guard holds the configuration back: this is the same plugin package.
+        if (loadPlugin && !com.fongmi.android.tv.diagnostics.StartupGuard.paused()) BaseLoader.get().parseJar(spider, false);
         setLives(Json.safeListElement(object, "lives").stream().map(e -> Live.objectFrom(e, spider)).distinct().collect(Collectors.toCollection(ArrayList::new)));
         Map<String, Live> items = Live.findAll().stream().collect(Collectors.toMap(Live::getName, Function.identity()));
         getLives().forEach(live -> live.sync(items.get(live.getName())));

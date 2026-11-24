@@ -717,6 +717,8 @@ public class SiteApi {
         private final Site site;
         private final String keyword, page;
         private final boolean quick;
+        // The first 20 failing sources a minute are named; each search's totals are in search_round.
+        private static final com.fongmi.android.tv.diagnostics.LineBudget FAILURE_LINES = new com.fongmi.android.tv.diagnostics.LineBudget(20, 60_000);
         private final SearchRequestScope scope = new SearchRequestScope(com.fongmi.android.tv.Constant.TIMEOUT_SEARCH);
 
         private SearchTask(Site site, String keyword, boolean quick, String page) {
@@ -729,7 +731,7 @@ public class SiteApi {
                 if (quick && !site.isQuickSearch()) return Result.empty();
                 return searchContent(site, keyword, quick, page, scope);
             } catch (Exception error) {
-                com.fongmi.android.tv.diagnostics.DiagnosticLog.write(App.get(), "source_search_failed",
+                if (FAILURE_LINES.take(System.currentTimeMillis())) com.fongmi.android.tv.diagnostics.DiagnosticLog.write(App.get(), "source_search_failed",
                         "source=" + com.github.catvod.utils.Crypto.md5(site.getKey())
                                 + " type=" + site.getType() + " error=" + error.getClass().getSimpleName());
                 throw error;

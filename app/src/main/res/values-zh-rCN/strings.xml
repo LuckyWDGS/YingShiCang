@@ -370,6 +370,11 @@
     <string name="error_play_url">播放地址加载失败</string>
     <string name="error_play_flag">暂无线路数据</string>
     <string name="error_play_timeout">连接超时</string>
+    <string name="config_paused_title">已暂停加载配置</string>
+    <string name="config_paused_after_crashes">应用最近两次启动后都很快异常退出，所以这次没有自动加载当前配置。可能是该配置的插件与这台设备不兼容。可以重新加载试试，或到「配置」里更换。</string>
+    <string name="config_paused_reload">重新加载</string>
+    <string name="config_paused_change">更换配置</string>
+    <string name="config_paused_later">暂不加载</string>
     <string name="player_gpu_next_fallback">gpu-next 渲染失败，已改用普通渲染</string>
     <string name="play_retry">播放中断，正在重试当前线路</string>
     <string name="error_play_network">网络连接失败</string>

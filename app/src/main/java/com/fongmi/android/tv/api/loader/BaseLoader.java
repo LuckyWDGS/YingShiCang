@@ -62,6 +62,11 @@ public class BaseLoader {
         else return new SpiderNull();
     }
 
+    /** A plugin source whose class its package is known not to hold; it cannot answer until the package changes. */
+    public boolean knownMissing(String key, String api, String ext, String jar) {
+        return api != null && !isPy(api) && !isJs(api) && isCsp(api) && jarLoader.knownMissing(key, api, ext, jar);
+    }
+
     /** An already initialized spider for this site, or null when it still has to be loaded. */
     public Spider cachedSpider(String key, String api, String ext, String jar) {
         if (isPy(api)) return pyLoader.cachedSpider(key, api, ext);

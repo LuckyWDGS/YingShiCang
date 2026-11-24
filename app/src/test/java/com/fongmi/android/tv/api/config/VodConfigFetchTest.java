@@ -30,8 +30,15 @@ public class VodConfigFetchTest {
         assertTrue(VodConfigFetch.load(URL,cache(100),200,offline()).cached());
         assertThrows(IOException.class, () -> VodConfigFetch.load(URL+"-other",cache(100),200,offline()));
     }
-    @Test public void expiredFutureAndBrokenCachesAreRejected() throws Exception {
-        assertThrows(IOException.class, () -> VodConfigFetch.load(URL,cache(100),100+VodConfigFetch.CACHE_TTL_MS,offline()));
+    @Test public void offlineUsesTheLastConfigurationHoweverOld() throws Exception {
+        // Four days since the TV was last on, and the address does not answer: still the last configuration.
+        var loaded = VodConfigFetch.load(URL, cache(100), 100 + 4 * VodConfigFetch.CACHE_TTL_MS, offline());
+        assertTrue(loaded.cached());
+        assertTrue(loaded.object().toString().contains("源里的真实名称"));
+        // An explicit refusal still wins over a copy of any age.
+        assertThrows(IllegalArgumentException.class, () -> VodConfigFetch.load(URL, cache(100), 100 + 4 * VodConfigFetch.CACHE_TTL_MS, () -> "{\"msg\":\"expired\"}"));
+    }
+    @Test public void futureAndBrokenCachesAreRejected() throws Exception {
         assertThrows(IOException.class, () -> VodConfigFetch.load(URL,cache(100),99,offline()));
         assertThrows(IOException.class, () -> VodConfigFetch.load(URL,"{}",100,offline()));
     }

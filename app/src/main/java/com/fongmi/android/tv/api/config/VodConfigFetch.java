@@ -32,7 +32,10 @@ public final class VodConfigFetch {
             }
         }
         checkCanceled();
-        JsonObject saved = cached(url, cache, now);
+        // No answer from the address: the last configuration it gave is used whatever its age. A TV switched
+        // on after four days had nothing at all for 4.5 minutes while its address timed out (2026-11-23);
+        // the 24 hours only decide whether a start may skip asking first.
+        JsonObject saved = cached(url, cache, now, Long.MAX_VALUE);
         if (saved != null) return new Loaded(saved, true);
         throw failure;
     }
@@ -77,7 +80,7 @@ public final class VodConfigFetch {
      * Home for 21s before the saved copy was used): the same address, saved within the cache lifetime.
      */
     public static JsonObject saved(String url, String cache, long now) {
-        return cached(url, cache, now);
+        return cached(url, cache, now, CACHE_TTL_MS);
     }
 
     public enum Refresh {
@@ -105,12 +108,12 @@ public final class VodConfigFetch {
         }
     }
 
-    private static JsonObject cached(String url, String cache, long now) {
+    private static JsonObject cached(String url, String cache, long now, long maxAge) {
         try {
             JsonObject record = JsonParser.parseString(cache).getAsJsonObject();
             long age = now - record.get("savedAt").getAsLong();
             if (record.get("version").getAsInt() != 1 || !url.equals(record.get("url").getAsString())
-                    || age < 0 || age >= CACHE_TTL_MS) return null;
+                    || age < 0 || age >= maxAge) return null;
             JsonObject object = parse(record.get("payload").toString());
             return object.has("urls") ? null : object;
         } catch (Exception ignored) {

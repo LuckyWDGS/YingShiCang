@@ -44,10 +44,26 @@ final class ViewModelSearchRunner {
     private boolean paused;
     private BiFunction<Site, Integer, Callable<Result>> factory;
     private Consumer<Result> results;
+    // Sources that cannot answer (their class is not in the plugin package) are left out; an aggregate
+    // configuration had 846 of about 1200 sources fail at once in every search (Xiaomi TV, 2026-11-23).
+    private Predicate<Site> unusable = site -> false;
+    // One line per search with its totals, instead of one per failing source.
+    private Consumer<String> roundLog = line -> {};
+    private final Map<String, Integer> errors = new HashMap<>();
+    private int leftOut;
+    private long roundStart;
+    private boolean roundOpen;
     ViewModelSearchRunner() {
         this(Task.searchExecutor(), Task.searchExecutor(true), Task.scheduler(), Constant.TIMEOUT_SEARCH,
                 Task.SEARCH_PARALLELISM, Task.SEARCH_CRAWLER_PARALLELISM, SourceBench.search());
         configScope = VodConfig::getUrl;
+        unusable = site -> com.fongmi.android.tv.api.loader.BaseLoader.get().knownMissing(site.getKey(), site.getApi(), site.getExt(), site.getJar());
+        roundLog = line -> com.fongmi.android.tv.diagnostics.DiagnosticLog.write(com.fongmi.android.tv.App.get(), "search_round", line);
+    }
+    /** For tests: which sources to leave out, and where the round line goes. */
+    ViewModelSearchRunner observe(Predicate<Site> unusable, Consumer<String> roundLog) {
+        this.unusable = unusable; this.roundLog = roundLog;
+        return this;
     }
     ViewModelSearchRunner(com.google.common.util.concurrent.ListeningExecutorService workers, ScheduledExecutorService scheduler, long timeout) {
         this(workers, scheduler, timeout, 4);
@@ -103,11 +119,15 @@ final class ViewModelSearchRunner {
         revision = VodConfig.getDiscoveryRevision();
         sourceIds.clear();
         String scope = configScope.get();
-        for (Site site : sites) sourceIds.put(site, SourceIdentity.of(scope, site));
-        List<Site> active = bench.active(sites, sourceIds::get);
+        List<Site> usable = new ArrayList<>();
+        for (Site site : sites) if (!leftOut(site)) usable.add(site);
+        leftOut = sites.size() - usable.size();
+        for (Site site : usable) sourceIds.put(site, SourceIdentity.of(scope, site));
+        List<Site> active = bench.active(usable, sourceIds::get);
         for (int query = 0; query < queries; query++) for (Site site : active) pending.add(new Attempt(site, 0, query));
         total = active.size() * queries; completed = failed = hits = 0; lastError = ""; status = progress;
         runFailures.clear(); answered = false;
+        errors.clear(); roundStart = System.nanoTime(); roundOpen = total > 0;
         report();
         dispatch(current,factory,results);
     }
@@ -135,7 +155,40 @@ final class ViewModelSearchRunner {
         return jobs.size();
     }
 
+    /** A platform class name: library and app classes are renamed in release builds (Guava's TimeoutFutureException). */
+    static String kind(Throwable error) {
+        Class<?> type = error.getClass();
+        while (type.getSuperclass() != null && !platform(type.getName())) type = type.getSuperclass();
+        return type.getSimpleName();
+    }
+
+    private static boolean platform(String name) {
+        return name.startsWith("java.") || name.startsWith("javax.") || name.startsWith("android.") || name.startsWith("org.json.");
+    }
+
+    private boolean leftOut(Site site) {
+        try {
+            return unusable.test(site);
+        } catch (RuntimeException unknown) {
+            return false;
+        }
+    }
+
+    /** asked=answered/all hits failed, missing (left out), how long, and the failures by kind. */
+    private void closeRound(String outcome) {
+        if (!roundOpen) return;
+        roundOpen = false;
+        StringBuilder line = new StringBuilder("outcome=").append(outcome).append(" asked=").append(completed).append('/').append(total)
+                .append(" hits=").append(hits).append(" failed=").append(failed).append(" missing=").append(leftOut)
+                .append(" ms=").append((System.nanoTime() - roundStart) / 1_000_000);
+        if (!errors.isEmpty()) line.append(" errors=").append(errors.entrySet().stream()
+                .sorted((a, b) -> b.getValue().equals(a.getValue()) ? a.getKey().compareTo(b.getKey()) : b.getValue() - a.getValue())
+                .limit(6).map(entry -> entry.getKey() + ":" + entry.getValue()).collect(Collectors.joining(",")));
+        roundLog.accept(line.toString());
+    }
+
     synchronized void stop() {
+        closeRound("stopped");
         epoch.incrementAndGet(); jobs.forEach(Job::cancel); jobs.clear();
         retries.forEach(retry -> retry.cancel(false)); retries.clear();
         activeHttp = activeCrawlers = 0;
@@ -212,6 +265,7 @@ final class ViewModelSearchRunner {
         completed++;
         if(error!=null){
             failed++;
+            errors.merge(kind(error), 1, Integer::sum);
             String message=String.valueOf(error);
             lastError=message.contains("架构") ? "插件架构不兼容" : message.contains("Timeout") ? "部分站点超时" : "部分站点加载失败";
             sourceFailed(job.attempt.site);
@@ -232,7 +286,9 @@ final class ViewModelSearchRunner {
                 sourceAnswered(job.attempt.site);
             }
         }
-        report(); dispatch(current,factory,results);
+        report();
+        if (completed == total) closeRound("done");
+        dispatch(current,factory,results);
     }
 
     /** One failed round per source and search, and only once another source has shown the network works. */

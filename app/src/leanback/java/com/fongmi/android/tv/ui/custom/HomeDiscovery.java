@@ -838,6 +838,15 @@ public final class HomeDiscovery {
             more = batch.more();
             if (!batch.finished()) return;
             String cause = aiDramaRunner.failure();
+            if (AiDramaRunner.NO_SITE.equals(cause)) {
+                // Not a failure to retry: this configuration has no such source. A phone opened the tab on one
+                // and got 短剧漫剧加载失败 with automatic retries 52 times (2026-11-21).
+                logRound(before, AiDramaRunner.NO_SITE);
+                busy = false; failed = false; more = false;
+                cancelAutoRetry();
+                status("当前配置没有短剧漫剧片源");
+                return;
+            }
             logRound(before, batch.failed() ? "failed" + (cause.isEmpty() ? "" : ":" + cause) : batch.metadataFailed() ? "metadata_failed" : null);
             busy = false; failed = batch.failed() || batch.metadataFailed();
             if (failed) scheduleAutoRetry(token, retryAttempt, () -> loadAiDrama(true, retryAttempt + 1));

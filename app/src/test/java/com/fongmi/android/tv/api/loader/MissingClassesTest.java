@@ -67,9 +67,15 @@ public class MissingClassesTest {
         assertFalse(kept.tracks("csp_B"));
         assertFalse(kept.tracks("csp_C"));
         assertFalse(new MissingClasses(null).tracks("csp_A"));
-        for (int i = 0; i < 40; i++) kept.remember("csp_N" + i, "hash", 100 + i);
-        assertEquals(16, kept.save().split("\n").length);
+        // An aggregate configuration with 410 missing classes keeps them all.
+        for (int i = 0; i < 410; i++) kept.remember("csp_N" + i, "hash", 100 + i);
+        assertTrue(kept.known("csp_A", "aaa", 20));
+        assertTrue(kept.known("csp_N0", "hash", 600));
+        for (int i = 410; i < MissingClasses.MAX + 40; i++) kept.remember("csp_N" + i, "hash", 100 + i);
+        assertEquals(MissingClasses.MAX, kept.save().split("\n").length);
         assertFalse(kept.tracks("csp_A"));
-        assertTrue(kept.known("csp_N39", "hash", 200));
+        assertTrue(kept.known("csp_N" + (MissingClasses.MAX + 39), "hash", 200 + MissingClasses.MAX));
+        assertFalse(kept.isEmpty());
+        assertTrue(new MissingClasses("").isEmpty());
     }
 }

@@ -15,6 +15,7 @@ import androidx.core.os.HandlerCompat;
 import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.diagnostics.DiagnosticLog;
 import com.fongmi.android.tv.diagnostics.MemorySignal;
+import com.fongmi.android.tv.diagnostics.StartupGuard;
 import com.fongmi.android.tv.diagnostics.PluginCrashGuard;
 import com.fongmi.android.tv.maintenance.CacheJanitor;
 import com.fongmi.android.tv.maintenance.CrashLogUpload;
@@ -31,6 +32,7 @@ public class App extends Application implements Application.ActivityLifecycleCal
     private final long time;
 
     private Activity activity;
+    private int started;
     private Hook hook;
 
     public App() {
@@ -87,6 +89,7 @@ public class App extends Application implements Application.ActivityLifecycleCal
     public void onCreate() {
         super.onCreate();
         DiagnosticLog.install(this);
+        StartupGuard.install(new java.io.File(getFilesDir(), "startup-guard"));
         PluginCrashGuard.install(this);
         DiagnosticLog.write(this, "app_start", BuildConfig.VERSION_NAME + "/" + BuildConfig.FLAVOR);
         if (DiagnosticLog.crashMarker() != null) CrashLogUpload.schedule(this);
@@ -142,9 +145,12 @@ public class App extends Application implements Application.ActivityLifecycleCal
 
     @Override
     public void onActivityStarted(@NonNull Activity activity) {
+        started++;
     }
 
     @Override
     public void onActivityStopped(@NonNull Activity activity) {
+        // No screen left in front: whatever ends the process now is not a start-up crash.
+        if (--started <= 0) StartupGuard.background();
     }
 }

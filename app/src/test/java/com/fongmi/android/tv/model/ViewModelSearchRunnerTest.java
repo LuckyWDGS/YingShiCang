@@ -477,6 +477,44 @@ public class ViewModelSearchRunnerTest {
         } finally { runner.stop(); workers.shutdownNow(); timer.shutdownNow(); }
     }
 
+    @Test public void sourcesKnownToBeMissingAreLeftOutAndTheRoundIsSummedUpInOneLine() throws Exception {
+        var workers = MoreExecutors.listeningDecorator(Executors.newFixedThreadPool(2));
+        var timer = Executors.newSingleThreadScheduledExecutor();
+        Site good = named("good"), refuses = named("refuses"), parses = named("parses"), gone = named("gone"), goneToo = named("gone-too");
+        var asked = java.util.Collections.synchronizedList(new ArrayList<String>());
+        var lines = new java.util.concurrent.CopyOnWriteArrayList<String>();
+        var last = new java.util.concurrent.atomic.AtomicReference<String>();
+        var runner = new ViewModelSearchRunner(workers, timer, 5000, 2).observe(site -> site == gone || site == goneToo, lines::add);
+        var done = new CountDownLatch(1);
+        try {
+            runner.start(java.util.List.of(gone, good, refuses, goneToo, parses), site -> () -> {
+                asked.add(site.getKey());
+                if (site == refuses) throw new IllegalStateException("源插件初始化失败");
+                if (site == parses) throw new org.json.JSONException("bad");
+                return result("hit");
+            }, result -> {}, status -> { last.set(status); if (status.startsWith("搜索完成")) done.countDown(); });
+            assertTrue(done.await(2, TimeUnit.SECONDS));
+            assertEquals(java.util.Set.of("good", "refuses", "parses"), new java.util.HashSet<>(asked));
+            assertTrue(last.get(), last.get().startsWith("搜索完成 3/3 · 1 个有效结果 · 2 个失败"));
+            for (int i = 0; i < 50 && lines.isEmpty(); i++) Thread.sleep(20);
+            assertEquals(1, lines.size());
+            String line = lines.get(0).replaceAll(" ms=\\d+", "");
+            assertEquals("outcome=done asked=3/3 hits=1 failed=2 missing=2 errors=IllegalStateException:1,JSONException:1", line);
+            // The runner's own deadline arrives as a library subclass; it is named by its platform parent.
+            assertEquals("TimeoutException", ViewModelSearchRunner.kind(new java.util.concurrent.TimeoutException() { }));
+            assertEquals("IOException", ViewModelSearchRunner.kind(new java.io.IOException("x")));
+            // Stopping a finished search says nothing more; a search cut short says where it was.
+            runner.stop();
+            assertEquals(1, lines.size());
+            var hold = new CountDownLatch(1);
+            runner.start(java.util.List.of(good, refuses), site -> () -> { hold.await(); return null; }, result -> {}, status -> {});
+            runner.stop();
+            hold.countDown();
+            assertEquals(2, lines.size());
+            assertTrue(lines.get(1), lines.get(1).startsWith("outcome=stopped asked=0/2 hits=0 failed=0 missing=0 ms="));
+        } finally { runner.stop(); workers.shutdownNow(); timer.shutdownNow(); }
+    }
+
     @Test public void aPausedSearchStartsNoFurtherSourceUntilResumed() throws Exception {
         var workers = MoreExecutors.listeningDecorator(Executors.newFixedThreadPool(2));
         var timer = Executors.newSingleThreadScheduledExecutor();
