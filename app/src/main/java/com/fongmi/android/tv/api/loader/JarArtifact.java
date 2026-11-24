@@ -80,6 +80,21 @@ public final class JarArtifact {
         }
     }
 
+    /**
+     * The SHA-256 of the copy an online load verified for this identity within the last day, when the file
+     * is still that copy; null otherwise. Nothing is fetched: a start from the saved configuration loads
+     * this copy first and refreshes it afterwards.
+     */
+    public static String cachedHash(File target, String identity, long now) {
+        File marker = new File(target + ".verified");
+        if (!target.isFile() || !verified(marker, target, identity, now)) return null;
+        try {
+            return Files.readString(marker.toPath()).split("\n", 3)[1];
+        } catch (IOException | RuntimeException e) {
+            return null;
+        }
+    }
+
     private static boolean replacesOnlineVersion(File marker, String identity, String bundledHash) {
         try {
             String[] record = Files.readString(marker.toPath()).split("\n", 3);

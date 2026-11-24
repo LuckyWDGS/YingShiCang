@@ -158,6 +158,11 @@ public class JarLoader {
     }
 
     private void load(String key, File file) {
+        load(key, file, null);
+    }
+
+    /** sha: the file's SHA-256 when the caller already has it (the verified copy's marker). */
+    private void load(String key, File file, String sha) {
         checkCancellation();
         if (!Path.exists(file) || !file.setReadOnly()) throw new IllegalStateException("源插件文件不可用");
         LOADED_FILES.add(file.getAbsolutePath());
@@ -171,8 +176,9 @@ public class JarLoader {
         files.put(key, file);
         hashes.remove(key);
         loaders.put(key, loader);
-        // Hashed here, off the main thread, so a search can leave out this package's known-missing classes.
-        if (!missing().isEmpty()) artifact(key);
+        // Known or hashed here, off the main thread, so a search can leave out this package's known-missing classes.
+        if (sha != null) hashes.put(key, sha);
+        else if (!missing().isEmpty()) artifact(key);
     }
 
     private void invokeInit(DexClassLoader loader) {
@@ -208,6 +214,17 @@ public class JarLoader {
     }
 
     public void parseJar(String key, String jar) {
+        parseJar(key, jar, false);
+    }
+
+    /**
+     * preferCached: a start from the saved configuration. Without a declared checksum the package was
+     * downloaded again (or its checksum address asked) before every start, 7-10s on a TV with a slow
+     * line although the configuration itself came from its saved copy (Xiaomi TV, 2026-11-23). Such a
+     * start now loads the copy an online load verified within the last day and refreshes it afterwards
+     * for the next start. A declared checksum already loads a matching copy without the network.
+     */
+    public void parseJar(String key, String jar, boolean preferCached) {
         checkCancellation();
         if (loaders.containsKey(key)) return;
         if (jar.startsWith("assets")) jar = UrlUtil.convert(jar);
@@ -216,36 +233,90 @@ public class JarLoader {
             checkCancellation();
             if (loaders.containsKey(key)) return;
             String[] texts = jar.split(";md5;");
-            String md5 = texts.length > 1 ? texts[1].trim() : "";
-            if (md5.startsWith("http")) {
-                try {
-                    md5 = OkHttp.verifiedString(md5).trim();
-                    if (!md5.matches("(?i)[a-f0-9]{32}")) throw new IOException("Invalid plugin checksum");
-                } catch (IOException error) { throw new IllegalStateException("源插件校验信息获取失败", error); }
-            }
+            String declared = texts.length > 1 ? texts[1].trim() : "";
             jar = texts[0];
             if (jar.startsWith("http")) {
-                String address = jar;
-                try {
-                    JarArtifact.load(Path.jar(jar), key, md5, System.currentTimeMillis(), destination -> {
-                        try { Download.create(address, destination).verifiedTransport().timeout(15_000).maxBytes(32 * 1024 * 1024).get(); }
-                        catch (RuntimeException e) {
-                            preserveCancellation(e);
-                            checkCancellation();
-                            if (e.getCause() instanceof IOException io) throw io;
-                            throw e;
-                        }
-                    }, file -> load(key, file), BundledJar.matches(address, md5)
-                            ? new JarArtifact.Bundle(BundledJar.SHA256, destination -> {
-                                try (var input = App.get().getAssets().open(BundledJar.ASSET)) {
-                                    Files.copy(input, destination.toPath(), StandardCopyOption.REPLACE_EXISTING);
-                                }
-                            }) : null);
-                } catch (IOException e) { throw new IllegalStateException("源插件下载失败", e); }
+                if (preferCached && (declared.isEmpty() || declared.startsWith("http"))) {
+                    File target = Path.jar(jar);
+                    String sha = JarArtifact.cachedHash(target, key, System.currentTimeMillis());
+                    if (sha != null) {
+                        load(key, target, sha);
+                        refreshLater(key, jar, declared);
+                        return;
+                    }
+                }
+                fetch(key, jar, checksum(declared), file -> load(key, file), true);
             } else if (jar.startsWith("file")) {
                 load(key, Path.local(jar));
             }
         }
+    }
+
+    /** A checksum given as an address is read from it. */
+    private static String checksum(String declared) {
+        if (!declared.startsWith("http")) return declared;
+        try {
+            String md5 = OkHttp.verifiedString(declared).trim();
+            if (!md5.matches("(?i)[a-f0-9]{32}")) throw new IOException("Invalid plugin checksum");
+            return md5;
+        } catch (IOException error) { throw new IllegalStateException("源插件校验信息获取失败", error); }
+    }
+
+    /** An online download wins, then the verified copy, then (when allowed) the audited bundle. */
+    private void fetch(String key, String address, String md5, JarArtifact.Loader loader, boolean bundle) {
+        try {
+            JarArtifact.load(Path.jar(address), key, md5, System.currentTimeMillis(), destination -> {
+                try { Download.create(address, destination).verifiedTransport().timeout(15_000).maxBytes(32 * 1024 * 1024).get(); }
+                catch (RuntimeException e) {
+                    preserveCancellation(e);
+                    checkCancellation();
+                    if (e.getCause() instanceof IOException io) throw io;
+                    throw e;
+                }
+            }, loader, bundle && BundledJar.matches(address, md5)
+                    ? new JarArtifact.Bundle(BundledJar.SHA256, destination -> {
+                        try (var input = App.get().getAssets().open(BundledJar.ASSET)) {
+                            Files.copy(input, destination.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                        }
+                    }) : null);
+        } catch (IOException e) { throw new IllegalStateException("源插件下载失败", e); }
+    }
+
+    private static final long REFRESH_DELAY_MS = 10_000;
+
+    /** After a start from the cached copy: fetch the package once, off the start-up path. */
+    private void refreshLater(String key, String address, String declared) {
+        try {
+            com.fongmi.android.tv.utils.Task.scheduler().schedule(
+                    () -> com.fongmi.android.tv.utils.Task.execute(() -> refresh(key, address, declared)),
+                    REFRESH_DELAY_MS, TimeUnit.MILLISECONDS);
+        } catch (RejectedExecutionException ignored) {
+            // The copy in use stays; the next start asks again.
+        }
+    }
+
+    /**
+     * Same package: its day starts again. Another package: saved over the copy and used from the next
+     * start (this process keeps the one it loaded; the file is replaced by rename). No answer: kept.
+     */
+    private void refresh(String key, String address, String declared) {
+        File file = files.get(key);
+        String before = hashes.get(key);
+        // Another configuration since: its own load owns the package.
+        if (file == null || before == null || !loaders.containsKey(key)) return;
+        long started = android.os.SystemClock.elapsedRealtime();
+        String outcome;
+        try {
+            synchronized (locks.computeIfAbsent(key, k -> new Object())) {
+                fetch(key, address, checksum(declared), fetched -> { }, false);
+            }
+            outcome = before.equals(JarArtifact.hash(file, "SHA-256")) ? "same" : "changed";
+        } catch (Throwable e) {
+            Throwable cause = e.getCause() == null ? e : e.getCause();
+            outcome = "kept:" + cause.getClass().getSimpleName();
+        }
+        com.fongmi.android.tv.diagnostics.DiagnosticLog.write(App.get(), "plugin_refresh",
+                "ms=" + (android.os.SystemClock.elapsedRealtime() - started) + " outcome=" + outcome);
     }
 
     public DexClassLoader dex(String jar) {

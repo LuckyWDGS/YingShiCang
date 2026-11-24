@@ -72,6 +72,11 @@ abstract class BaseConfig {
     protected void onDemand() {
     }
 
+    /** " parts=name:ms,..." for the log, or nothing. */
+    protected String timing() {
+        return "";
+    }
+
     /** The last successful load started from the saved copy rather than the network. */
     protected boolean startedFromSaved() {
         return false;
@@ -154,7 +159,7 @@ abstract class BaseConfig {
             OkHttp.cancel(getTag());
             load(config);
             if (taskId.get() != id) return;
-            DiagnosticLog.write(App.get(), "config_load", "type=" + logType() + " ms=" + (SystemClock.elapsedRealtime() - started) + " outcome=ok saved=" + !TextUtils.isEmpty(config.getNotice()) + (startedFromSaved() ? " first=saved" : ""));
+            DiagnosticLog.write(App.get(), "config_load", "type=" + logType() + " ms=" + (SystemClock.elapsedRealtime() - started) + " outcome=ok saved=" + !TextUtils.isEmpty(config.getNotice()) + (startedFromSaved() ? " first=saved" : "") + timing());
             if (config.equals(this.config)) config.update();
             App.post(() -> Notify.show(config.getNotice()));
             App.post(callback::success);

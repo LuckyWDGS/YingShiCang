@@ -200,9 +200,13 @@ public class VodConfig extends BaseConfig {
         boolean trySaved = preferSaved;
         preferSaved = false;
         startedSaved = false;
+        parts.setLength(0);
+        mark = SystemClock.elapsedRealtime();
         JsonObject saved = trySaved ? VodConfigFetch.saved(url, config.getJson(), System.currentTimeMillis()) : null;
+        part("copy");
         if (saved != null) {
-            checkJson(config, saved);
+            fromSaved = true;
+            try { checkJson(config, saved); } finally { fromSaved = false; }
             if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException();
             startedSaved = true;
             checkLater(config, url, saved);
@@ -210,6 +214,7 @@ public class VodConfig extends BaseConfig {
         }
         VodConfigFetch.Loaded loaded = VodConfigFetch.load(url, config.getJson(), System.currentTimeMillis(),
                 () -> Decoder.getJson(url, TAG, VodConfigFetch.ATTEMPT_TIMEOUT_MS));
+        part("fetch");
         checkJson(config, loaded.object());
         if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException();
         if (loaded.cached()) {
@@ -312,9 +317,12 @@ public class VodConfig extends BaseConfig {
 
     private void initSite(Config config, JsonObject object) {
         String spider = Json.safeString(object, "spider");
+        part("lists");
         try {
-            BaseLoader.get().parseJar(spider, true);
+            BaseLoader.get().parseJar(spider, true, fromSaved);
+            part("jar");
         } catch (RuntimeException e) {
+            part("jar");
             if (Thread.currentThread().isInterrupted()) throw e;
             boolean networkFailure = false;
             for (Throwable cause = e; cause != null; cause = cause.getCause()) {
@@ -328,6 +336,29 @@ public class VodConfig extends BaseConfig {
         Map<String, Site> items = Site.findAll().stream().collect(Collectors.toMap(Site::getKey, Function.identity()));
         getSites().forEach(site -> site.sync(items.get(site.getKey())));
         setHome(config, getSites().isEmpty() ? new Site() : getSites().stream().filter(item -> item.getKey().equals(config.getHome())).findFirst().orElse(getSites().get(0)), false);
+        part("sites");
+    }
+
+    // Where a load's time went, for the log: copy/fetch (the configuration), lists, jar (the plugin
+    // package), sites, rest. A TV took 7-10s per start and the log could not say on what.
+    private final StringBuilder parts = new StringBuilder();
+    private long mark;
+    private boolean fromSaved;
+
+    private void part(String name) {
+        long now = SystemClock.elapsedRealtime();
+        if (parts.length() > 0) parts.append(',');
+        parts.append(name).append(':').append(now - mark);
+        mark = now;
+    }
+
+    @Override
+    protected String timing() {
+        if (parts.length() == 0) return "";
+        part("rest");
+        String text = " parts=" + parts;
+        parts.setLength(0);
+        return text;
     }
 
     private void initParse(Config config, JsonObject object) {

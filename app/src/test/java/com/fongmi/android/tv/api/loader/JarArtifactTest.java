@@ -25,6 +25,35 @@ public class JarArtifactTest {
     private JarArtifact.Fetcher offline(){return f->{Files.writeString(f.toPath(),"partial");throw new IOException("connection closed");};}
     private void seed(File target)throws Exception{JarArtifact.load(target,"identity","",100,this::jar,f->{});}
 
+    @Test public void aStartFromTheSavedConfigurationLoadsTheVerifiedCopyWithoutFetching()throws Exception{
+        File target=target();
+        assertNull("nothing downloaded yet",JarArtifact.cachedHash(target,"identity",100));
+        seed(target);
+        String sha=JarArtifact.hash(target,"SHA-256");
+        assertEquals(sha,JarArtifact.cachedHash(target,"identity",100+23*60*60*1000L));
+        // Another package address, a day old, or a file that is no longer the verified one: the network is asked first.
+        assertNull(JarArtifact.cachedHash(target,"other",200));
+        assertNull(JarArtifact.cachedHash(target,"identity",100+24*60*60*1000L));
+        Files.writeString(target.toPath(),"tampered");
+        assertNull(JarArtifact.cachedHash(target,"identity",200));
+    }
+    @Test public void theRefreshAfterwardsRenewsTheSameCopyAndSavesAnotherForTheNextStart()throws Exception{
+        File target=target();seed(target);
+        String first=JarArtifact.hash(target,"SHA-256");
+        long day=24*60*60*1000L;
+        // Same package again, loading nothing: its day starts again.
+        JarArtifact.load(target,"identity","",100+day-1,this::jar,f->{});
+        assertEquals(first,JarArtifact.cachedHash(target,"identity",100+day+5));
+        // No answer: the copy stays as it was and keeps its age.
+        JarArtifact.load(target,"identity","",100+day,offline(),f->{});
+        assertEquals(first,JarArtifact.hash(target,"SHA-256"));
+        assertNull(JarArtifact.cachedHash(target,"identity",100+2*day));
+        // Another package: saved over the copy for the next start.
+        JarArtifact.load(target,"identity","",100+day,f->{try(var out=new ZipOutputStream(Files.newOutputStream(f.toPath()))){out.putNextEntry(new ZipEntry("classes.dex"));out.write(new byte[]{9,9});out.closeEntry();}},f->{});
+        String second=JarArtifact.hash(target,"SHA-256");
+        assertNotEquals(first,second);
+        assertEquals(second,JarArtifact.cachedHash(target,"identity",100+day+5));
+    }
     @Test public void failedDownloadNeverTruncatesPreviousJarAndRetryRecovers()throws Exception{
         File target=target();seed(target);byte[] old=Files.readAllBytes(target.toPath());AtomicInteger calls=new AtomicInteger();
         JarArtifact.load(target,"identity","",200,f->{assertArrayEquals(old,Files.readAllBytes(target.toPath()));if(calls.incrementAndGet()==1)throw new IOException();jar(f);},f->{});
