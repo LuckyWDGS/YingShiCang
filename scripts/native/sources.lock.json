@@ -22,7 +22,7 @@
     "libplacebo": {
       "repository": "https://github.com/FongMi/libplacebo.git",
       "commit": "558b03542315d532ded3ba5f9183d84d712eeedd",
-      "patchSha256": "2e87235ba2d7de100b64ef756712918497ac96e6ef6d47901e8d294e3b701480"
+      "patchSha256": "45d86b58faa8bf90fa0f6e30610465eb07e0d040e7be0da861633d0516fb51dd"
     },
     "uavs3d": {
       "repository": "https://github.com/uavs3/uavs3d.git",
@@ -39,7 +39,7 @@
     },
     "freetype2": {
       "repository": "https://gitlab.freedesktop.org/freetype/freetype.git",
-      "commit": "0eca44e6e819f9e156eee0de2cbbcffd3a59e47b"
+      "commit": "d4d00b890aab5970f291338b9de626ceafefbdec"
     }
   }
 }
