@@ -18,7 +18,13 @@ public class JsLoader {
     public JsLoader() {
         spiders = new ConcurrentHashMap<>();
         loader = new Loader();
+        // A script taken from its saved copy: logged a few times a minute at most (a search starts hundreds).
+        Module.get().setObserver(stale -> {
+            if (COPY_LINES.take(System.currentTimeMillis())) DiagnosticLog.write(App.get(), "js_copy", stale ? "stale" : "fresh");
+        });
     }
+
+    private static final com.fongmi.android.tv.diagnostics.LineBudget COPY_LINES = new com.fongmi.android.tv.diagnostics.LineBudget(5, 60_000);
 
     public void clear() {
         spiders.values().forEach(Spider::destroy);
@@ -59,7 +65,9 @@ public class JsLoader {
                     interrupted |= cause instanceof InterruptedException;
                 }
                 if (interrupted) Thread.currentThread().interrupt();
-                DiagnosticLog.write(App.get(), "plugin_load_failed", "JS源插件初始化失败 " + cause.getClass().getSimpleName());
+                // QuickJSException carries the script's own error: its type says whether the script wants a newer host.
+                String kind = cause.getClass().getSimpleName().contains("QuickJS") ? com.fongmi.android.tv.diagnostics.JsFailure.describe(cause.getMessage()) : "";
+                DiagnosticLog.write(App.get(), "plugin_load_failed", "JS源插件初始化失败 " + cause.getClass().getSimpleName() + kind);
                 // computeIfAbsent retains successful instances only; a later request can recover.
                 throw new IllegalStateException("JS源插件初始化失败", e);
             }

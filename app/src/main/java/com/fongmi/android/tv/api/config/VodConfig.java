@@ -186,6 +186,8 @@ public class VodConfig extends BaseConfig {
             throw new StartupGuard.Paused();
         }
         if (!TextUtils.isEmpty(config.getUrl())) StartupGuard.loading(automatic);
+        // A load the user asked for also fetches the JavaScript sources' scripts again.
+        if (!automatic) com.fongmi.quickjs.utils.Module.get().expire();
         try {
             loadGuarded(config);
             StartupGuard.loaded();
