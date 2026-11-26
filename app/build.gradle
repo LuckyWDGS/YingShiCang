@@ -20,8 +20,8 @@ android {
         minSdk libs.versions.minSdk.get().toInteger()
         targetSdk libs.versions.targetSdk.get().toInteger()
         // Publisher GitHub Releases are the only update source: check, download, verify and install.
-        versionCode providers.gradleProperty('appVersionCode').getOrElse('118').toInteger()
-        versionName providers.gradleProperty('appVersionName').getOrElse('3.6.5')
+        versionCode providers.gradleProperty('appVersionCode').getOrElse('119').toInteger()
+        versionName providers.gradleProperty('appVersionName').getOrElse('3.6.6')
         buildConfigField "String", "LOG_UPLOAD_URL", groovy.json.JsonOutput.toJson(providers.gradleProperty("logUploadUrl").getOrElse(localProps.getProperty("ysc.logUploadUrl", "")))
         javaCompileOptions {
             annotationProcessorOptions {
