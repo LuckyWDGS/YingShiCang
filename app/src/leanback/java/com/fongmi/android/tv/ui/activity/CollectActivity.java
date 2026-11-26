@@ -569,7 +569,7 @@ public class CollectActivity extends BaseActivity implements VodPresenter.OnClic
         if (event.getKeyCode() == KeyEvent.KEYCODE_DPAD_LEFT && event.getAction() == KeyEvent.ACTION_DOWN) {
             View focused = getCurrentFocus();
             if (focused != null && !isSource(focused)) {
-                View next = FocusFinder.getInstance().findNextFocus((ViewGroup) binding.getRoot(), focused, View.FOCUS_LEFT);
+                View next = leftOf(focused);
                 View current = binding.allSource.findViewWithTag(selected);
                 if (current == null) current = binding.sources.findViewWithTag(selected);
                 if (isSource(next) && current != null && current != next) {
@@ -580,6 +580,14 @@ public class CollectActivity extends BaseActivity implements VodPresenter.OnClic
             }
         }
         return super.dispatchKeyEvent(event);
+    }
+    /**
+     * The view Left would reach. A card removed by an arriving batch can still hold the focus for a frame;
+     * FocusFinder then throws "parameter must be a descendant of this view" (a Hisense TV, 2026-11-25).
+     */
+    private View leftOf(View focused) {
+        try { return FocusFinder.getInstance().findNextFocus((ViewGroup) binding.getRoot(), focused, View.FOCUS_LEFT); }
+        catch (IllegalArgumentException detached) { return null; }
     }
     @Override protected void onDestroy() { binding.results.removeCallbacks(queuedDisplay); binding.results.removeCallbacks(focusSelect); searchSources.cancel(); cancelPage(); model.stopSearch(); super.onDestroy(); }
 }

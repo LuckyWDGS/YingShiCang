@@ -74,6 +74,21 @@ public final class WoggAddressCompatibility {
 
     private static final ThreadLocal<Long> WAIT = new ThreadLocal<>();
 
+    /**
+     * How long a callback whose caller has given up (its budget is spent, or it was cancelled and is still
+     * inside the plugin) keeps later callbacks of the same instance waiting. A plugin call that never
+     * returns used to hold the instance for the rest of the process: every later detail and play address
+     * of that source waited out its own 30 s and failed (a TV, 2026-11-25: one play-address call still
+     * running after 459 s, five requests behind it cancelled).
+     */
+    static volatile long abandonGraceMillis = 2000;
+    private static volatile java.util.function.Consumer<String> abandoned = detail -> { };
+
+    /** Told "reason=deadline|cancelled heldMs=N" each time a stuck callback is no longer waited for. */
+    public static void onAbandoned(java.util.function.Consumer<String> listener) {
+        abandoned = Objects.requireNonNull(listener);
+    }
+
     private static <T> T call(Spider spider, RemainingMillis remaining, LongSupplier paused, CancellationCheck cancellation,
                               Callable<T> operation, boolean search) throws Exception {
         WAIT.remove();
@@ -86,24 +101,33 @@ public final class WoggAddressCompatibility {
         checkInterrupted();
         Budget budget = new Budget(remaining, paused);
         State state = state(audited.delegate);
-        boolean acquired = false;
+        Holder mine = null;
         long waitStart = System.nanoTime();
         try {
-            while (!acquired) {
+            while (mine == null) {
                 cancellation.check();
                 checkInterrupted();
                 if (!search) state.preemptSearch();
                 long wait = Math.min(50, budget.remaining());
-                try { acquired = state.lock.tryLock(wait, TimeUnit.MILLISECONDS); }
+                ReentrantLock lock = state.lock;
+                boolean locked;
+                try { locked = lock.tryLock(wait, TimeUnit.MILLISECONDS); }
                 catch (InterruptedException interrupted) {
                     Thread.currentThread().interrupt();
                     InterruptedIOException failure = new InterruptedIOException("Source callback cancelled");
                     failure.initCause(interrupted);
                     throw failure;
                 }
+                if (locked) {
+                    mine = state.hold(lock, budget, search);
+                    // Replaced while this thread waited on it: its holder was given up on.
+                    if (mine == null) lock.unlock();
+                } else {
+                    String given = state.abandonStuck(lock, abandonGraceMillis);
+                    if (given != null) abandoned.accept(given);
+                }
             }
             WAIT.set(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - waitStart));
-            if (search) state.holdSearch();
             cancellation.check();
             checkInterrupted();
             budget.remaining();
@@ -122,9 +146,9 @@ public final class WoggAddressCompatibility {
                 state.finish(audited);
             }
         } finally {
-            if (acquired) {
-                if (search) state.releaseSearch();
-                state.lock.unlock();
+            if (mine != null) {
+                state.release(mine);
+                mine.lock.unlock();
             }
         }
     }
@@ -162,28 +186,60 @@ public final class WoggAddressCompatibility {
         }
     }
 
-    private static final class State {
-        final ReentrantLock lock = new ReentrantLock(true);
-        private Thread searchHolder;
-        private boolean preempted;
+    /** One callback inside the instance, with the lock it took. */
+    private static final class Holder {
+        final Thread thread = Thread.currentThread();
+        final ReentrantLock lock;
+        final Budget budget;
+        final boolean search;
+        final long since = System.nanoTime();
+        boolean preempted;
+        long interruptedSince = -1;
+        Holder(ReentrantLock lock, Budget budget, boolean search) { this.lock = lock; this.budget = budget; this.search = search; }
+    }
 
-        synchronized void holdSearch() {
-            searchHolder = Thread.currentThread();
-            preempted = false;
+    private static final class State {
+        volatile ReentrantLock lock = new ReentrantLock(true);
+        private Holder holder;
+
+        /** Called with {@code held} locked; null when that lock was replaced meanwhile. */
+        synchronized Holder hold(ReentrantLock held, Budget budget, boolean search) {
+            if (lock != held) return null;
+            return holder = new Holder(held, budget, search);
         }
 
         /** Interrupts the search holding the lock, once; it cannot have released the lock meanwhile. */
         synchronized void preemptSearch() {
-            if (searchHolder == null || preempted) return;
-            preempted = true;
-            searchHolder.interrupt();
+            Holder current = holder;
+            if (current == null || !current.search || current.preempted) return;
+            current.preempted = true;
+            current.thread.interrupt();
         }
 
         /** Called by the holder: a preemption interrupt must not outlive this callback on a pooled thread. */
-        synchronized void releaseSearch() {
-            if (preempted) Thread.interrupted();
-            searchHolder = null;
-            preempted = false;
+        synchronized void release(Holder mine) {
+            if (mine.preempted) Thread.interrupted();
+            if (holder == mine) holder = null;
+        }
+
+        /**
+         * Gives later callbacks a new lock when the holder of {@code waited} can no longer be delivered to
+         * anyone: its budget ran out, or it was interrupted (its caller cancelled it, or a detail preempted
+         * its search) and has stayed inside the plugin for the grace since. It finishes on its own lock.
+         */
+        synchronized String abandonStuck(ReentrantLock waited, long graceMillis) {
+            Holder current = holder;
+            if (current == null || lock != waited || current.lock != waited) return null;
+            long now = System.nanoTime();
+            String reason = null;
+            if (current.budget.overdueMillis() >= graceMillis) reason = "deadline";
+            else if (!current.thread.isInterrupted()) current.interruptedSince = -1;
+            else if (current.interruptedSince < 0) current.interruptedSince = now;
+            else if (TimeUnit.NANOSECONDS.toMillis(now - current.interruptedSince) >= graceMillis) reason = "cancelled";
+            if (reason == null) return null;
+            holder = null;
+            lock = new ReentrantLock(true);
+            return "reason=" + reason + " heldMs=" + TimeUnit.NANOSECONDS.toMillis(now - current.since) + (current.search ? " search" : "");
         }
         String lastValid;
         void remember(Audited audited) {
@@ -221,6 +277,10 @@ public final class WoggAddressCompatibility {
             long left = Math.min(initial - elapsed, caller.get());
             if (left <= 0) throw deadline();
             return left;
+        }
+        /** Milliseconds past the budget this callback started with (paused time excluded); negative while inside it. */
+        long overdueMillis() {
+            return TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started) - (paused.getAsLong() - pausedBase) - initial;
         }
     }
 

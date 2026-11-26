@@ -12,7 +12,6 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
-import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ConcurrentHashMap;
@@ -26,7 +25,10 @@ import dalvik.system.DexClassLoader;
  * The provider ships a new build almost daily and re-obfuscates class names (the ordinary notice callback was
  * merge.tO on 2026-10-16 and merge.Nl on 2026-10-22), so the plugin is recognised by its exact structure, not
  * by file hash or class name: InitOrigin's seven fields and public API, the repeating notice InitOrigin$1, and
- * an ordinary notice callback with exactly the audited synthetic fields SN (Object) and yq (int, 3 = show).
+ * the ordinary notice callbacks: synthetic Runnables with exactly the audited fields SN (the text) and yq (int).
+ * Two such classes exist. Until 2026-11 notices came through the one whose SN is an Object (yq 3 = show); the
+ * build of 2026-11-25 shows them through the one whose SN is a String (yq 1 = show), which is why the danmaku
+ * and advertisement notices came back (user 2026-11-25; seen on LDPlayer the same day).
  * Anything that differs keeps the plugin's own behaviour; only the exact texts below are dropped.
  */
 public final class PluginNoticeCompatibility {
@@ -35,10 +37,11 @@ public final class PluginNoticeCompatibility {
     private static final String REPEATING_NOTICE = ORIGIN + "$1";
     static final long REPEAT_GAP_FACTOR = 3;
     private static final Set<String> RECORDED = ConcurrentHashMap.newKeySet();
-    private static final Pattern AD_COUNT = Pattern.compile("^已过滤视频中广告\\([0-9]+条\\)$");
+    private static final Pattern AD_COUNT = Pattern.compile("^已过滤视频中广告[\\s\u3000]*[(（][0-9]+条[)）]$");
     private static final String BILI_GUEST = "哔哩游客模式，可前往【哔哔】主页扫码登录解锁高分辨率";
     // The danmaku itself shows that it loaded; the toast covered the picture (user 1.7.4 screenshot).
-    private static final Pattern DANMAKU_LOADED = Pattern.compile("^弹幕【[^】\\n]{1,80}】加载成功$");
+    // Later plugin builds add the count: 弹幕【…】加载成功 共94条 (user 2026-11-25 screenshot).
+    private static final Pattern DANMAKU_LOADED = Pattern.compile("^弹幕【[^】\\n]{1,80}】加载成功(?:[\\s\u3000，,]*共\\s*[0-9]+\\s*条)?$");
 
     public enum Result { INSTALLED, ALREADY_INSTALLED, UNSUPPORTED, ACTIVE_REPEAT, FAILED }
 
@@ -127,11 +130,8 @@ public final class PluginNoticeCompatibility {
         private final ClassLoader loader;
         private final Class<?> repeating;
         private final Field repeatingText;
-        // Other Runnables the plugin posts; checked once each (dispatch runs on the main thread only).
-        private final Set<Class<?>> others = new HashSet<>();
-        private Class<?> ordinary;
-        private Field ordinaryText;
-        private Field ordinaryKind;
+        // Every Runnable class the plugin has posted, checked once (dispatch runs on the main thread only).
+        private final java.util.Map<Class<?>, Ordinary> ordinary = new java.util.HashMap<>();
 
         private NoticeShape(ClassLoader loader, Class<?> repeating, Field repeatingText) {
             this.loader = loader;
@@ -151,27 +151,29 @@ public final class PluginNoticeCompatibility {
             return new NoticeShape(loader, repeating, repeatText);
         }
 
-        /** The ordinary notice callback, matched once by its exact shape; its obfuscated name changes per build. */
-        private boolean isOrdinary(Class<?> type) {
-            if (type == ordinary) return true;
-            if (ordinary != null || type.getClassLoader() != loader || others.contains(type)) return false;
+        /** An ordinary notice callback, matched by its exact shape; its obfuscated name changes per build. */
+        private Ordinary ordinary(Class<?> type) {
+            if (type.getClassLoader() != loader) return Ordinary.NONE;
+            Ordinary known = ordinary.get(type);
+            if (known != null) return known;
+            Ordinary found = Ordinary.NONE;
             try {
                 require(type.getSuperclass() == Object.class && type.getModifiers() == (SYNTHETIC_FINAL) && type.isSynthetic());
                 require(type.getInterfaces().length == 1 && type.getInterfaces()[0] == Runnable.class);
                 require(type.getDeclaredFields().length == 2);
-                Field text = field(type, "SN", Object.class, SYNTHETIC_FINAL);
+                Field text = type.getDeclaredField("SN");
+                require((text.getType() == Object.class || text.getType() == String.class) && text.getModifiers() == SYNTHETIC_FINAL);
+                text.setAccessible(true);
                 Field kind = field(type, "yq", int.class, SYNTHETIC_FINAL);
-                Constructor<?> constructor = type.getDeclaredConstructor(Object.class, int.class);
+                Constructor<?> constructor = type.getDeclaredConstructor(text.getType(), int.class);
                 require(constructor.getModifiers() == (Modifier.PUBLIC | 0x1000) && constructor.isSynthetic());
                 method(type, "run", void.class, Modifier.PUBLIC | Modifier.FINAL);
-                ordinaryText = text;
-                ordinaryKind = kind;
-                ordinary = type;
-                return true;
+                found = new Ordinary(text, kind, text.getType() == String.class ? 1 : 3);
             } catch (ReflectiveOperationException | RuntimeException ignored) {
-                others.add(type);
-                return false;
+                // Not a notice callback: left alone.
             }
+            ordinary.put(type, found);
+            return found;
         }
 
         boolean isRepeating(Runnable callback) {
@@ -182,20 +184,32 @@ public final class PluginNoticeCompatibility {
             if (callback == null) return false;
             try {
                 Object text;
+                boolean shown = true;
                 if (callback.getClass() == repeating) {
                     text = repeatingText.get(callback);
-                } else if (isOrdinary(callback.getClass())) {
-                    if (ordinaryKind.getInt(callback) != 3) return false;
-                    text = ordinaryText.get(callback);
-                } else return false;
+                } else {
+                    Ordinary shape = ordinary(callback.getClass());
+                    if (shape == Ordinary.NONE) return false;
+                    text = shape.text.get(callback);
+                    shown = shape.kind.getInt(callback) == shape.show;
+                }
                 if (!(text instanceof String notice)) return false;
+                // One of the exact texts is a notice whatever number its callback carries.
                 if (isSilentNotice(notice)) return true;
-                record(notice);
+                if (shown) record(notice);
                 return false;
             } catch (Throwable ignored) {
                 return false;
             }
         }
+    }
+
+    /** The text and number fields of one ordinary callback class, and the number that means "show the text". */
+    private static final class Ordinary {
+        static final Ordinary NONE = new Ordinary(null, null, 0);
+        final Field text, kind;
+        final int show;
+        Ordinary(Field text, Field kind, int show) { this.text = text; this.kind = kind; this.show = show; }
     }
 
     /** What a plugin told the user, once per text: its strings are encrypted, so this is the only way to see them. */
