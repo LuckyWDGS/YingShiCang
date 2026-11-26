@@ -330,6 +330,92 @@ public class WoggAddressCompatibilityTest {
         } finally { release.countDown(); first.get(2, TimeUnit.SECONDS); second.interrupt(); worker.shutdownNow(); }
     }
 
+    /** A plugin callback that ignores its interrupt and never returns until released. */
+    private static Callable<String> stuck(CountDownLatch entered, CountDownLatch release) {
+        return () -> {
+            entered.countDown();
+            while (true) {
+                try { if (release.await(10, TimeUnit.SECONDS)) return "late"; }
+                catch (InterruptedException ignored) { }
+            }
+        };
+    }
+
+    @Test public void callbackPastItsBudgetIsNoLongerWaitedFor() throws Exception {
+        WoGG source = new WoGG(OLD);
+        ExecutorService worker = Executors.newSingleThreadExecutor();
+        CountDownLatch entered = new CountDownLatch(1), release = new CountDownLatch(1);
+        java.util.List<String> given = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+        long grace = WoggAddressCompatibility.abandonGraceMillis;
+        WoggAddressCompatibility.abandonGraceMillis = 100;
+        WoggAddressCompatibility.onAbandoned(given::add);
+        try {
+            Future<String> first = worker.submit(() -> WoggAddressCompatibility.call(source, 200, ACTIVE, stuck(entered, release)));
+            assertTrue(entered.await(1, TimeUnit.SECONDS));
+            // Its 200 ms are over after 300 ms; a later callback gets in instead of waiting out its own 3 s.
+            long started = System.nanoTime();
+            assertEquals("next", call(source, () -> "next"));
+            long waited = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
+            assertTrue("waited " + waited, waited >= 250 && waited < 2000);
+            assertEquals(1, given.size());
+            assertTrue(given.get(0), given.get(0).startsWith("reason=deadline heldMs="));
+            // And the one after it does not wait at all.
+            started = System.nanoTime();
+            assertEquals("again", call(source, () -> "again"));
+            assertTrue(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started) < 200);
+            assertEquals(1, given.size());
+            // The stuck one ends on its own lock: late, so its caller gets the deadline, and nothing else changes.
+            release.countDown();
+            try { first.get(2, TimeUnit.SECONDS); fail(); }
+            catch (java.util.concurrent.ExecutionException expected) { assertTrue(expected.getCause() instanceof InterruptedIOException); }
+            assertEquals("after", call(source, () -> "after"));
+            assertEquals(OLD, source.address());
+        } finally {
+            WoggAddressCompatibility.abandonGraceMillis = grace;
+            WoggAddressCompatibility.onAbandoned(detail -> { });
+            release.countDown(); worker.shutdownNow();
+        }
+    }
+
+    @Test public void cancelledCallbackStillInsideThePluginIsNoLongerWaitedFor() throws Exception {
+        WoGG source = new WoGG(OLD);
+        CountDownLatch entered = new CountDownLatch(1), release = new CountDownLatch(1);
+        java.util.List<String> given = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+        long grace = WoggAddressCompatibility.abandonGraceMillis;
+        WoggAddressCompatibility.abandonGraceMillis = 100;
+        WoggAddressCompatibility.onAbandoned(given::add);
+        // Blocked where an interrupt does not reach (a socket read, a monitor): the flag stays set.
+        Thread holder = new Thread(() -> {
+            try {
+                WoggAddressCompatibility.call(source, 30_000, ACTIVE, () -> {
+                    entered.countDown();
+                    while (release.getCount() > 0) java.util.concurrent.locks.LockSupport.parkNanos(1_000_000);
+                    return "late";
+                });
+            } catch (Exception ignored) { }
+        });
+        holder.start();
+        try {
+            assertTrue(entered.await(1, TimeUnit.SECONDS));
+            // Inside its budget and not cancelled: a later callback waits its own budget out.
+            try { WoggAddressCompatibility.call(source, 300, ACTIVE, () -> "early"); fail(); }
+            catch (InterruptedIOException expected) { assertTrue(expected.getMessage().contains("deadline")); }
+            assertTrue(given.isEmpty());
+            // The user picked another episode: the runner cancels the first request, which stays in the plugin.
+            holder.interrupt();
+            long started = System.nanoTime();
+            assertEquals("next", call(source, () -> "next"));
+            long waited = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
+            assertTrue("waited " + waited, waited >= 100 && waited < 2000);
+            assertEquals(1, given.size());
+            assertTrue(given.get(0), given.get(0).startsWith("reason=cancelled heldMs="));
+        } finally {
+            WoggAddressCompatibility.abandonGraceMillis = grace;
+            WoggAddressCompatibility.onAbandoned(detail -> { });
+            release.countDown(); holder.join(2000);
+        }
+    }
+
     @Test public void serializedValidRefreshSurvivesAndDifferentInstancesProceed() throws Exception {
         WoGG source = new WoGG(OLD), separate = new WoGG(null);
         ExecutorService workers = Executors.newFixedThreadPool(2);

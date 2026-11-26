@@ -2,6 +2,8 @@
 
 App 的「设置 → 日志上传与诊断 → 上传日志」会把本机诊断日志和设备信息通过 HTTPS POST 到一个接收接口，服务器确认保存后 App 才清理这批日志。
 
+**3.6.5 之后的版本压缩上传**：日志先用 gzip 压缩，以 `application/gzip` 发送（10 MB 的日志约 0.7 MB）。校验值、回执里的大小、OSS 上保存的对象都是压缩后的字节，对象名仍是 `.log`；`scripts/fetch_logs.py` 下载时自动解压，在 OSS 控制台直接预览会是乱码。函数代码不需要改动。原因（2026-11-25 实测）：函数计算的 HTTP 触发器把 `text/plain` 请求体当作文本交给函数，7–10 MB 的日志在 256 MB 的函数里大约三次失败一次（HTTP 502）；日志里只要有不是合法 UTF-8 的字节，到函数时就变了，校验不过（HTTP 400）。二进制请求体原样送达。3.6.5 及更早版本仍按文本上传，日志接近写满时还会遇到 502；想照顾这些旧版本，可以把函数内存从 256 MB 调到 1024 MB（控制台 → 函数 → 配置 → 规格）。
+
 **崩溃自动上传**：应用崩溃（Java 崩溃，以及 Android 11+ 上由系统记录的原生崩溃，例如 MPV/FFmpeg）后，下次启动约 15 秒会自动上传一次日志；失败则在之后的启动中重试，最多 3 次，之后放弃（日志仍留在本机，可手动上传）。新的崩溃会重置次数。其他情况仍需用户手动上传。未配置接收地址时不会上传。本方案用一个函数计算（FC）HTTP 函数接收，写入私有 OSS Bucket `ying-shi-cang`（华北2 北京，`cn-beijing`）。
 
 **App 里不放任何 AccessKey**（APK 可被任何人解包）。函数通过绑定的 RAM 角色拿临时凭证写 OSS；App 只知道函数的 HTTPS 地址。
@@ -108,7 +110,7 @@ python scripts/fetch_logs.py device K7Q2-9MZD --download
 python scripts/fetch_logs.py report <报告编号>        # 找到并下载
 ```
 
-下载到 `.codex/session/logs/<设备ID>/<日期>/`（Git 忽略）。日志里有 Java 崩溃时，脚本按文件名中的版本用 `Release/<版本>/mapping/tv-mapping.txt`（手机版用 `phone-mapping.txt`）和 Android SDK 的 `retrace` 生成 `.retraced.log`；没有对应 mapping 时跳过并提示。
+下载到 `.codex/session/logs/<设备ID>/<日期>/`（Git 忽略）；压缩上传的日志下载后已解压，列表里显示的大小是压缩后的。日志里有 Java 崩溃时，脚本按文件名中的版本用 `Release/<版本>/mapping/tv-mapping.txt`（手机版用 `phone-mapping.txt`；只发布 TV 包的版本存的是 `mapping.txt`，也认）和 Android SDK 的 `retrace` 生成 `.retraced.log`；在工作目录里运行时也到主目录的 `Release/` 里找；没有对应 mapping 时跳过并提示。
 
 ## 本地测试
 

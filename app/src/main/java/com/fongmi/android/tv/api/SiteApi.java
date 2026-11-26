@@ -72,6 +72,11 @@ public class SiteApi {
      */
     private static final Semaphore CRAWLER_INIT_GATE = new Semaphore(4, true);
 
+    static {
+        // A callback of the audited source that never returns no longer holds the instance (heldMs only).
+        WoggAddressCompatibility.onAbandoned(detail -> com.fongmi.android.tv.diagnostics.DiagnosticLog.write(null, "source_lock_abandoned", detail));
+    }
+
     private static Semaphore crawlerGate(Spider spider) {
         ClassLoader loader = spider.getClass().getClassLoader();
         ClassLoader key = loader == null ? SiteApi.class.getClassLoader() : loader;

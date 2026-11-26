@@ -19,13 +19,15 @@ import java.util.function.Consumer;
 
 public class Task {
 
-    private static final ListeningExecutorService executor = MoreExecutors.listeningDecorator(pool(5, "task"));
+    // Longer than any caller waits (30 s for a detail or a play address): what still runs then ignored its cancellation.
+    private static final long STUCK_MS = 35_000;
+    private static final ListeningExecutorService executor = MoreExecutors.listeningDecorator(stuckAware(5, 16, new LinkedBlockingQueue<>(), "task"));
     private static final ListeningExecutorService largeExecutor = MoreExecutors.listeningDecorator(pool(20, "task-large"));
     // 16 + 16, or 4 + 4 on devices of 2 GB and below (SearchCapacity).
     public static final int SEARCH_PARALLELISM = SearchCapacity.lanes();
     public static final int SEARCH_CRAWLER_PARALLELISM = SEARCH_PARALLELISM;
-    private static final ThreadPoolExecutor searchWorkers = pool(SEARCH_PARALLELISM, new ArrayBlockingQueue<>(32), "search");
-    private static final ThreadPoolExecutor crawlerSearchWorkers = pool(SEARCH_CRAWLER_PARALLELISM, new ArrayBlockingQueue<>(32), "search-crawler");
+    private static final ThreadPoolExecutor searchWorkers = stuckAware(SEARCH_PARALLELISM, SEARCH_PARALLELISM, new ArrayBlockingQueue<>(32), "search");
+    private static final ThreadPoolExecutor crawlerSearchWorkers = stuckAware(SEARCH_CRAWLER_PARALLELISM, SEARCH_CRAWLER_PARALLELISM, new ArrayBlockingQueue<>(32), "search-crawler");
     private static final ListeningExecutorService searchExecutor = MoreExecutors.listeningDecorator(searchWorkers);
     private static final ListeningExecutorService crawlerSearchExecutor = MoreExecutors.listeningDecorator(crawlerSearchWorkers);
 
@@ -44,6 +46,15 @@ public class Task {
         ThreadPoolExecutor pool = new ThreadPoolExecutor(threads, threads, 30, TimeUnit.SECONDS, queue, BackgroundThreads.factory(name));
         pool.allowCoreThreadTimeOut(true);
         return pool;
+    }
+
+    /**
+     * Source calls run here. A plugin call that never returns keeps its thread, so it stops counting towards
+     * the size once it has run for {@link #STUCK_MS} (StuckAwarePool); each change is logged as task_pool.
+     */
+    private static ThreadPoolExecutor stuckAware(int threads, int extra, BlockingQueue<Runnable> queue, String name) {
+        return new StuckAwarePool(threads, extra, STUCK_MS, queue, BackgroundThreads.factory(name), () -> System.nanoTime() / 1_000_000,
+                (stuck, size) -> com.fongmi.android.tv.diagnostics.DiagnosticLog.write(null, "task_pool", "pool=" + name + " stuck=" + stuck + " threads=" + size));
     }
 
     public static ListeningExecutorService executor() {

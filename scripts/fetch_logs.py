@@ -13,6 +13,7 @@ Downloads go to .codex/session/logs/, which Git ignores.
 """
 import argparse
 import datetime
+import gzip
 import json
 import os
 import pathlib
@@ -42,16 +43,28 @@ def shown(path):
 CONFIG = "log-reader.properties"
 
 
-def config_files():
-    """log-reader.properties in this checkout, then in the main checkout (worktrees share one file)."""
-    files = [ROOT / CONFIG]
+def checkouts():
+    """This checkout, then the main one: untracked files (the reader key, Release/) exist only there."""
+    roots = [ROOT]
     try:
         common = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "--path-format=absolute", "--git-common-dir"],
                                 capture_output=True, text=True, check=True).stdout.strip()
-        files.append(pathlib.Path(common).parent / CONFIG)
+        roots.append(pathlib.Path(common).parent)
     except (OSError, subprocess.CalledProcessError):
         pass
-    return list(dict.fromkeys(files))
+    return list(dict.fromkeys(roots))
+
+
+def config_files():
+    """log-reader.properties in this checkout, then in the main checkout (worktrees share one file)."""
+    return [root / CONFIG for root in checkouts()]
+
+
+def mapping_file(version, flavor):
+    """Release/<version>/mapping/<flavor>-mapping.txt; releases that publish only the TV package keep mapping.txt."""
+    names = [f"{flavor}-mapping.txt"] + (["mapping.txt"] if flavor == "tv" else [])
+    files = [root / "Release" / version / "mapping" / name for root in checkouts() for name in names]
+    return next((path for path in files if path.is_file()), files[0])
 
 
 def read_config():
@@ -137,7 +150,11 @@ def download(oss2, bucket, row):
     target.mkdir(parents=True, exist_ok=True)
     log = target / pathlib.PurePosixPath(row["key"]).name
     if not (log.is_file() and log.stat().st_size == row["size"]):
-        bucket.get_object_to_file(row["key"], str(log))
+        data = bucket.get_object(row["key"]).read()
+        # 3.6.6 and later upload the log gzip-compressed; the stored object and the listed size are the compressed bytes.
+        if data[:2] == b"\x1f\x8b":
+            data = gzip.decompress(data)
+        log.write_bytes(data)
     info = row.get("info") or read_json(oss2, bucket, row["key"][:-4] + ".device.json")
     if info is not None:
         log.with_suffix(".device.json").write_text(json.dumps(info, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -157,7 +174,7 @@ def retrace(log, version, info):
     if not crashes:
         return
     flavor = "phone" if "mobile" in describe(info)[2] else "tv"
-    mapping = ROOT / "Release" / version / "mapping" / f"{flavor}-mapping.txt"
+    mapping = mapping_file(version, flavor)
     tool = retrace_tool()
     if not mapping.is_file() or tool is None:
         reason = f"没有 {shown(mapping)}" if tool else "未找到 Android SDK 的 retrace"
